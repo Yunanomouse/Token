@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Trailer</title>
+<style>
+  /* ---- Swap these tokens for the product's brand ----
+     Defaults use the dataviz validated dark palette (accessible, CVD-safe). */
+  :root{
+    --bg:#0c0d10; --surface:#141519; --surface-2:#1a1c22; --line:#262931;
+    --ink:#ffffff; --muted:#a2a6b0; --faint:#6d717c;
+    --accent:#3987e5; --accent-2:#6da7ec; --up:#22c58b; --down:#e66767;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1280px;height:720px;overflow:hidden;background:var(--bg);}
+  body{font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);
+    position:relative;-webkit-font-smoothing:antialiased;}
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:22px;opacity:0;}
+  .anim{will-change:transform,opacity;}   /* driven by inline styles from seek(t) */
+
+  /* SCENE 1 — title */
+  .wordmark{font-size:72px;font-weight:800;letter-spacing:-2px;}
+  .wordmark span{color:var(--accent-2);}
+  .tagline{font-size:22px;color:var(--muted);}
+
+  /* SCENE 2 — product screen (drop a real screenshot here) */
+  #s2{padding:40px;}
+  .shot{width:100%;height:100%;border-radius:16px;border:1px solid var(--line);overflow:hidden;
+    background:var(--surface);box-shadow:0 30px 80px rgba(0,0,0,.5);display:grid;place-items:center;}
+  .shot img{width:100%;height:100%;object-fit:cover;display:block;}
+  .shot .placeholder{color:var(--faint);font-size:18px;}
+
+  /* SCENE 3 — outro */
+  .cta{padding:15px 28px;border-radius:13px;font-weight:700;font-size:16px;
+    background:linear-gradient(150deg,var(--accent),var(--accent-2));color:#fff;}
+</style>
+</head>
+<body>
+  <section class="scene" id="s1">
+    <div class="wordmark anim" data-a="title">Your <span>Product</span></div>
+    <div class="tagline anim" data-a="tag">A one-line promise goes here.</div>
+  </section>
+
+  <section class="scene" id="s2">
+    <div class="shot anim" data-a="shot">
+      <!-- Replace the placeholder with: <img src="screenshot.png" alt=""> -->
+      <div class="placeholder">Drop a product screenshot / screen-recording frame here</div>
+    </div>
+  </section>
+
+  <section class="scene" id="s3">
+    <div class="wordmark anim" data-a="obrand">Your <span>Product</span></div>
+    <div class="cta anim" data-a="cta">Get started</div>
+  </section>
+
+<script>
+(function(){
+  "use strict";
+  // ---- total length; the renderer reads this ----
+  const DURATION = 15000;
+
+  const $=id=>document.getElementById(id);
+  const A={}; document.querySelectorAll(".anim").forEach(el=>A[el.dataset.a]=el);
+
+  // ---- timing primitives ----
+  const clamp=x=>x<0?0:x>1?1:x;
+  const outCubic=x=>1-Math.pow(1-x,3);
+  const outBack=x=>{const c=1.70158;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);};
+  const seg=(t,start,dur)=>clamp((t-start)/dur);           // 0..1 tween starting at `start`
+  const setT=(k,op,tx,ty,sc)=>{const el=A[k];if(!el)return;
+    el.style.opacity=op;
+    el.style.transform=`translate(${tx||0}px,${ty||0}px)`+(sc!=null?` scale(${sc})`:"");};
+
+  // ---- scenes: [element, start, end] in ms; XF = crossfade ----
+  const scenes=[ {el:$("s1"),a:0,b:5000},{el:$("s2"),a:5000,b:11000},{el:$("s3"),a:11000,b:15000} ];
+  const XF=380;
+  const sceneOpacity=(t,s)=>clamp(Math.min(seg(t,s.a,XF),1-seg(t,s.b-XF,XF)));
+
+  // ================= THE TIMELINE =================
+  // Everything is a pure function of t — no CSS animations, no requestAnimationFrame
+  // for timing — so each frame is reproducible and the render stays perfectly in sync.
+  function seek(t){
+    t=clamp(t/DURATION)*DURATION;
+    scenes.forEach(s=>{ s.el.style.opacity=sceneOpacity(t,s); });
+
+    // SCENE 1 (0–5000): title rises + fades, tagline follows
+    { const p=outCubic(seg(t,150,900)); setT("title",p,0,18*(1-p));
+      A.tag.style.opacity=seg(t,700,800); }
+
+    // SCENE 2 (5000–11000): product screen pops in
+    { const p=outBack(seg(t,5000,700)); setT("shot",clamp(p),0,0,0.98+0.02*clamp(p)); }
+
+    // SCENE 3 (11000–15000): outro brand + CTA
+    { const p=outBack(seg(t,11000,800)); setT("obrand",clamp(p),0,0,0.9+0.1*clamp(p));
+      A.cta.style.opacity=seg(t,11500,700); }
+  }
+
+  window.__seek=seek;
+  window.__DURATION=DURATION;
+  seek(0);
+  window.__READY__=true;
+})();
+</script>
+</body>
+</html>
