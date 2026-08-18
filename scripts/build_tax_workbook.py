@@ -281,5 +281,192 @@ wc["A55"].font = F_NOTE
 wc["A55"].alignment = WRAP
 wc.merge_cells("A55:E57")
 
+# ------------------------------------------------- Full CRA system sheets ----
+with open(ROOT / "data/json/sales_tax_2026.json", encoding="utf-8") as f:
+    SALES = json.load(f)
+with open(ROOT / "data/json/corporate_income_tax_2026.json", encoding="utf-8") as f:
+    CORP = json.load(f)
+with open(ROOT / "data/json/credits_and_limits_2026.json", encoding="utf-8") as f:
+    LIM = json.load(f)
+
+
+def header_row(ws_, r, headers, widths=None):
+    for i, h in enumerate(headers):
+        c = ws_.cell(r, 1 + i, h)
+        c.font = F_HW
+        c.fill = FILL_HDR
+    if widths:
+        for col, w in widths.items():
+            ws_.column_dimensions[col].width = w
+
+
+def sheet_title(ws_, text, sub=""):
+    ws_["A1"] = text
+    ws_["A1"].font = F_TITLE
+    if sub:
+        ws_["A2"] = sub
+        ws_["A2"].font = F_NOTE
+
+
+# --- all personal income tax brackets, every jurisdiction
+wa = wb.create_sheet("All Income Brackets")
+sheet_title(wa, "Personal Income Tax Brackets 2026 — All of Canada",
+            "Federal + every province/territory. Source: data/json/personal_income_tax_2026.json (CRA figures; see README.md).")
+header_row(wa, 4, ["Jurisdiction", "Bracket", "From", "To", "Marginal rate"],
+           {"A": 28, "B": 9, "C": 14, "D": 14, "E": 14})
+r = 5
+all_jur = [("CA", TAX["federal"])] + list(TAX["provinces"].items())
+for code, jur in all_jur:
+    lower = 0
+    for i, b in enumerate(jur["brackets"], 1):
+        wa.cell(r, 1, jur["name"]).font = F_B
+        wa.cell(r, 2, i).font = F_B
+        wa.cell(r, 3, lower).number_format = MONEY
+        wa.cell(r, 3).font = F_B
+        c = wa.cell(r, 4, b["up_to"] if b["up_to"] is not None else "no limit")
+        c.number_format = MONEY
+        c.font = F_B
+        c5 = wa.cell(r, 5, b["rate"])
+        c5.number_format = "0.00%"
+        c5.font = F_B
+        lower = b["up_to"]
+        r += 1
+r += 1
+wa.cell(r, 1, "Basic personal amounts").font = F_H
+header_row(wa, r + 1, ["Jurisdiction", "BPA"])
+r += 2
+fed_bpa = TAX["federal"]["basic_personal_amount"]
+wa.cell(r, 1, "Canada (federal)").font = F_B
+wa.cell(r, 2, fed_bpa["max"]).number_format = MONEY
+wa.cell(r, 2).font = F_B
+wa.cell(r, 3, f"Phases down to ${fed_bpa['min']:,} for income above $181,440").font = F_NOTE
+r += 1
+for code, jur in TAX["provinces"].items():
+    wa.cell(r, 1, jur["name"]).font = F_B
+    bpa = jur["basic_personal_amount"]
+    c = wa.cell(r, 2, bpa if bpa is not None else "n/a")
+    c.number_format = MONEY
+    c.font = F_B
+    r += 1
+
+# --- sales tax
+wst = wb.create_sheet("Sales Tax")
+sheet_title(wst, "Sales Tax Rates 2026 — GST / HST / PST / QST",
+            "Source: data/json/sales_tax_2026.json.")
+header_row(wst, 4, ["Province/Territory", "System", "GST", "PST/QST", "HST", "Total"],
+           {"A": 28, "B": 12, "C": 10, "D": 10, "E": 10, "F": 10})
+r = 5
+for code, j in SALES["jurisdictions"].items():
+    wst.cell(r, 1, j["name"]).font = F_B
+    wst.cell(r, 2, j["system"]).font = F_B
+    for col, key in ((3, "gst"), (4, "pst"), (5, "hst"), (6, "total_rate")):
+        v = j.get(key)
+        c = wst.cell(r, col, v if v is not None else "-")
+        c.number_format = "0.00%"
+        c.font = F_B
+    if "note" in j:
+        wst.cell(r, 7, j["note"]).font = F_NOTE
+    r += 1
+
+# --- payroll programs
+wp = wb.create_sheet("Payroll CPP EI")
+sheet_title(wp, "Payroll Contributions 2026 — CPP, CPP2, QPP, EI, QPIP",
+            "Source: data/json/payroll_contributions_2026.json.")
+wp.column_dimensions["A"].width = 40
+wp.column_dimensions["B"].width = 16
+wp.column_dimensions["C"].width = 70
+r = 4
+for prog_key in ("cpp", "cpp2", "qpp", "ei", "qpip"):
+    prog = PAY[prog_key]
+    wp.cell(r, 1, prog["name"]).font = F_H
+    wp.cell(r, 1).fill = FILL_SUB
+    wp.cell(r, 2).fill = FILL_SUB
+    r += 1
+    for k, v in prog.items():
+        if k in ("name", "note", "quebec") or isinstance(v, dict):
+            continue
+        wp.cell(r, 1, k.replace("_", " ")).font = F_B
+        c = wp.cell(r, 2, v)
+        c.font = F_B
+        c.number_format = "0.000%" if ("rate" in k or "multiplier" in k) and v < 1 else MONEY2
+        r += 1
+    if "quebec" in prog:
+        for k, v in prog["quebec"].items():
+            if k == "note":
+                continue
+            wp.cell(r, 1, f"Quebec {k.replace('_', ' ')}").font = F_B
+            c = wp.cell(r, 2, v)
+            c.font = F_B
+            c.number_format = "0.000%" if "rate" in k else MONEY2
+            r += 1
+    if "note" in prog:
+        wp.cell(r, 1, prog["note"]).font = F_NOTE
+        wp.cell(r, 1).alignment = WRAP
+        r += 1
+    r += 1
+
+# --- corporate tax
+wco = wb.create_sheet("Corporate Tax")
+sheet_title(wco, "Corporate Income Tax Rates 2026",
+            "Source: data/json/corporate_income_tax_2026.json.")
+header_row(wco, 4, ["Jurisdiction", "General rate", "Small business rate", "SB limit", "Notes"],
+           {"A": 28, "B": 13, "C": 17, "D": 12, "E": 70})
+r = 5
+fed = CORP["federal"]
+wco.cell(r, 1, "Canada (federal)").font = F_B
+wco.cell(r, 2, fed["general_rate"]).number_format = "0.0%"
+wco.cell(r, 3, fed["small_business_rate"]).number_format = "0.0%"
+wco.cell(r, 4, fed["small_business_limit"]).number_format = MONEY
+for col in range(2, 5):
+    wco.cell(r, col).font = F_B
+r += 1
+for code, j in CORP["provincial"].items():
+    wco.cell(r, 1, j["name"]).font = F_B
+    wco.cell(r, 2, j["general_rate"]).number_format = "0.0%"
+    wco.cell(r, 3, j["small_business_rate"]).number_format = "0.0%"
+    wco.cell(r, 4, j["small_business_limit"]).number_format = MONEY
+    for col in range(2, 5):
+        wco.cell(r, col).font = F_B
+    if "note" in j:
+        wco.cell(r, 5, j["note"]).font = F_NOTE
+        wco.cell(r, 5).alignment = WRAP
+    r += 1
+
+# --- credits & limits
+wl = wb.create_sheet("Credits & Limits")
+sheet_title(wl, "Key Credits, Registered Accounts & System Parameters 2026",
+            "Source: data/json/credits_and_limits_2026.json.")
+wl.column_dimensions["A"].width = 44
+wl.column_dimensions["B"].width = 16
+wl.column_dimensions["C"].width = 70
+lim_rows = [
+    ("TFSA annual limit", LIM["registered_accounts"]["tfsa"]["annual_limit"], MONEY, LIM["registered_accounts"]["tfsa"]["note"]),
+    ("TFSA cumulative room since 2009", LIM["registered_accounts"]["tfsa"]["cumulative_room_since_2009"], MONEY, ""),
+    ("RRSP annual limit", LIM["registered_accounts"]["rrsp"]["annual_limit"], MONEY, LIM["registered_accounts"]["rrsp"]["formula"]),
+    ("FHSA annual limit", LIM["registered_accounts"]["fhsa"]["annual_limit"], MONEY, LIM["registered_accounts"]["fhsa"]["note"]),
+    ("FHSA lifetime limit", LIM["registered_accounts"]["fhsa"]["lifetime_limit"], MONEY, ""),
+    ("Federal BPA (max)", LIM["credits"]["federal_basic_personal_amount"]["max"], MONEY, ""),
+    ("Federal BPA (min, high income)", LIM["credits"]["federal_basic_personal_amount"]["min"], MONEY, ""),
+    ("Federal credit rate", LIM["credits"]["credit_rate_federal"], "0.0%", LIM["credits"]["note"]),
+    ("OAS clawback threshold", LIM["oas"]["clawback_threshold"], MONEY, LIM["oas"]["note"]),
+    ("OAS recovery rate", LIM["oas"]["recovery_rate"], "0.0%", ""),
+    ("Capital gains inclusion rate", LIM["capital_gains"]["inclusion_rate"], "0.0%", LIM["capital_gains"]["note"]),
+    ("Lifetime capital gains exemption", LIM["capital_gains"]["lifetime_capital_gains_exemption"], MONEY, ""),
+    ("Quebec abatement rate", LIM["other"]["quebec_abatement_rate"], "0.0%", ""),
+]
+r = 4
+for label, val, fmt, note_txt in lim_rows:
+    wl.cell(r, 1, label).font = F_B
+    c = wl.cell(r, 2, val)
+    c.font = F_B
+    c.number_format = fmt
+    if note_txt:
+        wl.cell(r, 3, note_txt).font = F_NOTE
+        wl.cell(r, 3).alignment = WRAP
+    r += 1
+r += 1
+wl.cell(r, 1, "Trading note: for an active/scalp trader, profits are business income — the capital gains inclusion rate does not apply. See docs/trader_taxation.md.").font = F_NOTE
+wl.cell(r, 1).alignment = WRAP
+
 wb.save(OUT)
 print(f"wrote {OUT.relative_to(ROOT)}")
