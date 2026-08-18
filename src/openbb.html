@@ -3,242 +3,248 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>OpenBB Trader — 30s</title>
+<title>Venture Trader — 30s</title>
 <style>
-  /* Palette: dataviz validated dark instance (surface #1a1a19, series-1 #3987e5,
-     ink #ffffff/#c3c2b7, status green #199e70 / red #e66767). */
+  /* ---- Real app palette (from the running dashboard) ---- */
   :root{
-    --bg:#0c0d10; --surface:#141519; --surface-2:#1a1c22; --line:#262931;
-    --ink:#ffffff; --muted:#a2a6b0; --faint:#6d717c;
-    --accent:#3987e5; --accent-2:#6da7ec; --up:#22c58b; --down:#e66767; --grid:#20242c;
+    --bg:#060b14; --surface:#0d1526; --card:#111827; --border:#1e2d45;
+    --accent:#00d4ff; --green:#00e676; --red:#ff3d71; --yellow:#ffb800; --violet:#7e57c2;
+    --text:#e2e8f0; --muted:#64748b;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:1280px;height:720px;overflow:hidden;background:var(--bg);}
-  body{font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    color:var(--ink);position:relative;-webkit-font-smoothing:antialiased;}
+  body{font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);
+    position:relative;-webkit-font-smoothing:antialiased;font-size:13px;}
   .mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
 
-  .bg-grid{position:absolute;inset:0;
-    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
-    background-size:52px 52px;opacity:.5;
-    -webkit-mask-image:radial-gradient(circle at 50% 45%,#000 0%,transparent 76%);
-    mask-image:radial-gradient(circle at 50% 45%,#000 0%,transparent 76%);}
-  .glow{position:absolute;border-radius:50%;filter:blur(100px);opacity:.45;pointer-events:none;}
-  .glow.a{width:660px;height:660px;left:-180px;top:-240px;background:#173a72;}
-  .glow.b{width:560px;height:560px;right:-160px;bottom:-220px;background:#0f2d55;}
+  /* ambient background — cyan orbs + flow lines + dot grid + vignette (all static) */
+  .bg-a{position:absolute;inset:0;z-index:-4;pointer-events:none;background:
+    radial-gradient(1150px 540px at 50% -14%, rgba(0,212,255,.13), transparent 60%),
+    radial-gradient(900px 620px at 12% -8%, rgba(0,212,255,.10), transparent 60%),
+    radial-gradient(760px 540px at 92% 4%, rgba(0,112,243,.09), transparent 62%),
+    radial-gradient(820px 600px at 78% 96%, rgba(0,230,118,.06), transparent 60%),
+    radial-gradient(150% 118% at 50% 42%, transparent 60%, rgba(2,5,11,.62) 100%),
+    linear-gradient(175deg,#070d18 0%,#060b14 45%,#050912 100%);}
+  .bg-grid{position:absolute;inset:0;z-index:-2;pointer-events:none;opacity:.5;background-image:
+    radial-gradient(rgba(0,212,255,.20) 1px, transparent 1.8px),
+    linear-gradient(rgba(30,45,69,.10) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(30,45,69,.10) 1px,transparent 1px);
+    background-size:46px 46px,46px 46px,46px 46px;
+    -webkit-mask-image:radial-gradient(circle at 50% 16%,#000 6%,transparent 84%);
+    mask-image:radial-gradient(circle at 50% 16%,#000 6%,transparent 84%);}
+  .fxart{position:absolute;inset:0;width:100%;height:100%;z-index:-3;pointer-events:none;}
 
-  /* scenes are shown/hidden purely from JS (no wall-clock CSS animation) */
-  .scene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;}
-  .anim{will-change:transform,opacity;} /* animated via inline styles from seek(t) */
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;}
+  .anim{will-change:transform,opacity;}
 
+  /* brand mark: cyan gradient rounded square with a chart glyph */
   .mark{position:relative;border-radius:20px;display:grid;place-items:center;overflow:hidden;
-    background:linear-gradient(150deg,#245bb0,#3987e5 55%,#6da7ec);
-    box-shadow:0 20px 60px rgba(57,135,229,.42);}
-  .mark svg{width:56%;height:56%}
-  .wordmark{font-weight:800;letter-spacing:-2px;}
-  .wordmark span{color:var(--accent-2);}
-  .sub{color:var(--faint);font-weight:600;letter-spacing:.28em;text-transform:uppercase;}
+    background:linear-gradient(135deg,#00d4ff,#0070f3);box-shadow:0 0 34px rgba(0,212,255,.5);}
+  .mark svg{width:58%;height:58%}
+  .wordmark{font-weight:800;letter-spacing:-1.5px;}
+  .wordmark span{color:var(--accent);}
+  .sub{color:var(--muted);font-weight:700;letter-spacing:.34em;text-transform:uppercase;}
 
-  /* SCENE 1 */
-  #s1{flex-direction:column;gap:20px;}
+  /* ---------- SCENE 1 ---------- */
+  #s1{gap:20px;}
   .brand{display:flex;align-items:center;gap:20px;}
-  #s1 .mark{width:82px;height:82px;border-radius:22px;}
-  #s1 .wordmark{font-size:72px;}
+  #s1 .mark{width:84px;height:84px;border-radius:22px;}
+  #s1 .wordmark{font-size:66px;}
   .s1-sub{font-size:15px;}
-  .accentline{height:3px;width:0;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--up));}
-  .tagline{font-size:22px;color:var(--muted);}
+  .accentline{height:3px;width:0;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--green));}
+  .tagline{font-size:22px;color:var(--text);opacity:.92;}
 
-  /* SCENE 2 */
-  #s2{flex-direction:column;gap:44px;}
-  .s2-title{font-size:40px;font-weight:800;letter-spacing:-1px;text-align:center;}
-  .s2-title em{font-style:normal;color:var(--accent-2);}
+  /* ---------- SCENE 2 ---------- */
+  #s2{gap:44px;}
+  .s2-title{font-size:38px;font-weight:800;letter-spacing:-1px;text-align:center;}
+  .s2-title em{font-style:normal;color:var(--accent);}
   .pills{display:flex;gap:22px;}
-  .pill{width:250px;padding:28px 26px;border-radius:20px;
-    background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--line);}
-  .pill .ic{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;margin-bottom:18px;
-    background:#1e232d;border:1px solid var(--line);color:var(--accent-2);}
-  .pill .ic svg{width:24px;height:24px}
-  .pill h3{font-size:22px;margin-bottom:8px;}
-  .pill p{font-size:14px;color:var(--muted);line-height:1.55;}
+  .pill{width:262px;padding:26px 24px;border-radius:16px;
+    background:linear-gradient(160deg,rgba(23,33,53,.72),rgba(14,20,33,.8));border:1px solid var(--border);
+    box-shadow:0 2px 10px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05);}
+  .pill .ic{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;margin-bottom:16px;
+    font-size:22px;background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.25);}
+  .pill h3{font-size:20px;margin-bottom:7px;}
+  .pill p{font-size:13.5px;color:var(--muted);line-height:1.55;}
 
-  /* SCENE 3 */
-  #s3{padding:26px 30px;}
-  .app{width:100%;height:100%;border-radius:18px;overflow:hidden;
-    background:var(--surface);border:1px solid var(--line);
-    display:grid;grid-template-columns:1.75fr 1fr;grid-template-rows:52px 1fr;
-    box-shadow:0 30px 80px rgba(0,0,0,.5);}
-  .titlebar{grid-column:1/3;display:flex;align-items:center;gap:14px;padding:0 16px;
-    border-bottom:1px solid var(--line);background:var(--surface-2);}
-  .tb-dots{display:flex;gap:7px}.tb-dots i{width:11px;height:11px;border-radius:50%;background:#2f333c}
-  .tb-brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;}
-  .tb-brand .mark{width:22px;height:22px;border-radius:7px}
-  .tb-tabs{display:flex;gap:6px;margin-left:8px}
-  .tb-tabs span{font-size:12px;color:var(--muted);padding:5px 11px;border-radius:7px}
-  .tb-tabs span.act{color:var(--ink);background:#232833}
-  .ticktape{margin-left:auto;overflow:hidden;height:26px;width:360px;position:relative;
-    -webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
-    mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);}
-  .ticktape .row{position:absolute;white-space:nowrap;display:flex;gap:26px;align-items:center;font-size:12.5px;}
-  .tk b{font-weight:700}
-  .up{color:var(--up)} .down{color:var(--down)}
-  .chartpane{position:relative;border-right:1px solid var(--line);padding:16px 18px;display:flex;flex-direction:column;min-height:0;}
-  .toast{position:absolute;right:22px;bottom:56px;display:flex;align-items:center;
-    padding:10px 14px;border-radius:11px;font-size:13px;font-weight:600;
-    background:rgba(20,25,32,.92);border:1px solid #2b7a5a;color:var(--ink);
-    box-shadow:0 12px 30px rgba(0,0,0,.5);opacity:0;}
-  .toast .dot{width:8px;height:8px;border-radius:50%;background:var(--up);margin-right:9px;box-shadow:0 0 10px var(--up);}
-  .toast b{color:var(--up);font-weight:800;margin-right:2px}
-  .toast .fill{color:var(--up);font-weight:700}
-  .cp-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
-  .cp-head .sym{font-size:15px;color:var(--muted);font-weight:600;margin-bottom:3px;}
-  .cp-head .sym b{color:var(--ink)}
-  .price{font-size:33px;font-weight:800;letter-spacing:-1px;line-height:1;}
-  .chg{font-size:14px;font-weight:700;margin-top:5px;display:inline-flex;gap:6px;align-items:center;}
-  .tf{display:flex;gap:4px}
-  .tf span{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:5px 9px;border-radius:7px}
-  .tf span.act{color:var(--ink);background:#232833;border-color:#2e3340}
-  .chart-wrap{flex:1;min-height:0;margin-top:8px;}
-  svg.chart{display:block;width:100%;height:100%;}
-  .side{display:flex;flex-direction:column;min-height:0;}
-  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border-bottom:1px solid var(--line);}
-  .kpi{background:var(--surface);padding:13px 16px;}
-  .kpi .l{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.09em;}
-  .kpi .v{font-size:20px;font-weight:700;margin-top:5px;}
-  .wl{flex:1;padding:14px 16px;min-height:0;overflow:hidden;}
-  .wl h4{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;}
-  .wl .r{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);}
-  .wl .r:last-child{border-bottom:0}
-  .wl .sym{font-weight:700;font-size:14px}.wl .co{color:var(--faint);font-size:11.5px}
-  .wl .rt{display:flex;align-items:center;gap:12px}
-  .wl .px{font-size:13px;color:var(--muted)}
-  .spark{width:60px;height:22px}
-  .chg-s{font-size:12.5px;font-weight:700;display:inline-flex;gap:3px;align-items:center;min-width:56px;justify-content:flex-end}
+  /* ---------- SCENE 3 : the real dashboard ---------- */
+  #s3{padding:24px 28px;}
+  .app{width:100%;height:100%;border-radius:16px;overflow:hidden;border:1px solid var(--border);
+    background:var(--surface);box-shadow:0 30px 80px rgba(0,0,0,.55);display:flex;flex-direction:column;}
+  .hd{height:52px;display:flex;align-items:center;gap:14px;padding:0 18px;
+    background:linear-gradient(135deg,rgba(10,22,40,.9),rgba(13,31,60,.9));border-bottom:1px solid var(--border);}
+  .hd .mark{width:30px;height:30px;border-radius:8px;}
+  .hd .logo b{font-size:15px;font-weight:800;letter-spacing:.3px;display:block;line-height:1.05}
+  .hd .logo small{font-size:8.5px;color:var(--muted);letter-spacing:.18em;text-transform:uppercase}
+  .tape{margin-left:6px;flex:1;overflow:hidden;height:24px;position:relative;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
+    mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);}
+  .tape .row{position:absolute;white-space:nowrap;display:flex;gap:24px;align-items:center;font-size:12px;}
+  .tsym{color:var(--accent);font-weight:700}
+  .up{color:var(--green)} .dn{color:var(--red)}
+  .live{display:flex;align-items:center;gap:6px;background:rgba(0,230,118,.09);border:1px solid rgba(0,230,118,.3);
+    padding:4px 11px;border-radius:20px;font-size:11px;color:var(--green);font-weight:600;}
+  .live i{width:6px;height:6px;border-radius:50%;background:var(--green);display:block;}
+  .ts{font-size:10.5px;color:var(--muted);white-space:nowrap;}
+  .nav{display:flex;gap:2px;padding:0 16px;background:rgba(13,21,38,.78);border-bottom:1px solid var(--border);overflow:hidden;}
+  .nav span{font-size:11px;color:var(--muted);padding:11px 14px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-bottom:2px solid transparent;}
+  .nav span.act{color:var(--accent);border-bottom-color:var(--accent);text-shadow:0 0 12px rgba(0,212,255,.5);}
+  .body{flex:1;padding:16px;display:flex;flex-direction:column;gap:12px;min-height:0;}
 
-  /* SCENE 4 */
-  #s4{flex-direction:column;gap:34px;}
-  .s4-title{font-size:36px;font-weight:800;letter-spacing:-1px;text-align:center}
-  .feat{display:grid;grid-template-columns:repeat(2,320px);gap:18px;}
-  .fcard{display:flex;gap:16px;align-items:center;padding:22px 24px;border-radius:18px;
-    background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--line);}
-  .fic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;flex:none;
-    background:#1e232d;border:1px solid var(--line);color:var(--accent-2)}
-  .fic svg{width:26px;height:26px}
-  .fcard h3{font-size:19px;margin-bottom:3px}.fcard p{font-size:13px;color:var(--muted)}
+  .brief{background:linear-gradient(135deg,#0d1b2e,#111827);border:1px solid var(--accent);border-radius:12px;
+    padding:14px 16px;box-shadow:0 0 28px rgba(0,212,255,.07);}
+  .brief b.h{font-size:14px;font-weight:800;color:var(--text);}
+  .brief .d{font-size:10.5px;color:var(--muted);margin:2px 0 8px}
+  .brief p{font-size:13px;line-height:1.55;color:var(--text)}
+  .brief p em{font-style:normal;color:var(--red);font-weight:700}
+  .brief p b{color:var(--red)}
 
-  /* SCENE 5 */
-  #s5{flex-direction:column;gap:28px;}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .st{background:linear-gradient(160deg,rgba(23,33,53,.7),rgba(14,20,33,.8));border:1px solid var(--border);
+    border-radius:11px;padding:13px 15px;position:relative;overflow:hidden;}
+  .st::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(0,212,255,.35),transparent);}
+  .st .l{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;display:flex;gap:6px;align-items:center}
+  .st .v{font-size:26px;font-weight:800;margin-top:8px;line-height:1}
+  .st .s{font-size:10.5px;color:var(--muted);margin-top:6px}
+  .st .v.dn{color:var(--red)} .st .v.ac{color:var(--accent)} .st .v.up{color:var(--green)}
+
+  .hm-card{flex:1;background:linear-gradient(160deg,rgba(23,33,53,.7),rgba(14,20,33,.8));border:1px solid var(--border);
+    border-radius:12px;padding:12px 14px;min-height:0;display:flex;flex-direction:column;}
+  .hm-h{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px;display:flex;justify-content:space-between}
+  .hm{position:relative;flex:1;}
+  .blk{position:absolute;border:1px solid rgba(255,255,255,.06);border-radius:4px;overflow:hidden;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .blk b{font-weight:800;color:#fff;line-height:1.1;text-shadow:0 1px 2px rgba(0,0,0,.55);}
+  .blk s{text-decoration:none;color:rgba(255,255,255,.9);line-height:1.1;}
+
+  /* ---------- SCENE 4 ---------- */
+  #s4{gap:34px;}
+  .s4-title{font-size:34px;font-weight:800;letter-spacing:-1px;text-align:center}
+  .feat{display:grid;grid-template-columns:repeat(2,330px);gap:16px;}
+  .fcard{display:flex;gap:15px;align-items:center;padding:20px 22px;border-radius:15px;
+    background:linear-gradient(160deg,rgba(23,33,53,.72),rgba(14,20,33,.8));border:1px solid var(--border);}
+  .fic{width:50px;height:50px;border-radius:13px;display:grid;place-items:center;flex:none;font-size:24px;
+    background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.25);}
+  .fcard h3{font-size:18px;margin-bottom:3px}.fcard p{font-size:13px;color:var(--muted)}
+
+  /* ---------- SCENE 5 ---------- */
+  #s5{gap:26px;}
   .o-brand{display:flex;align-items:center;gap:18px}
-  #s5 .mark{width:66px;height:66px;border-radius:17px}
-  #s5 .wordmark{font-size:56px}
+  #s5 .mark{width:64px;height:64px;border-radius:16px}
+  #s5 .wordmark{font-size:52px}
   .o-cta{display:flex;gap:14px}
-  .btn{padding:15px 28px;border-radius:13px;font-weight:700;font-size:16px}
-  .btn.p{background:linear-gradient(150deg,#245bb0,#3987e5);color:#fff;box-shadow:0 16px 44px rgba(57,135,229,.42)}
-  .btn.g{background:var(--surface-2);border:1px solid var(--line);color:var(--ink);display:flex;gap:9px;align-items:center}
-  .o-sub{color:var(--faint);font-size:13px;letter-spacing:.28em;text-transform:uppercase;}
+  .btn{padding:14px 26px;border-radius:12px;font-weight:700;font-size:15px}
+  .btn.p{background:linear-gradient(135deg,#00d4ff,#0070f3);color:#04121a;box-shadow:0 14px 40px rgba(0,212,255,.4)}
+  .btn.g{background:var(--card);border:1px solid var(--border);color:var(--text);display:flex;gap:9px;align-items:center}
+  .o-sub{color:var(--muted);font-size:13px;letter-spacing:.3em;text-transform:uppercase;}
 
   .prog{position:absolute;left:0;bottom:0;height:3px;width:0;z-index:30;
-    background:linear-gradient(90deg,var(--accent),var(--up));}
+    background:linear-gradient(90deg,var(--accent),var(--green));}
 </style>
 </head>
 <body>
-  <div class="bg-grid"></div>
-  <div class="glow a"></div><div class="glow b"></div>
+  <div class="bg-a"></div>
+  <svg class="fxart" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <radialGradient id="orbA" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#00d4ff" stop-opacity=".5"/><stop offset="100%" stop-color="#00d4ff" stop-opacity="0"/></radialGradient>
+      <radialGradient id="orbB" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#7e57c2" stop-opacity=".5"/><stop offset="100%" stop-color="#7e57c2" stop-opacity="0"/></radialGradient>
+      <radialGradient id="orbC" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#00e6a8" stop-opacity=".38"/><stop offset="100%" stop-color="#00e6a8" stop-opacity="0"/></radialGradient>
+      <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00d4ff" stop-opacity="0"/><stop offset="40%" stop-color="#22d3ff" stop-opacity="1"/><stop offset="72%" stop-color="#a855f7" stop-opacity=".9"/><stop offset="100%" stop-color="#a855f7" stop-opacity="0"/></linearGradient>
+      <linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#00d4ff" stop-opacity=".26"/><stop offset="100%" stop-color="#00d4ff" stop-opacity="0"/></linearGradient>
+      <filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="52"/></filter>
+      <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6"/></filter>
+    </defs>
+    <circle cx="140" cy="70" r="340" fill="url(#orbA)" filter="url(#soft)"/>
+    <circle cx="1330" cy="60" r="300" fill="url(#orbB)" filter="url(#soft)"/>
+    <circle cx="1140" cy="900" r="360" fill="url(#orbC)" filter="url(#soft)"/>
+    <g fill="none" stroke="url(#flow)" stroke-linecap="round">
+      <path d="M-60,240 C 280,120 540,400 840,250 S 1360,160 1520,300" stroke-width="7" opacity=".5" filter="url(#glow)"/>
+      <path d="M-60,240 C 280,120 540,400 840,250 S 1360,160 1520,300" stroke-width="2.2" opacity="1"/>
+      <path d="M-60,455 C 300,565 520,320 840,460 S 1380,570 1520,430" stroke-width="6" opacity=".38" filter="url(#glow)"/>
+    </g>
+    <path d="M0,742 L120,700 L240,728 L360,664 L480,696 L600,636 L720,684 L840,612 L960,662 L1080,592 L1200,646 L1320,584 L1440,628 L1440,900 L0,900 Z" fill="url(#area)"/>
+    <path d="M0,742 L120,700 L240,728 L360,664 L480,696 L600,636 L720,684 L840,612 L960,662 L1080,592 L1200,646 L1320,584 L1440,628" fill="none" stroke="#22d3ff" stroke-opacity=".8" stroke-width="1.2"/>
+  </svg>
 
+  <!-- SCENE 1 -->
   <section class="scene" id="s1">
     <div class="brand anim" data-a="brand">
-      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path id="markpath" d="M4 16l4-5 4 3 5-8 3 4" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg></div>
-      <div class="wordmark">OpenBB <span>Trader</span></div>
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 19V5M4 19h16M8 16V11M12 16V7M16 16v-3M20 16V9" stroke="#04121a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="wordmark">Venture <span>Trader</span></div>
     </div>
-    <div class="s1-sub sub anim" data-a="s1sub">Desktop Trading Terminal</div>
+    <div class="s1-sub sub anim" data-a="s1sub">Automated Intelligence</div>
     <div class="accentline anim" data-a="accent"></div>
-    <div class="tagline anim" data-a="s1tag">Markets, charts &amp; execution — in one window.</div>
+    <div class="tagline anim" data-a="s1tag">Your whole market, decoded — every 30 seconds.</div>
   </section>
 
+  <!-- SCENE 2 -->
   <section class="scene" id="s2">
-    <div class="s2-title anim" data-a="s2title">Everything a trader needs, <em>together</em>.</div>
+    <div class="s2-title anim" data-a="s2title">Signals, not <em>noise</em>.</div>
     <div class="pills">
-      <div class="pill anim" data-a="pill0"><div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 17l5-6 4 3 5-8 4 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h3>Real-time charts</h3><p>Streaming prices, indicators &amp; multi-timeframe views.</p></div>
-      <div class="pill anim" data-a="pill1"><div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h10M4 18h13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div><h3>Watchlists &amp; alerts</h3><p>Track every symbol and get notified the moment it moves.</p></div>
-      <div class="pill anim" data-a="pill2"><div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M13 3L4 14h6l-1 7 9-11h-6l1-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div><h3>One-click orders</h3><p>Route trades fast, straight from the chart.</p></div>
+      <div class="pill anim" data-a="pill0"><div class="ic">🎯</div><h3>Signals &amp; Buy Radar</h3><p>93 live signals — RSI, options flow, insider clusters — graded daily for accuracy.</p></div>
+      <div class="pill anim" data-a="pill1"><div class="ic">🗺</div><h3>Market Heatmap</h3><p>174 US stocks, sector by sector. Size is market cap, colour is today's move.</p></div>
+      <div class="pill anim" data-a="pill2"><div class="ic">🤖</div><h3>Daily AI Briefing</h3><p>A plain-English read on the whole market, seen through three analyst lenses.</p></div>
     </div>
   </section>
 
+  <!-- SCENE 3 : the real dashboard -->
   <section class="scene" id="s3">
     <div class="app anim" data-a="app">
-      <div class="titlebar">
-        <div class="tb-dots"><i></i><i></i><i></i></div>
-        <div class="tb-brand"><div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 16l4-5 4 3 5-8 3 4" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>OpenBB&nbsp;Trader</div>
-        <div class="tb-tabs"><span class="act">Chart</span><span>Screener</span><span>Orders</span></div>
-        <div class="ticktape"><div class="row mono" id="tape"></div></div>
+      <div class="hd">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 19V5M4 19h16M8 16V11M12 16V7M16 16v-3M20 16V9" stroke="#04121a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="logo"><b>Venture&nbsp;Trader</b><small>Automated Intelligence</small></div>
+        <div class="tape"><div class="row mono" id="tape"></div></div>
+        <div class="live"><i id="livedot"></i> LIVE</div>
+        <div class="ts mono">Auto-refresh 30s</div>
       </div>
-      <div class="chartpane">
-        <div class="cp-head">
-          <div>
-            <div class="sym"><b>AAPL</b> · Apple Inc. · NASDAQ</div>
-            <div class="price mono" id="px">$0.00</div>
-            <div class="chg up mono" id="chg"><span id="arr">▲</span><span id="chgv">+0.00 (0.00%)</span></div>
-          </div>
-          <div class="tf"><span>1D</span><span class="act">5D</span><span>1M</span><span>1Y</span></div>
-        </div>
-        <div class="chart-wrap">
-          <svg class="chart" id="chart" viewBox="0 0 720 520" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stop-color="#3987e5" stop-opacity=".34"/>
-                <stop offset="1" stop-color="#3987e5" stop-opacity="0"/>
-              </linearGradient>
-              <clipPath id="reveal"><rect id="revealRect" x="0" y="0" width="0" height="520"/></clipPath>
-            </defs>
-            <g id="grid" stroke="#20242c" stroke-width="1"></g>
-            <g id="ylab" fill="#6d717c" font-size="11" font-family="ui-monospace,monospace" text-anchor="start"></g>
-            <g id="xlab" fill="#6d717c" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle"></g>
-            <g clip-path="url(#reveal)">
-              <g id="vol"></g>
-              <g id="candles"></g>
-              <polyline id="ma" fill="none" stroke="#eda100" stroke-width="1.6" stroke-opacity=".92" stroke-linejoin="round"></polyline>
-            </g>
-            <line id="lastline" x1="10" x2="660" stroke="#6da7ec" stroke-width="1" stroke-dasharray="4 4" stroke-opacity=".8"></line>
-            <g id="lasttag"><rect id="lasttagbg" x="662" width="56" height="18" rx="3" fill="#6da7ec"></rect>
-              <text id="lasttagtx" x="690" font-size="11" font-family="ui-monospace,monospace" fill="#0c0d10" text-anchor="middle" font-weight="700"></text></g>
-          </svg>
-        </div>
-        <!-- one-click order fill toast -->
-        <div class="toast anim" data-a="toast" id="toast">
-          <span class="dot"></span><b>BUY</b>&nbsp;100 AAPL&nbsp;·&nbsp;<span class="fill">Filled</span>&nbsp;<span id="fillpx" class="mono">@ $0.00</span>
-        </div>
+      <div class="nav">
+        <span class="act">Overview</span><span>Watchlist</span><span>🇺🇸 Markets</span><span>Crypto</span>
+        <span>Signals (93)</span><span>🧾 Fundamentals</span><span>News</span><span>🗞 Discover</span>
+        <span>Macro</span><span>AI Analysis</span><span>Insiders</span>
       </div>
-      <div class="side">
-        <div class="kpis">
-          <div class="kpi"><div class="l">Open</div><div class="v mono" id="k1">—</div></div>
-          <div class="kpi"><div class="l">Day High</div><div class="v mono" id="k2">—</div></div>
-          <div class="kpi"><div class="l">Day Low</div><div class="v mono" id="k3">—</div></div>
-          <div class="kpi"><div class="l">Volume</div><div class="v mono" id="k4">—</div></div>
+      <div class="body">
+        <div class="brief anim" data-a="brief">
+          <b class="h">📋 Today's Briefing</b>
+          <div class="d">Monday, August 17 · plain-English summary of everything below</div>
+          <p>🔴 The market looks <em>leaning negative</em> right now — of the 8 stocks we track, <b>0 are up</b> and <b>8 are down</b> today. Volatility (the market's "fear gauge", VIX) is calm at 14.25.</p>
         </div>
-        <div class="wl"><h4>Watchlist</h4><div id="wl"></div></div>
+        <div class="stats">
+          <div class="st anim" data-a="st0"><div class="l">📡 Market Sentiment</div><div class="v dn">Bearish</div><div class="s">0 up · 10 down of 10</div></div>
+          <div class="st anim" data-a="st1"><div class="l">🔥 High Conviction</div><div class="v dn" id="k1">0</div><div class="s">signals requiring attention</div></div>
+          <div class="st anim" data-a="st2"><div class="l">📊 Symbols Tracked</div><div class="v ac" id="k2">0</div><div class="s">watchlist + crypto</div></div>
+          <div class="st anim" data-a="st3"><div class="l">🏦 Fed Funds Rate</div><div class="v">3.5–3.75%</div><div class="s">current target rate</div></div>
+        </div>
+        <div class="hm-card anim" data-a="hm">
+          <div class="hm-h"><span>🗺 Market Heatmap — 174 US stocks · sector by sector</span><span>updated 2h ago</span></div>
+          <div class="hm" id="hm"></div>
+        </div>
       </div>
     </div>
   </section>
 
+  <!-- SCENE 4 -->
   <section class="scene" id="s4">
-    <div class="s4-title anim" data-a="s4title">Built for the way you trade.</div>
+    <div class="s4-title anim" data-a="s4title">The desk, automated.</div>
     <div class="feat">
-      <div class="fcard anim" data-a="f0"><div class="fic"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div><div><h3>Live market data</h3><p>Real-time quotes across equities, crypto &amp; more.</p></div></div>
-      <div class="fcard anim" data-a="f1"><div class="fic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 18V9M10 18V5M16 18v-6M22 18H2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div><div><h3>Advanced charting</h3><p>Indicators, drawings &amp; multi-timeframe layouts.</p></div></div>
-      <div class="fcard anim" data-a="f2"><div class="fic"><svg viewBox="0 0 24 24" fill="none"><path d="M13 3L4 14h6l-1 7 9-11h-6l1-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div><div><h3>Instant execution</h3><p>One-click orders routed straight from the chart.</p></div></div>
-      <div class="fcard anim" data-a="f3"><div class="fic"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 20h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div><div><h3>Runs on your desktop</h3><p>A fast native window — Windows, macOS &amp; Linux.</p></div></div>
+      <div class="fcard anim" data-a="f0"><div class="fic">🛒</div><div><h3>Buy Radar</h3><p>Setups forming from insider clusters, call flow &amp; RSI.</p></div></div>
+      <div class="fcard anim" data-a="f1"><div class="fic">🎯</div><div><h3>Graded signals</h3><p>Every signal scored against real closes — does it work?</p></div></div>
+      <div class="fcard anim" data-a="f2"><div class="fic">📰</div><div><h3>News, insiders &amp; macro</h3><p>Wires, cluster buys, options flow &amp; the calendar.</p></div></div>
+      <div class="fcard anim" data-a="f3"><div class="fic">🖥</div><div><h3>Runs on your desktop</h3><p>A local dashboard that refreshes itself every 30s.</p></div></div>
     </div>
   </section>
 
+  <!-- SCENE 5 -->
   <section class="scene" id="s5">
     <div class="o-brand anim" data-a="obrand">
-      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 16l4-5 4 3 5-8 3 4" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="wordmark">OpenBB <span>Trader</span></div>
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 19V5M4 19h16M8 16V11M12 16V7M16 16v-3M20 16V9" stroke="#04121a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="wordmark">Venture <span>Trader</span></div>
     </div>
     <div class="o-cta anim" data-a="octa">
-      <div class="btn p">Launch the terminal</div>
-      <div class="btn g mono">★ Open source</div>
+      <div class="btn p">Open the dashboard</div>
+      <div class="btn g mono">localhost:8080</div>
     </div>
-    <div class="o-sub anim" data-a="osub">Trade the markets, your way.</div>
+    <div class="o-sub anim" data-a="osub">Automated market intelligence</div>
   </section>
 
   <div class="prog" id="prog"></div>
@@ -249,177 +255,86 @@
   const DURATION=30000;
   const $=id=>document.getElementById(id);
   const A={}; document.querySelectorAll(".anim").forEach(el=>A[el.dataset.a]=el);
-
-  /* ---------- easing + segment helper ---------- */
   const clamp=x=>x<0?0:x>1?1:x;
   const outCubic=x=>1-Math.pow(1-x,3);
-  const outBack=x=>{const c=1.70158;return 1+ (c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);};
-  // progress of a tween that starts at `start` (ms) and lasts `dur`
-  const seg=(t,start,dur)=> clamp((t-start)/dur);
+  const outBack=x=>{const c=1.70158;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);};
+  const seg=(t,s,d)=>clamp((t-s)/d);
+  const setT=(k,op,tx,ty,sc)=>{const el=A[k];if(!el)return;el.style.opacity=op;
+    el.style.transform=`translate(${tx||0}px,${ty||0}px)`+(sc!=null?` scale(${sc})`:"");};
 
-  /* ---------- scenes ---------- */
-  const scenes=[
-    {el:$("s1"),a:0,b:5000},{el:$("s2"),a:5000,b:11000},{el:$("s3"),a:11000,b:21000},
-    {el:$("s4"),a:21000,b:27000},{el:$("s5"),a:27000,b:30000},
-  ];
-  const XF=380; // crossfade ms
-  function sceneOpacity(t,s){
-    const inn=seg(t,s.a,XF);
-    const out=1-seg(t,s.b-XF,XF);
-    return clamp(Math.min(inn,out));
-  }
+  const scenes=[{el:$("s1"),a:0,b:5000},{el:$("s2"),a:5000,b:11000},{el:$("s3"),a:11000,b:21000},
+    {el:$("s4"),a:21000,b:27000},{el:$("s5"),a:27000,b:30000}];
+  const XF=380;
+  const sceneOpacity=(t,s)=>clamp(Math.min(seg(t,s.a,XF),1-seg(t,s.b-XF,XF)));
 
-  /* ---------- static content: ticker + watchlist ---------- */
+  /* ticker (real values) */
   const arrow=u=>u?"▲":"▼";
-  const syms=[["AAPL","231.42",1,"1.24"],["MSFT","428.90",1,"0.61"],["NVDA","121.68",1,"2.41"],
-    ["TSLA","242.10",0,"0.92"],["AMZN","186.34",1,"0.44"],["GOOGL","178.20",1,"1.08"],
-    ["META","512.80",0,"0.31"],["SPY","558.11",1,"0.52"],["BTC","64,210",1,"3.10"]];
-  const tapeRow=()=>syms.map(([s,p,u,c])=>`<span class="tk"><b>${s}</b> ${p} <span class="${u?'up':'down'}">${arrow(u)}${c}%</span></span>`).join("");
+  const syms=[["TSLA","339.30",0,"0.87"],["AMD","506.00",0,"1.63"],["NVDA","225.01",0,"0.07"],
+    ["META","568.97",0,"3.54"],["AMZN","261.31",0,"0.51"],["AAPL","305.59",0,"0.11"],
+    ["MSFT","480.35",0,"3.04"],["MU","1011.75",1,"4.13"],["AMAT","535.31",1,"5.55"],
+    ["ARGX","987.84",1,"16.04"],["SNDK","1786.85",1,"8.88"],["ORCL","146.65",0,"2.57"]];
+  const tapeRow=()=>syms.map(([s,p,u,c])=>`<span><span class="tsym">${s}</span> ${p} <span class="${u?'up':'dn'}">${arrow(u)}${c}%</span></span>`).join("");
   $("tape").innerHTML=tapeRow()+tapeRow();
-  const tapeEl=$("tape");
-  let tapeW=0; // measured on first seek
+  const tapeEl=$("tape"); let tapeW=0;
 
-  const wl=[["NVDA","NVIDIA","121.68",1,"2.41"],["MSFT","Microsoft","428.90",1,"0.61"],
-    ["TSLA","Tesla","242.10",0,"0.92"],["AMZN","Amazon","186.34",1,"0.44"],["META","Meta","512.80",0,"0.31"]];
-  const spark=u=>{let pts=[],y=13;for(let i=0;i<11;i++){y+=Math.sin(i*1.25)*(u?-1.7:1.7)+(u?-0.7:0.7);pts.push(i*6+","+Math.max(3,Math.min(19,y)).toFixed(1));}
-    return `<svg class="spark" viewBox="0 0 60 22"><polyline points="${pts.join(' ')}" fill="none" stroke="${u?'#22c58b':'#e66767'}" stroke-width="2"/></svg>`;};
-  $("wl").innerHTML=wl.map(([s,c,p,u,ch])=>
-    `<div class="r"><div><div class="sym">${s}</div><div class="co">${c}</div></div>
-     <div class="rt"><span class="px mono">${p}</span>${spark(u)}<span class="chg-s ${u?'up':'down'} mono">${arrow(u)}${ch}%</span></div></div>`).join("");
+  /* heatmap treemap (approximate, real tickers/moves) */
+  const hm=[
+    ["NVDA","-0.07",0,0,44,55],["AAPL","-0.11",0,55,44,45],
+    ["MSFT","-3.04",1,44,0,30,52],["AVGO","-0.14",0,74,0,26,52],
+    ["MU","+4.13",2,44,52,17,48],["AMD","-1.63",1,61,52,17,48],
+    ["ORCL","-2.57",1,78,52,22,24],["PLTR","-0.86",0,78,76,22,24],
+    ["AMAT","+5.55",2,44,0,0,0] // placeholder unused
+  ].filter(b=>b[4]>0||b[5]>0);
+  // color: green up, red down, neutral
+  const hmColor=(v)=>{const n=parseFloat(v); if(n>=3)return"rgba(11,143,79,.55)";if(n>=1)return"rgba(42,171,106,.5)";
+    if(n>-1)return"rgba(47,58,77,.4)";if(n>-3)return"rgba(158,61,71,.5)";return"rgba(192,57,43,.55)";};
+  $("hm").innerHTML=hm.map(([s,v,,x,y,w,h])=>
+    `<a class="blk" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%;background:${hmColor(v)}">
+      <b style="font-size:${w>28?13:10}px">${s}</b><s style="font-size:${w>28?10:8}px">${v}%</s></a>`).join("");
 
-  /* ---------- candlestick series + geometry ---------- */
-  const NC=54;                       // number of candles
-  const cndl=[], vol=[]; let cp=214; // walk an upward-drifting price
-  for(let i=0;i<NC;i++){
-    const o=cp;
-    const body=0.42 + Math.sin(i/6.5)*1.15 + Math.sin(i*1.9)*0.5 + (i%11===0?1.4:0);
-    const c=o+body;
-    const hi=Math.max(o,c)+(0.35+Math.abs(Math.sin(i*2.3))*0.9);
-    const lo=Math.min(o,c)-(0.35+Math.abs(Math.cos(i*1.7))*0.9);
-    cndl.push({o,h:hi,l:lo,c}); cp=c;
-    vol.push(0.3 + Math.abs(c-o)*1.3 + (Math.sin(i/2.4)*0.5+0.5)*0.4);
-  }
-  const open=cndl[0].o;
-  const pmax=Math.max(...cndl.map(k=>k.h)), pmin=Math.min(...cndl.map(k=>k.l));
-  const dayHigh=Math.max(...cndl.map(k=>k.c)), dayLow=Math.min(...cndl.map(k=>k.c));
-  const volMax=Math.max(...vol), totVol=58.4;
-  // 7-period moving average over closes
-  const ma=cndl.map((_,i)=>{ let s=0,n=0; for(let j=Math.max(0,i-6);j<=i;j++){s+=cndl[j].c;n++;} return s/n; });
-
-  const W=720,PL=10,PR=60,PT=18,priceH=306,gap=16,volH=104;
-  const priceBot=PT+priceH, volBot=priceBot+gap+volH;
-  const cx=i=> PL + (i+0.5)/NC*(W-PR-PL);      // candle center x
-  const ys=p=> (priceBot-6) - ((p-pmin)/(pmax-pmin))*(priceH-12);
-  const vy=val=> volBot - (val/volMax)*volH;
-  const cw=Math.max(3,(W-PR-PL)/NC*0.62);      // candle body width
-  // grid + labels
-  let g="",yl="";
-  for(let k=0;k<=3;k++){ const p=pmin+(pmax-pmin)*(k/3); const y=ys(p);
-    g+=`<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"/>`;
-    yl+=`<text x="${W-PR+8}" y="${(y+3.5).toFixed(1)}">${p.toFixed(2)}</text>`; }
-  $("grid").innerHTML=g; $("ylab").innerHTML=yl;
-  const times=["09:30","11:00","12:30","14:00","15:30","16:00"];
-  let xl=""; times.forEach((t,i)=>{ const x=PL+(i/(times.length-1))*(W-PR-PL); xl+=`<text x="${x.toFixed(1)}" y="${volBot+24}">${t}</text>`;});
-  $("xlab").innerHTML=xl;
-  // volume bars (revealed via clip)
-  let vb="";
-  for(let i=0;i<NC;i++){ const up=cndl[i].c>=cndl[i].o; const x=cx(i)-cw/2; const y=vy(vol[i]);
-    vb+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${(volBot-y).toFixed(1)}" rx="1" fill="${up?'#22c58b':'#e66767'}" fill-opacity=".5"/>`; }
-  $("vol").innerHTML=vb;
-  // candles (revealed via clip)
-  let cb="";
-  for(let i=0;i<NC;i++){ const k=cndl[i]; const up=k.c>=k.o; const col=up?'#22c58b':'#e66767';
-    const bx=cx(i)-cw/2, yo=ys(k.o), yc=ys(k.c), yh=ys(k.h), yl2=ys(k.l);
-    const top=Math.min(yo,yc), bh=Math.max(1.2,Math.abs(yc-yo));
-    cb+=`<line x1="${cx(i).toFixed(1)}" y1="${yh.toFixed(1)}" x2="${cx(i).toFixed(1)}" y2="${yl2.toFixed(1)}" stroke="${col}" stroke-width="1.3"/>`+
-        `<rect x="${bx.toFixed(1)}" y="${top.toFixed(1)}" width="${cw.toFixed(1)}" height="${bh.toFixed(1)}" rx="1" fill="${col}"/>`; }
-  $("candles").innerHTML=cb;
-  const maEl=$("ma");
-  const maFull=ma.map((m,i)=>cx(i).toFixed(1)+","+ys(m).toFixed(1));
-
-  const reveal=$("revealRect"),lastline=$("lastline"),lasttag=$("lasttag"),lasttagbg=$("lasttagbg"),lasttagtx=$("lasttagtx"),
-        pxEl=$("px"),chgEl=$("chg"),arrEl=$("arr"),chgvEl=$("chgv"),K=[1,2,3,4].map(i=>$("k"+i)),
-        fillpx=$("fillpx");
-  function drawChart(p){
-    const count=Math.max(1,Math.floor(p*NC));
-    const rightX=cx(count-1)+cw/2+2;
-    reveal.setAttribute("width",rightX.toFixed(1));
-    maEl.setAttribute("points",maFull.slice(0,count).join(" "));
-    // last price line + right-axis tag
-    const k=cndl[count-1], y=ys(k.c);
-    lastline.setAttribute("y1",y.toFixed(1)); lastline.setAttribute("y2",y.toFixed(1));
-    lastline.setAttribute("x2",rightX.toFixed(1));
-    lasttag.setAttribute("transform",`translate(0,${(y-9).toFixed(1)})`);
-    lasttagtx.textContent=k.c.toFixed(2);
-    const up=k.c>=k.o; const c=up?'#22c58b':'#e66767';
-    lastline.setAttribute("stroke",c); lasttagbg.setAttribute("fill",c);
-    // header readout (vs session open)
-    const cur=k.c, diff=cur-open, pct=diff/open*100, pos=diff>=0;
-    pxEl.textContent="$"+cur.toFixed(2);
-    chgEl.className="chg mono "+(pos?"up":"down");
-    arrEl.textContent=arrow(pos);
-    chgvEl.textContent=(pos?"+":"")+diff.toFixed(2)+" ("+(pos?"+":"")+pct.toFixed(2)+"%)";
-    fillpx.textContent="@ $"+cur.toFixed(2);
-  }
-  function drawKPIs(p){ const e=clamp(p);
-    K[0].textContent="$"+open.toFixed(2);
-    K[1].textContent="$"+(pmin+(dayHigh-pmin)*e).toFixed(2);
-    K[2].textContent="$"+dayLow.toFixed(2);
-    K[3].textContent=(totVol*e).toFixed(1)+"M"; }
-
-  /* ---------- helpers to set transform/opacity ---------- */
-  const setT=(k,op,tx,ty,sc)=>{ const el=A[k]; if(!el)return;
-    el.style.opacity=op;
-    el.style.transform=`translate(${tx||0}px,${ty||0}px)`+(sc!=null?` scale(${sc})`:"");
-  };
-
-  /* ================= THE TIMELINE ================= */
+  /* seek */
   function seek(t){
     t=clamp(t/DURATION)*DURATION;
-    // progress bar
     $("prog").style.width=(t/DURATION*100)+"%";
-    // scene visibility
-    scenes.forEach(s=>{ s.el.style.opacity=sceneOpacity(t,s); });
+    scenes.forEach(s=>s.el.style.opacity=sceneOpacity(t,s));
 
-    // SCENE 1 (0–5000)
-    { let p=outCubic(seg(t,150,900)); setT("brand",p,0,16*(1-p));
-      // logo mark draws its line-chart stroke on
-      const md=$("markpath"); if(md) md.setAttribute("stroke-dashoffset",(1-outCubic(seg(t,350,700))).toFixed(3));
-      A.accent && (A.accent.style.width=(320*outCubic(seg(t,600,900)))+"px", A.accent.style.opacity=1);
-      A.s1sub && (A.s1sub.style.opacity=seg(t,550,800));
-      A.s1tag && (A.s1tag.style.opacity=seg(t,850,800)); }
+    // SCENE 1
+    { const p=outCubic(seg(t,150,900)); setT("brand",p,0,16*(1-p));
+      A.accent.style.width=(300*outCubic(seg(t,600,900)))+"px"; A.accent.style.opacity=1;
+      A.s1sub.style.opacity=seg(t,550,800);
+      A.s1tag.style.opacity=seg(t,850,800); }
 
-    // SCENE 2 (5000–11000)
+    // SCENE 2
     { A.s2title.style.opacity=seg(t,5100,700);
-      [ ["pill0",5350],["pill1",5500],["pill2",5650] ].forEach(([k,st])=>{ const p=outCubic(seg(t,st,700)); setT(k,p,0,22*(1-p)); }); }
+      [["pill0",5350],["pill1",5500],["pill2",5650]].forEach(([k,st])=>{const p=outCubic(seg(t,st,700));setT(k,p,0,22*(1-p));}); }
 
-    // SCENE 3 (11000–21000)
-    { const p=outBack(seg(t,11000,700)); setT("app",clamp(p),0,0,0.985+0.015*clamp(p));
-      const local=(t-11000)/10000;
-      drawChart(clamp(local/0.5)); drawKPIs(clamp(local/0.42));
-      // deterministic ticker scroll (loops every 16s of scene time)
+    // SCENE 3
+    { const p=outBack(seg(t,11000,700)); setT("app",clamp(p),0,0,0.99+0.01*clamp(p));
+      const local=t-11000;
+      A.brief.style.opacity=outCubic(seg(t,11500,500));A.brief.style.transform=`translateY(${10*(1-outCubic(seg(t,11500,500)))}px)`;
+      [["st0",11800],["st1",11950],["st2",12100],["st3",12250]].forEach(([k,st])=>{const q=outCubic(seg(t,st,500));setT(k,q,0,14*(1-q));});
+      A.hm.style.opacity=outCubic(seg(t,12500,600));
+      // count-ups
+      $("k1").textContent=Math.round(29*clamp((local-1000)/1500));
+      $("k2").textContent=Math.round(10*clamp((local-1150)/1500));
+      // heatmap blocks scale-in
+      const hp=clamp((local-1500)/1200);
+      document.querySelectorAll("#hm .blk").forEach((b,i)=>{const q=clamp((hp*hm.length)-i);b.style.opacity=q;b.style.transform=`scale(${0.9+0.1*q})`;});
+      // deterministic ticker scroll + LIVE pulse
       if(!tapeW) tapeW=tapeEl.scrollWidth/2;
-      const off=((t/16000)%1)*tapeW;
-      tapeEl.style.transform=`translateX(${-off}px)`;
-      // one-click order fill toast: slides in ~6.2s into the scene, holds, fades
-      const tin=outCubic(seg(t,17200,450)), tout=seg(t,19600,450);
-      const to=clamp(Math.min(tin,1-tout));
-      setT("toast",to,(1-tin)*18,0); }
+      tapeEl.style.transform=`translateX(${-((t/16000)%1)*tapeW}px)`;
+      const dot=$("livedot"); if(dot) dot.style.opacity=(0.45+0.55*Math.abs(Math.sin(t/650))).toFixed(2); }
 
-    // SCENE 4 (21000–27000)
+    // SCENE 4
     { A.s4title.style.opacity=seg(t,21100,600);
-      [ ["f0",21250],["f1",21400],["f2",21550],["f3",21700] ].forEach(([k,st])=>{ const p=outCubic(seg(t,st,600)); setT(k,p,-16*(1-p),0); }); }
+      [["f0",21250],["f1",21400],["f2",21550],["f3",21700]].forEach(([k,st])=>{const p=outCubic(seg(t,st,600));setT(k,p,-16*(1-p),0);}); }
 
-    // SCENE 5 (27000–30000)
+    // SCENE 5
     { const p=outBack(seg(t,27000,800)); setT("obrand",clamp(p),0,0,0.9+0.1*clamp(p));
       A.octa.style.opacity=seg(t,27500,700);
       A.osub.style.opacity=seg(t,27850,700); }
   }
-
-  window.__seek=seek;
-  window.__DURATION=DURATION;
-  seek(0);
-  window.__READY__=true;
+  window.__seek=seek; window.__DURATION=DURATION; seek(0); window.__READY__=true;
 })();
 </script>
 </body>
