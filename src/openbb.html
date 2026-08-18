@@ -292,21 +292,26 @@
 <script>
 (function(){
   "use strict";
-  const DURATION=34000;
+  const DURATION=27000;
   const $=id=>document.getElementById(id);
   const A={}; document.querySelectorAll(".anim").forEach(el=>A[el.dataset.a]=el);
   const clamp=x=>x<0?0:x>1?1:x;
   const outCubic=x=>1-Math.pow(1-x,3);
-  const outBack=x=>{const c=1.70158;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);};
+  const outBack=x=>{const c=1.9;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);};
   const inOut=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
   const seg=(t,s,d)=>clamp((t-s)/d);
+  const bump=(t,c,d)=>{const x=(t-c)/d;return (x>=0&&x<=1)?Math.sin(x*Math.PI):0;};
   const setT=(k,op,tx,ty,sc)=>{const el=A[k];if(!el)return;el.style.opacity=op;
     el.style.transform=`translate(${tx||0}px,${ty||0}px)`+(sc!=null?` scale(${sc})`:"");};
 
   // scene windows: intro, demo, outro
-  const S1=[0,4000], DEMO=[4000,31000], S3=[31000,34000];
-  const XF=380;
+  const S1=[0,3000], DEMO=[3000,23000], S3=[23000,27000];
+  const XF=300;
   const winOp=(t,a,b)=>clamp(Math.min(seg(t,a,XF),1-seg(t,b-XF,XF)));
+
+  // camera-punch: a quick zoom kick on each click / scene slam
+  const PUNCH=[[3000,0.020],[7000,0.020],[9000,0.009],[11000,0.020],[15000,0.020],[19000,0.018]];
+  const punch=t=>{let s=0;for(const[pt,mg]of PUNCH)s+=mg*bump(t,pt,200);return s;};
 
   /* ticker */
   const arrow=u=>u?"▲":"▼";
@@ -340,28 +345,30 @@
   /* ---- demo timeline (absolute ms) ---- */
   // beats: [t0,t1, panel, tabKey, captionText]
   const beats=[
-    [4600, 9600, "ov","Overview","Launch it, and the whole market is already read for you."],
-    [9600, 15200,"ov","Overview","Click any ticker — chart, signals and fundamentals in one card."],
-    [15200,21000,"sig","Signals","93 live signals — RSI, options flow, insider clusters — graded daily."],
-    [21000,27000,"ai","AI","Then a plain-English AI read of the market, three analyst lenses deep."],
-    [27000,30600,"ov","Overview","And it refreshes itself — automatically — every 30 seconds."],
+    [3000, 7000, "ov","Overview","Open it — your whole market, already read."],
+    [7000, 11000,"ov","Overview","One click: chart, signals, fundamentals."],
+    [11000,15000,"sig","Signals","93 live signals — graded every day."],
+    [15000,19000,"ai","AI","A plain-English AI read. Three analyst lenses."],
+    [19000,23000,"ov","Overview","And it refreshes itself — every 30 seconds."],
   ];
   const tabs={}; document.querySelectorAll("#nav span").forEach(s=>tabs[s.dataset.tab]=s);
   const tabForKey={ov:"Overview",sig:"Signals",ai:"AI"};
 
-  // cursor waypoints [t,x,y] in viewport px; click flags separate
+  // cursor waypoints [t,x,y] in viewport px — constant motion
   const WP=[
-    [4600, 820,300],[6600, 360,205],[8600, 470,470],
-    [9600, 470,505],           // click ticker -> modal
-    [12200,640,330],
-    [15000,470,120],[15200,470,120],   // click Signals tab
-    [17800,560,330],
-    [20800,978,120],[21000,978,120],   // click AI tab
-    [24000,560,330],
-    [26800,120,120],[27000,120,120],   // click Overview tab
-    [29500,560,430]
+    [3000, 900,340],[4000, 300,250],[4900, 690,250],[5700, 360,470],
+    [6900, 372,470],[7000, 372,505],   // click NVDA tile -> modal
+    [8200, 470,340],[8850, 545,281],
+    [9000, 545,281],                    // click 1Y timeframe pill
+    [10000,470,300],[10850,458,100],
+    [11000,458,100],                    // click Signals tab
+    [12200,235,190],[13300,235,300],[14300,900,130],
+    [15000,945,100],                    // click AI tab
+    [16300,235,270],[17500,640,270],[18400,120,120],
+    [19000, 86,100],                    // click Overview tab
+    [20600,560,430],[22600,560,430]
   ];
-  const CLICKS=[9600,15200,21000,27000];
+  const CLICKS=[7000,9000,11000,15000,19000];
   function cursorAt(t){
     if(t<=WP[0][0]) return [WP[0][1],WP[0][2]];
     if(t>=WP[WP.length-1][0]) return [WP[WP.length-1][1],WP[WP.length-1][2]];
@@ -372,10 +379,11 @@
   }
 
   const panels={ov:$("pv-ov"),sig:$("pv-sig"),ai:$("pv-ai")};
+  const pills=document.querySelectorAll("#modal .m-tf span");
   function panelOp(name,t){
-    // union of the beat windows for this panel, with 240ms crossfades
+    // union of the beat windows for this panel, with 220ms crossfades
     let o=0;
-    beats.forEach(([a,b,pn])=>{ if(pn===name){ o=Math.max(o, Math.min(seg(t,a-240,240), 1-seg(t,b-240,240))); }});
+    beats.forEach(([a,b,pn])=>{ if(pn===name){ o=Math.max(o, Math.min(seg(t,a-220,220), 1-seg(t,b-220,220))); }});
     return o;
   }
 
@@ -385,51 +393,57 @@
     $("s1").style.opacity=winOp(t,S1[0],S1[1]);
     $("s2").style.opacity=winOp(t,DEMO[0],DEMO[1]);
     $("s3").style.opacity=winOp(t,S3[0],S3[1]);
+    $("s2").style.transform=`scale(${(1+punch(t)).toFixed(4)})`;   // camera kick on clicks
 
-    // SCENE 1
-    { const p=outCubic(seg(t,150,900)); setT("brand",p,0,16*(1-p));
-      A.accent.style.width=(300*outCubic(seg(t,600,900)))+"px"; A.accent.style.opacity=1;
-      A.s1sub.style.opacity=seg(t,500,700); A.s1tag.style.opacity=seg(t,800,700); }
+    // SCENE 1 — snappy slam-in
+    { const p=outBack(seg(t,120,620)); setT("brand",clamp(p),0,22*(1-clamp(p)),0.94+0.06*clamp(p));
+      A.accent.style.width=(300*outCubic(seg(t,520,760)))+"px"; A.accent.style.opacity=1;
+      A.s1sub.style.opacity=seg(t,360,520); A.s1tag.style.opacity=seg(t,720,560); }
 
     // SCENE 2 demo
-    { const p=outBack(seg(t,4000,600)); setT("app",clamp(p),0,0,0.99+0.01*clamp(p));
+    { const p=outBack(seg(t,3000,520)); setT("app",clamp(p),0,0,0.985+0.015*clamp(p));
       // panels
       for(const k in panels){ panels[k].style.opacity=panelOp(k,t); }
       // active tab
       let curTab="Overview";
-      for(const b of beats){ if(t>=b[0]-200 && t<b[1]){ curTab=tabForKey[b[2]]; } }
+      for(const b of beats){ if(t>=b[0]-150 && t<b[1]){ curTab=tabForKey[b[2]]; } }
       for(const k in tabs){ tabs[k].classList.toggle("act", k===curTab); }
-      // heatmap reveal (first time overview shows) + highlight NVDA before click
-      const hp=clamp((t-4600)/1400);
+      // heatmap reveal + highlight NVDA just before the click
+      const hp=clamp((t-3200)/1300);
       document.querySelectorAll("#hm .blk").forEach((b,i)=>{const q=clamp((hp*hm.length)-i);b.style.opacity=q;});
-      const nvda=$("blk0"); if(nvda) nvda.classList.toggle("hot", t>8600 && t<9600);
-      // modal (beat 2)
-      const mo=Math.min(outBack(seg(t,9600,650)), 1-seg(t,14700,450));
-      const m=$("modal"); const ms=clamp(mo);
-      m.style.opacity=ms; m.style.transform=`translate(-50%,-50%) scale(${0.7+0.3*clamp(outBack(seg(t,9600,650)))})`;
-      // caption
+      const nvda=$("blk0"); if(nvda) nvda.classList.toggle("hot", t>5700 && t<7000);
+      // modal open (click at 7000) → close as cursor leaves for Signals (~10800)
+      const openP=clamp(outBack(seg(t,7000,520)));
+      const m=$("modal"); const ms=Math.min(openP, 1-seg(t,10800,300));
+      m.style.opacity=clamp(ms);
+      m.style.transform=`translate(-50%,-50%) scale(${(0.72+0.28*openP).toFixed(3)})`;
+      // timeframe pill click at 9000: 1Y goes active + chart reloads (quick flash)
+      const y1=t>=9000; pills.forEach((s,i)=>s.classList.toggle("on", i===(y1?4:2)));
+      $("mchart").style.opacity=(1-0.6*bump(t,9000,300)).toFixed(3);
+      // caption — cut in just after the whoosh, cut out fast
       let cb=null; for(const b of beats){ if(t>=b[0]&&t<b[1]) cb=b; }
       const cap=$("cap");
       if(cb){ $("captxt").textContent=cb[4];
-        const o=Math.min(seg(t,cb[0],320), 1-seg(t,cb[1]-320,320)); cap.style.opacity=clamp(o);
+        const o=Math.min(seg(t,cb[0]+90,220), 1-seg(t,cb[1]-230,220)); cap.style.opacity=clamp(o);
       } else cap.style.opacity=0;
       // cursor + click ring
       const cur=$("cursor"), ring=$("ring");
-      const on = t>4400 && t<30600 ? 1 : 0;
+      const on = t>2900 && t<22800 ? 1 : 0;
       const [cx,cy]=cursorAt(t);
       cur.style.opacity=on; cur.style.transform=`translate(${cx}px,${cy}px)`;
-      let rr=0,rt=0; for(const ct of CLICKS){ const e=seg(t,ct-60,420); if(e>0&&e<1){ rr=e; rt=1; } }
-      if(rt){ const sz=10+rr*46; ring.style.opacity=(1-rr)*0.9; ring.style.width=sz+"px";ring.style.height=sz+"px";
+      let rr=0,rt=0; for(const ct of CLICKS){ const e=seg(t,ct-40,380); if(e>0&&e<1){ rr=e; rt=1; } }
+      if(rt){ const sz=8+rr*50; ring.style.opacity=(1-rr)*0.95; ring.style.width=sz+"px";ring.style.height=sz+"px";
         ring.style.transform=`translate(${cx+2}px,${cy+4}px)`; } else ring.style.opacity=0;
-      // ticker + live pulse
+      // ticker + live pulse (faster near the refresh payoff)
       if(!tapeW) tapeW=tapeEl.scrollWidth/2;
-      tapeEl.style.transform=`translateX(${-((t/16000)%1)*tapeW}px)`;
-      const d=$("livedot"); if(d) d.style.opacity=(0.45+0.55*Math.abs(Math.sin(t/650))).toFixed(2);
+      tapeEl.style.transform=`translateX(${-((t/13000)%1)*tapeW}px)`;
+      const rate=t>19000?360:650;
+      const d=$("livedot"); if(d) d.style.opacity=(0.4+0.6*Math.abs(Math.sin(t/rate))).toFixed(2);
     }
 
     // SCENE 3 outro
-    { const p=outBack(seg(t,31000,800)); setT("obrand",clamp(p),0,0,0.9+0.1*clamp(p));
-      A.octa.style.opacity=seg(t,31500,700); A.osub.style.opacity=seg(t,31850,700); }
+    { const p=outBack(seg(t,23000,640)); setT("obrand",clamp(p),0,0,0.9+0.1*clamp(p));
+      A.octa.style.opacity=seg(t,23450,560); A.osub.style.opacity=seg(t,23800,600); }
   }
   window.__seek=seek; window.__DURATION=DURATION; seek(0); window.__READY__=true;
 })();
