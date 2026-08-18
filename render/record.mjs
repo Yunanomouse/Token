@@ -59,10 +59,15 @@ for (let i = 0; i < TOTAL; i++) {
   if (!enc.stdin.write(buf)) await once(enc.stdin, 'drain');
   if (i % 60 === 0) process.stdout.write(`  ${i}/${TOTAL}\r`);
 }
+// attach the close listener BEFORE ending stdin so we never miss the event
+const closed = new Promise((res) => {
+  if (enc.exitCode !== null) return res(enc.exitCode);
+  enc.on('close', res);
+});
 enc.stdin.end();
 console.log(`\ncaptured ${TOTAL} frames in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
 await browser.close();
-const [code] = await once(enc, 'close');
+const code = await closed;
 if (code !== 0) { console.error('ffmpeg exited ' + code); process.exit(1); }
 console.log('wrote ' + dest);

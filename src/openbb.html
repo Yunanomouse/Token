@@ -145,6 +145,20 @@
   .cap i{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 12px var(--accent)}
   .cap span{font-size:17px;font-weight:600;color:#fff;letter-spacing:.1px}
 
+  /* hover affordances (extra action) */
+  .sig,.an{transition:none}
+  .sig.gl{background:#0e2140;box-shadow:0 0 0 1px rgba(0,212,255,.55),0 0 20px rgba(0,212,255,.16)}
+  .an.gl{box-shadow:0 0 0 1px rgba(0,212,255,.55),0 0 24px rgba(0,212,255,.14)}
+  .tip{position:absolute;z-index:46;background:#0a1730;border:1px solid var(--accent);border-radius:9px;
+    padding:8px 12px;font-size:11.5px;color:#cbd5e1;white-space:nowrap;opacity:0;pointer-events:none;
+    box-shadow:0 10px 30px rgba(0,0,0,.55);}
+  .tip b{color:var(--accent)} .tip::after{content:"";position:absolute;left:26px;bottom:-6px;width:11px;height:11px;
+    background:#0a1730;border-right:1px solid var(--accent);border-bottom:1px solid var(--accent);transform:rotate(45deg)}
+  .refresh{position:absolute;top:57px;right:16px;z-index:46;display:flex;align-items:center;gap:7px;
+    background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.4);color:var(--green);
+    padding:6px 12px;border-radius:9px;font-size:11px;font-weight:700;opacity:0;}
+  .app.refreshing{box-shadow:0 0 0 2px rgba(0,230,118,.45),0 30px 80px rgba(0,0,0,.55)}
+
   /* cursor + click ring */
   #cursor{position:absolute;z-index:50;width:26px;height:26px;left:0;top:0;pointer-events:none;
     filter:drop-shadow(0 2px 4px rgba(0,0,0,.55));opacity:0;}
@@ -266,6 +280,10 @@
         </div>
       </div>
 
+      <!-- hover tooltip + auto-refresh toast (extra action) -->
+      <div class="tip" id="tip">🔥 <b>29 high-conviction</b> signals flagged today</div>
+      <div class="refresh" id="refresh">↻ Refreshing live data…</div>
+
       <!-- caption + cursor -->
       <div class="cap" id="cap"><i></i><span id="captxt"></span></div>
     </div>
@@ -292,7 +310,7 @@
 <script>
 (function(){
   "use strict";
-  const DURATION=27000;
+  const DURATION=24000;
   const $=id=>document.getElementById(id);
   const A={}; document.querySelectorAll(".anim").forEach(el=>A[el.dataset.a]=el);
   const clamp=x=>x<0?0:x>1?1:x;
@@ -304,14 +322,14 @@
   const setT=(k,op,tx,ty,sc)=>{const el=A[k];if(!el)return;el.style.opacity=op;
     el.style.transform=`translate(${tx||0}px,${ty||0}px)`+(sc!=null?` scale(${sc})`:"");};
 
-  // scene windows: intro, demo, outro
-  const S1=[0,3000], DEMO=[3000,23000], S3=[23000,27000];
-  const XF=300;
+  // scene windows: intro, demo, outro  (128 BPM grid; every cut on a downbeat)
+  const S1=[0,2250], DEMO=[2250,21000], S3=[21000,24000];
+  const XF=260;
   const winOp=(t,a,b)=>clamp(Math.min(seg(t,a,XF),1-seg(t,b-XF,XF)));
 
   // camera-punch: a quick zoom kick on each click / scene slam
-  const PUNCH=[[3000,0.020],[7000,0.020],[9000,0.009],[11000,0.020],[15000,0.020],[19000,0.018]];
-  const punch=t=>{let s=0;for(const[pt,mg]of PUNCH)s+=mg*bump(t,pt,200);return s;};
+  const PUNCH=[[2250,0.022],[6000,0.022],[7875,0.010],[9750,0.022],[13500,0.022],[17250,0.020]];
+  const punch=t=>{let s=0;for(const[pt,mg]of PUNCH)s+=mg*bump(t,pt,180);return s;};
 
   /* ticker */
   const arrow=u=>u?"▲":"▼";
@@ -345,30 +363,31 @@
   /* ---- demo timeline (absolute ms) ---- */
   // beats: [t0,t1, panel, tabKey, captionText]
   const beats=[
-    [3000, 7000, "ov","Overview","Open it — your whole market, already read."],
-    [7000, 11000,"ov","Overview","One click: chart, signals, fundamentals."],
-    [11000,15000,"sig","Signals","93 live signals — graded every day."],
-    [15000,19000,"ai","AI","A plain-English AI read. Three analyst lenses."],
-    [19000,23000,"ov","Overview","And it refreshes itself — every 30 seconds."],
+    [2250, 6000, "ov","Overview","Open it — your whole market, already read."],
+    [6000, 9750, "ov","Overview","One click: chart, signals, fundamentals."],
+    [9750, 13500,"sig","Signals","93 live signals — graded every day."],
+    [13500,17250,"ai","AI","A plain-English AI read. Three analyst lenses."],
+    [17250,21000,"ov","Overview","And it refreshes itself — every 30 seconds."],
   ];
   const tabs={}; document.querySelectorAll("#nav span").forEach(s=>tabs[s.dataset.tab]=s);
   const tabForKey={ov:"Overview",sig:"Signals",ai:"AI"};
 
   // cursor waypoints [t,x,y] in viewport px — constant motion
   const WP=[
-    [3000, 900,340],[4000, 300,250],[4900, 690,250],[5700, 360,470],
-    [6900, 372,470],[7000, 372,505],   // click NVDA tile -> modal
-    [8200, 470,340],[8850, 545,281],
-    [9000, 545,281],                    // click 1Y timeframe pill
-    [10000,470,300],[10850,458,100],
-    [11000,458,100],                    // click Signals tab
-    [12200,235,190],[13300,235,300],[14300,900,130],
-    [15000,945,100],                    // click AI tab
-    [16300,235,270],[17500,640,270],[18400,120,120],
-    [19000, 86,100],                    // click Overview tab
-    [20600,560,430],[22600,560,430]
+    [2250, 900,340],[3000, 300,250],[3600, 560,250],[4400, 360,470],
+    [5850, 372,470],[6000, 372,505],   // click NVDA tile -> modal
+    [6800, 470,340],[7700, 545,281],
+    [7875, 545,281],                    // click 1Y timeframe pill
+    [8700, 470,300],[9600, 458,100],
+    [9750, 458,100],                    // click Signals tab
+    [10600,235,190],[11600,235,258],[12600,235,325],[13300,900,130],
+    [13500,945,100],                    // click AI tab
+    [14400,235,270],[15400,640,270],[16300,1040,270],[17000,120,120],
+    [17250, 86,100],                    // click Overview tab
+    [18300,1160, 54],                   // over the auto-refresh badge
+    [19400,560,430],[20800,560,430]
   ];
-  const CLICKS=[7000,9000,11000,15000,19000];
+  const CLICKS=[6000,7875,9750,13500,17250];
   function cursorAt(t){
     if(t<=WP[0][0]) return [WP[0][1],WP[0][2]];
     if(t>=WP[WP.length-1][0]) return [WP[WP.length-1][1],WP[WP.length-1][2]];
@@ -380,10 +399,16 @@
 
   const panels={ov:$("pv-ov"),sig:$("pv-sig"),ai:$("pv-ai")};
   const pills=document.querySelectorAll("#modal .m-tf span");
+  const sigRows=document.querySelectorAll("#pv-sig .col:first-child .sig");
+  const anCards=document.querySelectorAll("#pv-ai .an");
+  const appEl=document.querySelector(".app");
+  // position the hover tooltip once (points up at the High-Conviction stat card)
+  { const tp=$("tip"); tp.style.left="452px"; tp.style.top="300px"; }
+  function glowSeq(nodes,base,step,t){ nodes.forEach((n,i)=>{const a=base+i*step; n.classList.toggle("gl", t>=a && t<a+step+120);}); }
   function panelOp(name,t){
-    // union of the beat windows for this panel, with 220ms crossfades
+    // union of the beat windows for this panel, with 200ms crossfades
     let o=0;
-    beats.forEach(([a,b,pn])=>{ if(pn===name){ o=Math.max(o, Math.min(seg(t,a-220,220), 1-seg(t,b-220,220))); }});
+    beats.forEach(([a,b,pn])=>{ if(pn===name){ o=Math.max(o, Math.min(seg(t,a-200,200), 1-seg(t,b-200,200))); }});
     return o;
   }
 
@@ -396,54 +421,62 @@
     $("s2").style.transform=`scale(${(1+punch(t)).toFixed(4)})`;   // camera kick on clicks
 
     // SCENE 1 — snappy slam-in
-    { const p=outBack(seg(t,120,620)); setT("brand",clamp(p),0,22*(1-clamp(p)),0.94+0.06*clamp(p));
-      A.accent.style.width=(300*outCubic(seg(t,520,760)))+"px"; A.accent.style.opacity=1;
-      A.s1sub.style.opacity=seg(t,360,520); A.s1tag.style.opacity=seg(t,720,560); }
+    { const p=outBack(seg(t,90,520)); setT("brand",clamp(p),0,22*(1-clamp(p)),0.94+0.06*clamp(p));
+      A.accent.style.width=(300*outCubic(seg(t,420,640)))+"px"; A.accent.style.opacity=1;
+      A.s1sub.style.opacity=seg(t,300,440); A.s1tag.style.opacity=seg(t,600,480); }
 
     // SCENE 2 demo
-    { const p=outBack(seg(t,3000,520)); setT("app",clamp(p),0,0,0.985+0.015*clamp(p));
+    { const p=outBack(seg(t,2250,480)); setT("app",clamp(p),0,0,0.985+0.015*clamp(p));
       // panels
       for(const k in panels){ panels[k].style.opacity=panelOp(k,t); }
       // active tab
       let curTab="Overview";
-      for(const b of beats){ if(t>=b[0]-150 && t<b[1]){ curTab=tabForKey[b[2]]; } }
+      for(const b of beats){ if(t>=b[0]-140 && t<b[1]){ curTab=tabForKey[b[2]]; } }
       for(const k in tabs){ tabs[k].classList.toggle("act", k===curTab); }
       // heatmap reveal + highlight NVDA just before the click
-      const hp=clamp((t-3200)/1300);
+      const hp=clamp((t-2450)/1200);
       document.querySelectorAll("#hm .blk").forEach((b,i)=>{const q=clamp((hp*hm.length)-i);b.style.opacity=q;});
-      const nvda=$("blk0"); if(nvda) nvda.classList.toggle("hot", t>5700 && t<7000);
-      // modal open (click at 7000) → close as cursor leaves for Signals (~10800)
-      const openP=clamp(outBack(seg(t,7000,520)));
-      const m=$("modal"); const ms=Math.min(openP, 1-seg(t,10800,300));
+      const nvda=$("blk0"); if(nvda) nvda.classList.toggle("hot", t>4400 && t<6000);
+      // hover tooltip over the High-Conviction stat (beat A)
+      $("tip").style.opacity=clamp(Math.min(seg(t,3550,200),1-seg(t,5500,220))).toFixed(2);
+      // modal open (click 6000) → close as cursor leaves for Signals (~9550)
+      const openP=clamp(outBack(seg(t,6000,480)));
+      const m=$("modal"); const ms=Math.min(openP, 1-seg(t,9550,280));
       m.style.opacity=clamp(ms);
       m.style.transform=`translate(-50%,-50%) scale(${(0.72+0.28*openP).toFixed(3)})`;
-      // timeframe pill click at 9000: 1Y goes active + chart reloads (quick flash)
-      const y1=t>=9000; pills.forEach((s,i)=>s.classList.toggle("on", i===(y1?4:2)));
-      $("mchart").style.opacity=(1-0.6*bump(t,9000,300)).toFixed(3);
+      // timeframe pill click at 7875: 1Y goes active + chart reloads (quick flash)
+      const y1=t>=7875; pills.forEach((s,i)=>s.classList.toggle("on", i===(y1?4:2)));
+      $("mchart").style.opacity=(1-0.6*bump(t,7875,280)).toFixed(3);
+      // sequential hover-glows through the signal rows / analyst cards
+      glowSeq(sigRows,10500,900,t);
+      glowSeq(anCards,14300,900,t);
+      // auto-refresh moment (beat E): toast + green app-glow pulse
+      $("refresh").style.opacity=clamp(Math.min(seg(t,18300,220),1-seg(t,20500,280))).toFixed(2);
+      appEl.classList.toggle("refreshing", t>18600 && t<19600);
       // caption — cut in just after the whoosh, cut out fast
       let cb=null; for(const b of beats){ if(t>=b[0]&&t<b[1]) cb=b; }
       const cap=$("cap");
       if(cb){ $("captxt").textContent=cb[4];
-        const o=Math.min(seg(t,cb[0]+90,220), 1-seg(t,cb[1]-230,220)); cap.style.opacity=clamp(o);
+        const o=Math.min(seg(t,cb[0]+80,200), 1-seg(t,cb[1]-210,200)); cap.style.opacity=clamp(o);
       } else cap.style.opacity=0;
       // cursor + click ring
       const cur=$("cursor"), ring=$("ring");
-      const on = t>2900 && t<22800 ? 1 : 0;
+      const on = t>2150 && t<20900 ? 1 : 0;
       const [cx,cy]=cursorAt(t);
       cur.style.opacity=on; cur.style.transform=`translate(${cx}px,${cy}px)`;
-      let rr=0,rt=0; for(const ct of CLICKS){ const e=seg(t,ct-40,380); if(e>0&&e<1){ rr=e; rt=1; } }
+      let rr=0,rt=0; for(const ct of CLICKS){ const e=seg(t,ct-40,340); if(e>0&&e<1){ rr=e; rt=1; } }
       if(rt){ const sz=8+rr*50; ring.style.opacity=(1-rr)*0.95; ring.style.width=sz+"px";ring.style.height=sz+"px";
         ring.style.transform=`translate(${cx+2}px,${cy+4}px)`; } else ring.style.opacity=0;
       // ticker + live pulse (faster near the refresh payoff)
       if(!tapeW) tapeW=tapeEl.scrollWidth/2;
-      tapeEl.style.transform=`translateX(${-((t/13000)%1)*tapeW}px)`;
-      const rate=t>19000?360:650;
+      tapeEl.style.transform=`translateX(${-((t/11000)%1)*tapeW}px)`;
+      const rate=t>17250?320:560;
       const d=$("livedot"); if(d) d.style.opacity=(0.4+0.6*Math.abs(Math.sin(t/rate))).toFixed(2);
     }
 
     // SCENE 3 outro
-    { const p=outBack(seg(t,23000,640)); setT("obrand",clamp(p),0,0,0.9+0.1*clamp(p));
-      A.octa.style.opacity=seg(t,23450,560); A.osub.style.opacity=seg(t,23800,600); }
+    { const p=outBack(seg(t,21000,560)); setT("obrand",clamp(p),0,0,0.9+0.1*clamp(p));
+      A.octa.style.opacity=seg(t,21400,480); A.osub.style.opacity=seg(t,21720,520); }
   }
   window.__seek=seek; window.__DURATION=DURATION; seek(0); window.__READY__=true;
 })();
