@@ -50,6 +50,29 @@ A corporation whose business is trading may pay the small-business rate on the f
 - **CPP:** a sole-proprietor trader pays both halves of CPP (11.9% to the YMPE + 8% CPP2 band) via the T1; no EI is payable (or claimable) on self-employed trading income.
 - **Province matters:** combined top rates for 2026 range from ~44% (AB) to ~54.8% (NL); see `data/csv/income_tax_brackets_2026.csv`.
 
+## 6. Worked profiles (Alberta, 2026)
+
+### Low-income solo trader (profit under ~$16k, no other income)
+
+- **Income tax: $0.** Profit sits below both the federal ($16,452) and Alberta ($22,769) basic personal amounts.
+- Only levy: **self-employed CPP** — 11.9% of profit above $3,500 (e.g. ~$774 on $10,000).
+- The real money is **refundable credits**: the Canada Workers Benefit (~$1,600 max single — trading profit counts as working income) and the GST credit (~$533, rising to $679 from July 2026). Filing a return is the application; a $10k trader comes out *ahead* by filing.
+- Deductions are worth ~0% here — don't burn RRSP room. Open an **FHSA** (renters usually qualify) to start room accruing; carry the deduction forward to a high-income year. Unused business-use-of-home expenses also carry forward indefinitely.
+- Incorporation is **definitively not worth it** at this level.
+
+### Employed trader (salary + trading on the side)
+
+Example: $22/hr full-time (~$45,760) plus $10,000 trading profit.
+
+- Trading profit stacks on top of salary at the **marginal rate** (22% in Alberta's bottom brackets) **plus 11.9% self-employed CPP from dollar one** — the $3,500 CPP exemption is already used by the job. Effective marginal cost ≈ **34%**.
+- Nothing is withheld on trading profits during the year — **set aside ~34%** of every trading dollar for the April 30 balance.
+- The salary phases out the CWB entirely and most/all of the GST credit.
+- Deductions now pay ~34% (they reduce income tax *and* CPP): home office, data feeds, hardware. RRSP/FHSA deductions are worth the marginal rate — check proximity to the next bracket edge ($58,523 federally) when deciding whether to deduct now or carry forward.
+- A losing trading year deducts against **salary**, refunding tax already withheld.
+- Filing deadline is June 15 with self-employment income, but any balance is still due April 30. Expect CRA instalment requests once the balance exceeds $3,000 two years running.
+
+See `examples/personal_tax_outline_2026.xlsx` for a live-formula workbook of this profile.
+
 ## The honest hierarchy
 
 1. Max the RRSP deduction every year.
