@@ -27,5 +27,10 @@ chmod +x "$FF" || true
 mv -f dist/_final.webm dist/openbb-30s.webm
 rm -f dist/track.wav
 
-echo "done -> dist/openbb-30s.webm"
+echo "4/4  exporting phone-friendly MP4 (H.264 + AAC)…"
+"$FF" -hide_banner -loglevel error -y -i dist/openbb-30s.webm \
+  -c:v libx264 -profile:v high -pix_fmt yuv420p -crf 18 -preset slow \
+  -c:a aac -b:a 192k -movflags +faststart dist/openbb-30s.mp4
+
+echo "done -> dist/openbb-30s.webm  &  dist/openbb-30s.mp4"
 "$FF" -hide_banner -i dist/openbb-30s.webm 2>&1 | grep -E "Duration|Stream" || true
