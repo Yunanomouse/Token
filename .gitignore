@@ -1,5 +1,5 @@
-# Symlink to global playwright install used only for rendering
-node_modules
+# Symlink to the global Playwright install (render-only dependency)
+/node_modules
 
-# Rendered video output (regenerate with: node render/record.mjs)
-dist/
+# Transient render scratch
+/dist/_frames/

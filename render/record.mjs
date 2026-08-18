@@ -1,88 +1,67 @@
-// Render src/openbb.html to a real video file using Playwright's built-in
-// video recording (Chromium + bundled ffmpeg, both already installed).
+// Deterministic renderer for src/openbb.html.
 //
-// Usage: node render/record.mjs
-// Output: dist/openbb-30s.webm  (1280x720, ~30s)
+// Headless Chromium throttles wall-clock animation, so instead of recording in
+// real time we SEEK the page timeline to an exact timestamp, screenshot each
+// frame, and stream the frames straight into Playwright's bundled ffmpeg via
+// its image2pipe/mjpeg path. Result: a frame-perfect 30.0s clip at a fixed fps,
+// independent of how fast the machine renders.
+//
+// Usage:  node render/record.mjs [fps]
+// Output: dist/openbb-30s.webm  (1280x720)
 
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { readdirSync, renameSync, mkdirSync, rmSync, existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { mkdirSync, existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const htmlPath = resolve(root, 'src', 'openbb.html');
 const outDir = resolve(root, 'dist');
-const tmpDir = resolve(root, 'dist', '_rec');
 
 const W = 1280, H = 720;
+const FPS = Number(process.argv[2]) || 30;
 const DURATION_MS = 30000;
-const SETTLE_MS = 700; // record a touch past the end so the outro fully lands
+const TOTAL = Math.round((DURATION_MS / 1000) * FPS);
 
-mkdirSync(outDir, { recursive: true });
-rmSync(tmpDir, { recursive: true, force: true });
-mkdirSync(tmpDir, { recursive: true });
-
-const browser = await chromium.launch({
-  args: ['--force-color-profile=srgb', '--disable-lcd-text', '--hide-scrollbars'],
-});
-
-const context = await browser.newContext({
-  viewport: { width: W, height: H },
-  deviceScaleFactor: 1,
-  recordVideo: { dir: tmpDir, size: { width: W, height: H } },
-});
-
-// The video starts recording when the first page loads in the context.
-const ctxStart = Date.now();
-const page = await context.newPage();
-await page.goto('file://' + htmlPath);
-
-// Wait until the animation controller has booted, then restart its clock so
-// t=0 lines up with the point we will trim from.
-await page.waitForFunction('window.__READY__ === true', { timeout: 10000 });
-await page.evaluate('window.__resetClock()');
-const leadInSec = (Date.now() - ctxStart) / 1000;
-
-console.log(`recording… (lead-in ${leadInSec.toFixed(2)}s)`);
-await page.waitForTimeout(DURATION_MS + SETTLE_MS);
-
-// Close context to flush the video file to disk.
-await context.close();
-await browser.close();
-
-const files = readdirSync(tmpDir).filter((f) => f.endsWith('.webm'));
-if (!files.length) {
-  console.error('No video produced.');
-  process.exit(1);
-}
-const raw = resolve(tmpDir, files[0]);
-const dest = resolve(outDir, 'openbb-30s.webm');
-
-// Trim the lead-in and clamp to exactly 30.0s using Playwright's bundled ffmpeg.
 const ffmpeg = resolve(
   process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers',
-  'ffmpeg-1011',
-  'ffmpeg-linux'
+  'ffmpeg-1011', 'ffmpeg-linux'
 );
-if (existsSync(ffmpeg)) {
-  rmSync(dest, { force: true });
-  execFileSync(
-    ffmpeg,
-    [
-      '-hide_banner', '-loglevel', 'error', '-y',
-      '-ss', leadInSec.toFixed(3),
-      '-i', raw,
-      '-t', '30',
-      '-c:v', 'libvpx', '-b:v', '2M', '-crf', '10',
-      '-an', dest,
-    ],
-    { stdio: 'inherit' }
-  );
-  rmSync(tmpDir, { recursive: true, force: true });
-} else {
-  renameSync(raw, dest);
-  rmSync(tmpDir, { recursive: true, force: true });
+if (!existsSync(ffmpeg)) { console.error('ffmpeg not found at ' + ffmpeg); process.exit(1); }
+
+mkdirSync(outDir, { recursive: true });
+const dest = resolve(outDir, 'openbb-30s.webm');
+
+// ---- ffmpeg: read piped MJPEG frames, encode VP8/webm at a fixed frame rate ----
+const enc = spawn(ffmpeg, [
+  '-hide_banner', '-loglevel', 'error', '-y',
+  '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', 'pipe:0',
+  '-c:v', 'libvpx', '-b:v', '2.5M', '-crf', '8',
+  '-pix_fmt', 'yuv420p', '-auto-alt-ref', '0',
+  dest,
+], { stdio: ['pipe', 'inherit', 'inherit'] });
+
+// ---- browser: seek + screenshot each frame ----
+const browser = await chromium.launch({ args: ['--force-color-profile=srgb', '--hide-scrollbars'] });
+const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+await page.goto('file://' + htmlPath);
+await page.waitForFunction('window.__READY__ === true', { timeout: 10000 });
+
+console.log(`rendering ${TOTAL} frames @ ${FPS}fps…`);
+const t0 = Date.now();
+for (let i = 0; i < TOTAL; i++) {
+  await page.evaluate((ms) => window.__seek(ms), (i / FPS) * 1000);
+  const buf = await page.screenshot({ type: 'jpeg', quality: 100, clip: { x: 0, y: 0, width: W, height: H } });
+  if (!enc.stdin.write(buf)) await once(enc.stdin, 'drain');
+  if (i % 60 === 0) process.stdout.write(`  ${i}/${TOTAL}\r`);
 }
+enc.stdin.end();
+console.log(`\ncaptured ${TOTAL} frames in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+
+await browser.close();
+const [code] = await once(enc, 'close');
+if (code !== 0) { console.error('ffmpeg exited ' + code); process.exit(1); }
 console.log('wrote ' + dest);
