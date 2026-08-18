@@ -81,7 +81,14 @@
   .ticktape .row{position:absolute;white-space:nowrap;display:flex;gap:26px;align-items:center;font-size:12.5px;}
   .tk b{font-weight:700}
   .up{color:var(--up)} .down{color:var(--down)}
-  .chartpane{border-right:1px solid var(--line);padding:16px 18px;display:flex;flex-direction:column;min-height:0;}
+  .chartpane{position:relative;border-right:1px solid var(--line);padding:16px 18px;display:flex;flex-direction:column;min-height:0;}
+  .toast{position:absolute;right:22px;bottom:56px;display:flex;align-items:center;
+    padding:10px 14px;border-radius:11px;font-size:13px;font-weight:600;
+    background:rgba(20,25,32,.92);border:1px solid #2b7a5a;color:var(--ink);
+    box-shadow:0 12px 30px rgba(0,0,0,.5);opacity:0;}
+  .toast .dot{width:8px;height:8px;border-radius:50%;background:var(--up);margin-right:9px;box-shadow:0 0 10px var(--up);}
+  .toast b{color:var(--up);font-weight:800;margin-right:2px}
+  .toast .fill{color:var(--up);font-weight:700}
   .cp-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
   .cp-head .sym{font-size:15px;color:var(--muted);font-weight:600;margin-bottom:3px;}
   .cp-head .sym b{color:var(--ink)}
@@ -139,7 +146,7 @@
 
   <section class="scene" id="s1">
     <div class="brand anim" data-a="brand">
-      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 16l4-5 4 3 5-8 3 4" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path id="markpath" d="M4 16l4-5 4 3 5-8 3 4" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg></div>
       <div class="wordmark">OpenBB <span>Trader</span></div>
     </div>
     <div class="s1-sub sub anim" data-a="s1sub">Desktop Trading Terminal</div>
@@ -187,11 +194,17 @@
             <g id="xlab" fill="#6d717c" font-size="11" font-family="ui-monospace,monospace" text-anchor="middle"></g>
             <g clip-path="url(#reveal)">
               <g id="vol"></g>
-              <path id="area" fill="url(#fill)"></path>
-              <path id="line" fill="none" stroke="#3987e5" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"></path>
+              <g id="candles"></g>
+              <polyline id="ma" fill="none" stroke="#eda100" stroke-width="1.6" stroke-opacity=".92" stroke-linejoin="round"></polyline>
             </g>
-            <circle id="cursor" r="4.5" fill="#6da7ec" stroke="#141519" stroke-width="2.5"></circle>
+            <line id="lastline" x1="10" x2="660" stroke="#6da7ec" stroke-width="1" stroke-dasharray="4 4" stroke-opacity=".8"></line>
+            <g id="lasttag"><rect id="lasttagbg" x="662" width="56" height="18" rx="3" fill="#6da7ec"></rect>
+              <text id="lasttagtx" x="690" font-size="11" font-family="ui-monospace,monospace" fill="#0c0d10" text-anchor="middle" font-weight="700"></text></g>
           </svg>
+        </div>
+        <!-- one-click order fill toast -->
+        <div class="toast anim" data-a="toast" id="toast">
+          <span class="dot"></span><b>BUY</b>&nbsp;100 AAPL&nbsp;·&nbsp;<span class="fill">Filled</span>&nbsp;<span id="fillpx" class="mono">@ $0.00</span>
         </div>
       </div>
       <div class="side">
@@ -274,17 +287,31 @@
     `<div class="r"><div><div class="sym">${s}</div><div class="co">${c}</div></div>
      <div class="rt"><span class="px mono">${p}</span>${spark(u)}<span class="chg-s ${u?'up':'down'} mono">${arrow(u)}${ch}%</span></div></div>`).join("");
 
-  /* ---------- chart series + geometry ---------- */
-  const N=140, price=[], vol=[]; let v=0;
-  for(let i=0;i<N;i++){ v += 0.62 + Math.sin(i/12)*1.5 + Math.sin(i/4.3)*0.55 + (i%23===0?1.8:0); price.push(214 + v*0.205); }
-  for(let i=0;i<N;i++){ const d=i?Math.abs(price[i]-price[i-1]):0.2; vol.push(0.32 + d*1.5 + (Math.sin(i/2.5)*0.5+0.5)*0.35); }
-  const open=price[0], pmax=Math.max(...price), pmin=Math.min(...price), volMax=Math.max(...vol);
-  const dayHigh=pmax, dayLow=pmin, totVol=58.4;
+  /* ---------- candlestick series + geometry ---------- */
+  const NC=54;                       // number of candles
+  const cndl=[], vol=[]; let cp=214; // walk an upward-drifting price
+  for(let i=0;i<NC;i++){
+    const o=cp;
+    const body=0.42 + Math.sin(i/6.5)*1.15 + Math.sin(i*1.9)*0.5 + (i%11===0?1.4:0);
+    const c=o+body;
+    const hi=Math.max(o,c)+(0.35+Math.abs(Math.sin(i*2.3))*0.9);
+    const lo=Math.min(o,c)-(0.35+Math.abs(Math.cos(i*1.7))*0.9);
+    cndl.push({o,h:hi,l:lo,c}); cp=c;
+    vol.push(0.3 + Math.abs(c-o)*1.3 + (Math.sin(i/2.4)*0.5+0.5)*0.4);
+  }
+  const open=cndl[0].o;
+  const pmax=Math.max(...cndl.map(k=>k.h)), pmin=Math.min(...cndl.map(k=>k.l));
+  const dayHigh=Math.max(...cndl.map(k=>k.c)), dayLow=Math.min(...cndl.map(k=>k.c));
+  const volMax=Math.max(...vol), totVol=58.4;
+  // 7-period moving average over closes
+  const ma=cndl.map((_,i)=>{ let s=0,n=0; for(let j=Math.max(0,i-6);j<=i;j++){s+=cndl[j].c;n++;} return s/n; });
+
   const W=720,PL=10,PR=60,PT=18,priceH=306,gap=16,volH=104;
   const priceBot=PT+priceH, volBot=priceBot+gap+volH;
-  const xs=i=> PL + (i/(N-1))*(W-PR-PL);
+  const cx=i=> PL + (i+0.5)/NC*(W-PR-PL);      // candle center x
   const ys=p=> (priceBot-6) - ((p-pmin)/(pmax-pmin))*(priceH-12);
   const vy=val=> volBot - (val/volMax)*volH;
+  const cw=Math.max(3,(W-PR-PL)/NC*0.62);      // candle body width
   // grid + labels
   let g="",yl="";
   for(let k=0;k<=3;k++){ const p=pmin+(pmax-pmin)*(k/3); const y=ys(p);
@@ -294,28 +321,45 @@
   const times=["09:30","11:00","12:30","14:00","15:30","16:00"];
   let xl=""; times.forEach((t,i)=>{ const x=PL+(i/(times.length-1))*(W-PR-PL); xl+=`<text x="${x.toFixed(1)}" y="${volBot+24}">${t}</text>`;});
   $("xlab").innerHTML=xl;
-  const bw=(W-PR-PL)/N*0.62;
+  // volume bars (revealed via clip)
   let vb="";
-  for(let i=0;i<N;i++){ const up=i===0||price[i]>=price[i-1]; const x=xs(i)-bw/2; const y=vy(vol[i]);
-    vb+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(volBot-y).toFixed(1)}" rx="1" fill="${up?'#22c58b':'#e66767'}" fill-opacity=".55"/>`; }
+  for(let i=0;i<NC;i++){ const up=cndl[i].c>=cndl[i].o; const x=cx(i)-cw/2; const y=vy(vol[i]);
+    vb+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${(volBot-y).toFixed(1)}" rx="1" fill="${up?'#22c58b':'#e66767'}" fill-opacity=".5"/>`; }
   $("vol").innerHTML=vb;
+  // candles (revealed via clip)
+  let cb="";
+  for(let i=0;i<NC;i++){ const k=cndl[i]; const up=k.c>=k.o; const col=up?'#22c58b':'#e66767';
+    const bx=cx(i)-cw/2, yo=ys(k.o), yc=ys(k.c), yh=ys(k.h), yl2=ys(k.l);
+    const top=Math.min(yo,yc), bh=Math.max(1.2,Math.abs(yc-yo));
+    cb+=`<line x1="${cx(i).toFixed(1)}" y1="${yh.toFixed(1)}" x2="${cx(i).toFixed(1)}" y2="${yl2.toFixed(1)}" stroke="${col}" stroke-width="1.3"/>`+
+        `<rect x="${bx.toFixed(1)}" y="${top.toFixed(1)}" width="${cw.toFixed(1)}" height="${bh.toFixed(1)}" rx="1" fill="${col}"/>`; }
+  $("candles").innerHTML=cb;
+  const maEl=$("ma");
+  const maFull=ma.map((m,i)=>cx(i).toFixed(1)+","+ys(m).toFixed(1));
 
-  const line=$("line"),area=$("area"),cursor=$("cursor"),reveal=$("revealRect"),
-        pxEl=$("px"),chgEl=$("chg"),arrEl=$("arr"),chgvEl=$("chgv"),K=[1,2,3,4].map(i=>$("k"+i));
+  const reveal=$("revealRect"),lastline=$("lastline"),lasttag=$("lasttag"),lasttagbg=$("lasttagbg"),lasttagtx=$("lasttagtx"),
+        pxEl=$("px"),chgEl=$("chg"),arrEl=$("arr"),chgvEl=$("chgv"),K=[1,2,3,4].map(i=>$("k"+i)),
+        fillpx=$("fillpx");
   function drawChart(p){
-    const count=Math.max(2,Math.floor(p*N));
-    let d="M";
-    for(let i=0;i<count;i++){ d+=(i?"L":"")+xs(i).toFixed(1)+","+ys(price[i]).toFixed(1)+" "; }
-    line.setAttribute("d",d.trim());
-    const cx=xs(count-1),cy=ys(price[count-1]);
-    area.setAttribute("d",`${d.trim()} L${cx.toFixed(1)},${priceBot} L${xs(0).toFixed(1)},${priceBot} Z`);
-    cursor.setAttribute("cx",cx); cursor.setAttribute("cy",cy);
-    reveal.setAttribute("width",(cx+bw).toFixed(1));
-    const cur=price[count-1], diff=cur-open, pct=diff/open*100, up=diff>=0;
+    const count=Math.max(1,Math.floor(p*NC));
+    const rightX=cx(count-1)+cw/2+2;
+    reveal.setAttribute("width",rightX.toFixed(1));
+    maEl.setAttribute("points",maFull.slice(0,count).join(" "));
+    // last price line + right-axis tag
+    const k=cndl[count-1], y=ys(k.c);
+    lastline.setAttribute("y1",y.toFixed(1)); lastline.setAttribute("y2",y.toFixed(1));
+    lastline.setAttribute("x2",rightX.toFixed(1));
+    lasttag.setAttribute("transform",`translate(0,${(y-9).toFixed(1)})`);
+    lasttagtx.textContent=k.c.toFixed(2);
+    const up=k.c>=k.o; const c=up?'#22c58b':'#e66767';
+    lastline.setAttribute("stroke",c); lasttagbg.setAttribute("fill",c);
+    // header readout (vs session open)
+    const cur=k.c, diff=cur-open, pct=diff/open*100, pos=diff>=0;
     pxEl.textContent="$"+cur.toFixed(2);
-    chgEl.className="chg mono "+(up?"up":"down");
-    arrEl.textContent=arrow(up);
-    chgvEl.textContent=(up?"+":"")+diff.toFixed(2)+" ("+(up?"+":"")+pct.toFixed(2)+"%)";
+    chgEl.className="chg mono "+(pos?"up":"down");
+    arrEl.textContent=arrow(pos);
+    chgvEl.textContent=(pos?"+":"")+diff.toFixed(2)+" ("+(pos?"+":"")+pct.toFixed(2)+"%)";
+    fillpx.textContent="@ $"+cur.toFixed(2);
   }
   function drawKPIs(p){ const e=clamp(p);
     K[0].textContent="$"+open.toFixed(2);
@@ -339,6 +383,8 @@
 
     // SCENE 1 (0–5000)
     { let p=outCubic(seg(t,150,900)); setT("brand",p,0,16*(1-p));
+      // logo mark draws its line-chart stroke on
+      const md=$("markpath"); if(md) md.setAttribute("stroke-dashoffset",(1-outCubic(seg(t,350,700))).toFixed(3));
       A.accent && (A.accent.style.width=(320*outCubic(seg(t,600,900)))+"px", A.accent.style.opacity=1);
       A.s1sub && (A.s1sub.style.opacity=seg(t,550,800));
       A.s1tag && (A.s1tag.style.opacity=seg(t,850,800)); }
@@ -354,7 +400,11 @@
       // deterministic ticker scroll (loops every 16s of scene time)
       if(!tapeW) tapeW=tapeEl.scrollWidth/2;
       const off=((t/16000)%1)*tapeW;
-      tapeEl.style.transform=`translateX(${-off}px)`; }
+      tapeEl.style.transform=`translateX(${-off}px)`;
+      // one-click order fill toast: slides in ~6.2s into the scene, holds, fades
+      const tin=outCubic(seg(t,17200,450)), tout=seg(t,19600,450);
+      const to=clamp(Math.min(tin,1-tout));
+      setT("toast",to,(1-tin)*18,0); }
 
     // SCENE 4 (21000–27000)
     { A.s4title.style.opacity=seg(t,21100,600);
