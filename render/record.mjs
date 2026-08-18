@@ -23,8 +23,6 @@ const outDir = resolve(root, 'dist');
 
 const W = 1280, H = 720;
 const FPS = Number(process.argv[2]) || 30;
-const DURATION_MS = 30000;
-const TOTAL = Math.round((DURATION_MS / 1000) * FPS);
 
 const ffmpeg = resolve(
   process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers',
@@ -50,7 +48,10 @@ const page = await browser.newPage({ viewport: { width: W, height: H }, deviceSc
 await page.goto('file://' + htmlPath);
 await page.waitForFunction('window.__READY__ === true', { timeout: 10000 });
 
-console.log(`rendering ${TOTAL} frames @ ${FPS}fps…`);
+const DURATION_MS = await page.evaluate(() => window.__DURATION || 30000);
+const TOTAL = Math.round((DURATION_MS / 1000) * FPS);
+
+console.log(`rendering ${TOTAL} frames @ ${FPS}fps (${(DURATION_MS/1000).toFixed(1)}s)…`);
 const t0 = Date.now();
 for (let i = 0; i < TOTAL; i++) {
   await page.evaluate((ms) => window.__seek(ms), (i / FPS) * 1000);
