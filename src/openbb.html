@@ -221,16 +221,16 @@
           <div class="brief">
             <b class="h">📋 Today's Briefing</b>
             <div class="d">Monday, August 17 · plain-English summary of everything below</div>
-            <p>🔴 The market looks <em>leaning negative</em> right now — of the 8 stocks we track, <b>0 are up</b> and <b>8 are down</b> today. Volatility (VIX) is calm at 14.25.</p>
+            <p><span id="bDot">🔴</span> The market looks <em id="bLean">leaning negative</em> right now — of the 8 stocks we track, <b id="bUp">0 are up</b> and <b id="bDn">8 are down</b> today. Volatility (VIX) is calm at 14.25.</p>
           </div>
           <div class="stats">
-            <div class="st"><div class="l">📡 Market Sentiment</div><div class="v dn">Bearish</div><div class="s">0 up · 10 down of 10</div></div>
+            <div class="st"><div class="l">📡 Market Sentiment</div><div class="v dn" id="sentV">Bearish</div><div class="s" id="sentSub">0 up · 10 down of 10</div></div>
             <div class="st"><div class="l">🔥 High Conviction</div><div class="v dn">29</div><div class="s">signals need attention</div></div>
             <div class="st"><div class="l">📊 Symbols Tracked</div><div class="v ac">10</div><div class="s">watchlist + crypto</div></div>
             <div class="st"><div class="l">🏦 Fed Funds Rate</div><div class="v">3.5–3.75%</div><div class="s">current target rate</div></div>
           </div>
           <div class="hm-card">
-            <div class="hm-h"><span>🗺 Market Heatmap — 174 US stocks · sector by sector</span><span>updated 2h ago</span></div>
+            <div class="hm-h"><span>🗺 Market Heatmap — 174 US stocks · sector by sector</span><span id="hmUpd">updated 2h ago</span></div>
             <div class="hm" id="hm"></div>
           </div>
         </div>
@@ -355,24 +355,43 @@
   $("tape").innerHTML=tRow()+tRow();
   const tapeEl=$("tape"); let tapeW=0;
 
-  /* heatmap */
-  const hm=[["NVDA","-0.07",0,0,44,55],["AAPL","-0.11",0,55,44,45],["MSFT","-3.04",44,0,30,52],
-    ["AVGO","-0.14",74,0,26,52],["MU","+4.13",44,52,17,48],["AMD","-1.63",61,52,17,48],
-    ["ORCL","-2.57",78,52,22,24],["PLTR","-0.86",78,76,22,24]];
-  const hmColor=v=>{const n=parseFloat(v);return n>=3?"rgba(11,143,79,.55)":n>=1?"rgba(42,171,106,.5)":n>-1?"rgba(47,58,77,.4)":n>-3?"rgba(158,61,71,.5)":"rgba(192,57,43,.55)";};
+  /* heatmap — two snapshots so the auto-refresh visibly updates values + colours */
+  const hm=[["NVDA",-0.07,0,0,44,55],["AAPL",-0.11,0,55,44,45],["MSFT",-3.04,44,0,30,52],
+    ["AVGO",-0.14,74,0,26,52],["MU",4.13,44,52,17,48],["AMD",-1.63,61,52,17,48],
+    ["ORCL",-2.57,78,52,22,24],["PLTR",-0.86,78,76,22,24]];
+  const hm2v=[0.62,0.34,-2.11,0.28,4.88,-0.44,-1.72,0.51];   // values after the refresh
+  const lerpc=(a,b,e)=>a.map((v,i)=>Math.round(v+(b[i]-v)*e));
+  function hmColorC(n){ // continuous red↔neutral↔green so a value morph morphs the colour
+    const red=[158,61,71],mid=[47,58,77],grn=[11,143,79];
+    let c,al; if(n<=0){const e=clamp(-n/3.2); c=lerpc(mid,red,e); al=0.4+0.16*e;}
+    else{const e=clamp(n/4.4); c=lerpc(mid,grn,e); al=0.4+0.16*e;}
+    return `rgba(${c[0]},${c[1]},${c[2]},${al.toFixed(2)})`;
+  }
+  const fmtv=v=>(v>=0?"+":"")+v.toFixed(2)+"%";
   $("hm").innerHTML=hm.map(([s,v,x,y,w,h],i)=>
-    `<a class="blk" id="blk${i}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%;background:${hmColor(v)}">
-      <b style="font-size:${w>28?13:10}px">${s}</b><s style="font-size:${w>28?10:8}px">${v}%</s></a>`).join("");
+    `<a class="blk" id="blk${i}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%;background:${hmColorC(v)}">
+      <b style="font-size:${w>28?13:10}px">${s}</b><s class="hmv" style="font-size:${w>28?10:8}px">${fmtv(v)}</s></a>`).join("");
+  const hmBlk=[...document.querySelectorAll("#hm .blk")];
 
-  /* modal candlestick (NVDA-ish upward) */
-  (function(){const N=34,c=[];let p=196;for(let i=0;i<N;i++){const o=p,ch=0.5+Math.sin(i/5)*1.1+Math.sin(i*1.7)*0.6;const cl=o+ch;const hi=Math.max(o,cl)+0.6,lo=Math.min(o,cl)-0.6;c.push([o,hi,lo,cl]);p=cl;}
-    const lo=Math.min(...c.map(x=>x[2])),hi=Math.max(...c.map(x=>x[1])),W=600,H=150,cw=W/N,bw=cw*0.6;
-    const y=v=>8+(H-16)-(v-lo)/(hi-lo)*(H-16);let s="";
-    c.forEach((k,i)=>{const x=i*cw+cw/2,up=k[3]>=k[0],col=up?"#00e676":"#ff3d71";
-      s+=`<line x1="${x}" y1="${y(k[1])}" x2="${x}" y2="${y(k[2])}" stroke="${col}" stroke-width="1"/>`;
-      const yt=y(Math.max(k[0],k[3])),yb=y(Math.min(k[0],k[3]));
-      s+=`<rect x="${x-bw/2}" y="${yt}" width="${bw}" height="${Math.max(1,yb-yt)}" fill="${col}"/>`;});
-    $("mchart").innerHTML=s;})();
+  /* modal candlestick — distinct 1M and 1Y series (+ a moving-average indicator)
+     so clicking the timeframe pill actually redraws the chart */
+  function genChart(seed,N,base,drift,vol){
+    const c=[]; let p=base, rs=seed*97+3; const rnd=()=>{rs=(rs*9301+49297)%233280;return rs/233280;};
+    for(let i=0;i<N;i++){const o=p, ch=drift+Math.sin(i/4+seed)*vol+(rnd()-0.5)*vol*1.5;
+      const cl=o+ch, hi=Math.max(o,cl)+vol*0.6, lo=Math.min(o,cl)-vol*0.6; c.push([o,hi,lo,cl]); p=cl;}
+    const lo=Math.min(...c.map(x=>x[2])), hi=Math.max(...c.map(x=>x[1])), W=600,H=150,cw=W/N,bw=cw*0.58;
+    const Y=v=>8+(H-16)-(v-lo)/(hi-lo)*(H-16); let s="";
+    c.forEach((k,i)=>{const x=i*cw+cw/2, up=k[3]>=k[0], col=up?"#00e676":"#ff3d71";
+      s+=`<line x1="${x.toFixed(1)}" y1="${Y(k[1]).toFixed(1)}" x2="${x.toFixed(1)}" y2="${Y(k[2]).toFixed(1)}" stroke="${col}" stroke-width="1"/>`;
+      const yt=Y(Math.max(k[0],k[3])), yb=Y(Math.min(k[0],k[3]));
+      s+=`<rect x="${(x-bw/2).toFixed(1)}" y="${yt.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,yb-yt).toFixed(1)}" fill="${col}"/>`;});
+    let pts=""; for(let i=0;i<N;i++){const w0=Math.max(0,i-3);let m=0,ct=0;for(let j=w0;j<=i;j++){m+=c[j][3];ct++;}m/=ct;
+      pts+=`${(i*cw+cw/2).toFixed(1)},${Y(m).toFixed(1)} `;}
+    s+=`<polyline points="${pts.trim()}" fill="none" stroke="#00d4ff" stroke-width="1.7" opacity=".92"/>`;
+    return s;
+  }
+  $("mchart").innerHTML=`<g id="ch1m">${genChart(2,22,214,0.35,2.2)}</g>`+
+    `<g id="ch1y" style="opacity:0">${genChart(9,34,150,1.7,3.6)}</g>`;
 
   /* ---- demo timeline (absolute ms) ---- */
   // beats: [t0,t1, panel, tabKey, captionText]
@@ -410,8 +429,10 @@
     [3600, 430,380,1.16, 2,-3],
     [5300, 320,432,1.58, 3,-5],   // CLOSE on the NVDA heatmap tile
     [6000, 320,452,1.50, 2,-3],
-    [6480, 640,378,1.06,-2, 0],   // frame the modal
-    [8850, 640,378,1.44, 0, 0],   // CLOSE on the candlestick chart
+    [6520, 640,392,1.10,-2, 0],   // frame the full stock card as it opens
+    [7650, 616,300,1.30, 1, 0],   // move up to the timeframe pills for the click
+    [8250, 640,372,1.52, 0, 0],   // CLOSE on the chart as it redraws to 1Y
+    [9250, 640,374,1.18, 0, 0],
     [9550, 640,376,1.05, 0, 0],
     [9750, 640,360,1.00, 0, 0],   // Signals — wide
     [10600,240,300,1.28, 1, 4],   // into the high-conviction column (then it scrolls)
@@ -422,9 +443,11 @@
     [15450,640,342,1.15, 2, 0],
     [16300,1030,346,1.26,2,-4],   // pan across to the 3rd analyst
     [17050,640,360,1.02, 0, 0],
-    [17250,640,360,1.00, 0, 0],   // Overview — wide
-    [18600,640,360,1.05,-3, 0],   // slight tilt on the refresh pulse
-    [19700,640,360,1.00, 0, 0],
+    [17250,640,360,1.00, 0, 0],   // Overview — wide (refresh toast shows here)
+    [18100,640,360,1.03,-2, 0],
+    [18650,640,468,1.30, 2, 0],   // push into the heatmap as it refreshes
+    [19950,640,468,1.32, 2, 0],
+    [20550,640,360,1.03, 0, 0],
     [21000,640,360,1.00, 0, 0]
   ];
   function camAt(t){
@@ -503,9 +526,14 @@
       const m=$("modal"); const ms=Math.min(openP, 1-seg(t,9550,280));
       m.style.opacity=clamp(ms);
       m.style.transform=`translate(-50%,-50%) scale(${(0.72+0.28*openP).toFixed(3)})`;
-      // timeframe pill click at 7875: 1Y goes active + chart reloads (quick flash)
+      // timeframe pill click at 7875 → 1Y active; the chart redraws to a different series
       const y1=t>=7875; pills.forEach((s,i)=>s.classList.toggle("on", i===(y1?4:2)));
-      $("mchart").style.opacity=(1-0.6*bump(t,7875,280)).toFixed(3);
+      { const drawM=outCubic(seg(t,6000,720)), drawY=outCubic(seg(t,7960,560)), fadeM=clamp(seg(t,7875,240));
+        const cm=$("ch1m"), cy=$("ch1y");
+        cm.style.opacity=(clamp(drawM)*(1-fadeM)).toFixed(3);
+        cm.style.clipPath=`inset(0 ${((1-drawM)*100).toFixed(1)}% 0 0)`;
+        cy.style.opacity=(clamp(seg(t,7960,200))).toFixed(3);
+        cy.style.clipPath=`inset(0 ${((1-drawY)*100).toFixed(1)}% 0 0)`; }
       // sequential hover-glows through the signal rows / analyst cards
       glowSeq(sigRows,10500,700,t);
       glowSeq(anCards,14300,900,t);
@@ -513,9 +541,27 @@
       const scv=-150*inOut(clamp((t-10500)/2400));
       $("sc1").style.transform=`translateY(${scv.toFixed(1)}px)`;
       $("sc2").style.transform=`translateY(${(scv*0.86).toFixed(1)}px)`;
-      // auto-refresh moment (beat E): toast + green app-glow pulse
-      $("refresh").style.opacity=clamp(Math.min(seg(t,18300,220),1-seg(t,20500,280))).toFixed(2);
-      appEl.classList.toggle("refreshing", t>18600 && t<19600);
+      // auto-refresh moment (beat E): toast, green pulse, then the data actually updates
+      $("refresh").style.opacity=clamp(Math.min(seg(t,17600,220),1-seg(t,18800,260))).toFixed(2);
+      appEl.classList.toggle("refreshing", t>17650 && t<18800);
+      { // heatmap tiles morph old→new values + colours (staggered)
+        const rp=clamp((t-18450)/1150);
+        hmBlk.forEach((b,i)=>{ const loc=clamp(rp*1.35 - i*0.045), e=inOut(loc);
+          const v=hm[i][1]+(hm2v[i]-hm[i][1])*e, s=b.querySelector(".hmv");
+          if(s) s.textContent=fmtv(v);
+          b.style.background=hmColorC(v);
+          b.style.filter=`brightness(${(1+0.5*Math.sin(loc*Math.PI)).toFixed(2)})`;
+        });
+        // briefing + sentiment recompute along with it (5 up / 3 down after refresh)
+        const g=inOut(clamp((t-18600)/560)), uu=Math.round(5*g), dd=8-uu;
+        $("bUp").textContent=`${uu} are up`; $("bDn").textContent=`${dd} are down`;
+        $("sentSub").textContent=`${uu} up · ${10-uu} down of 10`;
+        $("bDot").textContent = uu>=4?"🟡":"🔴";
+        $("bLean").textContent = uu>=4?"turning mixed":"leaning negative";
+        $("sentV").textContent = uu>=4?"Mixed":"Bearish";
+        $("sentV").className = uu>=4?"v":"v dn";
+        $("hmUpd").textContent = g>0.15?"↻ updated just now":"updated 2h ago";
+      }
       // caption — cut in just after the whoosh, cut out fast
       let cb=null; for(const b of beats){ if(t>=b[0]&&t<b[1]) cb=b; }
       const cap=$("cap");
