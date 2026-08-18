@@ -1,0 +1,252 @@
+{
+  "$description": "Canadian personal income tax brackets and rates for the 2026 tax year, federal plus all 13 provinces and territories. Thresholds are the upper bound of taxable income for each bracket (null = no upper bound). Rates are marginal rates as decimals.",
+  "tax_year": 2026,
+  "currency": "CAD",
+  "last_updated": "2026-08-18",
+  "federal": {
+    "name": "Canada (federal)",
+    "indexation_factor": 1.02,
+    "basic_personal_amount": {
+      "max": 16452,
+      "min": 14829,
+      "note": "Enhanced BPA: $16,452 for net income up to the 4th bracket threshold, phased down to the minimum for income at or above the 5th bracket threshold. Minimum is computed from the 2025 value ($14,538) at the confirmed 2% indexation factor."
+    },
+    "notes": [
+      "The lowest federal rate was reduced to 14% effective July 1, 2025 (full-year blended rate of 14.5% for 2025); 2026 is the first full year at 14%.",
+      "Quebec residents receive a refundable Quebec abatement of 16.5% of basic federal tax."
+    ],
+    "brackets": [
+      { "up_to": 58523, "rate": 0.14 },
+      { "up_to": 117045, "rate": 0.205 },
+      { "up_to": 181440, "rate": 0.26 },
+      { "up_to": 258482, "rate": 0.29 },
+      { "up_to": null, "rate": 0.33 }
+    ]
+  },
+  "provinces": {
+    "AB": {
+      "name": "Alberta",
+      "indexation_factor": 1.02,
+      "basic_personal_amount": 22769,
+      "notes": [
+        "The 8% bottom bracket was introduced effective January 1, 2025 on the first $60,000; indexed to $61,200 for 2026."
+      ],
+      "brackets": [
+        { "up_to": 61200, "rate": 0.08 },
+        { "up_to": 151234, "rate": 0.1 },
+        { "up_to": 181480, "rate": 0.12 },
+        { "up_to": 241975, "rate": 0.13 },
+        { "up_to": 362962, "rate": 0.14 },
+        { "up_to": null, "rate": 0.15 }
+      ]
+    },
+    "BC": {
+      "name": "British Columbia",
+      "indexation_factor": 1.022,
+      "basic_personal_amount": 13217,
+      "notes": [
+        "BC Budget 2026 raised the bottom bracket rate from 5.06% to 5.6% for 2026 and later years.",
+        "Bracket indexation is paused for 2027-2030 and resumes in 2031.",
+        "A low-income tax reduction eliminates BC tax for taxable income up to roughly $24,580 (2026).",
+        "Thresholds after the first are computed from 2025 values at the confirmed 2.2% indexation factor; first threshold ($50,363) independently confirmed."
+      ],
+      "brackets": [
+        { "up_to": 50363, "rate": 0.056 },
+        { "up_to": 100728, "rate": 0.077 },
+        { "up_to": 115647, "rate": 0.105 },
+        { "up_to": 140430, "rate": 0.1229 },
+        { "up_to": 190405, "rate": 0.147 },
+        { "up_to": 265545, "rate": 0.168 },
+        { "up_to": null, "rate": 0.205 }
+      ]
+    },
+    "SK": {
+      "name": "Saskatchewan",
+      "indexation_factor": 1.02,
+      "basic_personal_amount": 19371,
+      "notes": [
+        "BPA computed from 2025 value ($18,991) at the federal 2% indexation factor Saskatchewan uses."
+      ],
+      "brackets": [
+        { "up_to": 54532, "rate": 0.105 },
+        { "up_to": 155805, "rate": 0.125 },
+        { "up_to": null, "rate": 0.145 }
+      ]
+    },
+    "MB": {
+      "name": "Manitoba",
+      "indexation_factor": 1.012,
+      "basic_personal_amount": 15780,
+      "notes": [
+        "Manitoba paused bracket indexation for 2025 and resumed at 1.2% for 2026.",
+        "The BPA is phased out for high incomes (phase-out introduced in 2025)."
+      ],
+      "brackets": [
+        { "up_to": 47564, "rate": 0.108 },
+        { "up_to": 101200, "rate": 0.1275 },
+        { "up_to": null, "rate": 0.174 }
+      ]
+    },
+    "ON": {
+      "name": "Ontario",
+      "indexation_factor": 1.019,
+      "basic_personal_amount": 12989,
+      "surtax": {
+        "description": "Surtax on Ontario basic tax payable: 20% of tax over the first threshold plus an additional 36% of tax over the second threshold.",
+        "thresholds": [
+          { "tax_over": 5818, "rate": 0.2 },
+          { "tax_over": 7446, "rate": 0.36 }
+        ]
+      },
+      "health_premium": {
+        "description": "Ontario Health Premium, payable on taxable income over $20,000, maximum $900. Table is set in legislation and not indexed.",
+        "schedule": [
+          { "income_up_to": 20000, "premium": 0 },
+          { "income_up_to": 25000, "premium": "6% of income over 20000" },
+          { "income_up_to": 36000, "premium": 300 },
+          { "income_up_to": 38500, "premium": "300 + 6% of income over 36000" },
+          { "income_up_to": 48000, "premium": 450 },
+          { "income_up_to": 48600, "premium": "450 + 25% of income over 48000" },
+          { "income_up_to": 72000, "premium": 600 },
+          { "income_up_to": 72600, "premium": "600 + 25% of income over 72000" },
+          { "income_up_to": 200000, "premium": 750 },
+          { "income_up_to": 200600, "premium": "750 + 25% of income over 200000" },
+          { "income_up_to": null, "premium": 900 }
+        ]
+      },
+      "notes": [
+        "The $150,000 and $220,000 thresholds are not indexed; other thresholds indexed at 1.9% for 2026."
+      ],
+      "brackets": [
+        { "up_to": 53891, "rate": 0.0505 },
+        { "up_to": 107785, "rate": 0.0915 },
+        { "up_to": 150000, "rate": 0.1116 },
+        { "up_to": 220000, "rate": 0.1216 },
+        { "up_to": null, "rate": 0.1316 }
+      ]
+    },
+    "QC": {
+      "name": "Quebec",
+      "indexation_factor": 1.0205,
+      "basic_personal_amount": 18952,
+      "notes": [
+        "Quebec administers its own income tax through Revenu Quebec; residents also get a 16.5% abatement on basic federal tax.",
+        "Indexed 2.05% for 2026."
+      ],
+      "brackets": [
+        { "up_to": 54345, "rate": 0.14 },
+        { "up_to": 108680, "rate": 0.19 },
+        { "up_to": 132245, "rate": 0.24 },
+        { "up_to": null, "rate": 0.2575 }
+      ]
+    },
+    "NB": {
+      "name": "New Brunswick",
+      "indexation_factor": 1.02,
+      "basic_personal_amount": 13664,
+      "notes": [
+        "Thresholds after the first and the BPA are computed from 2025 values at the confirmed 2% indexation factor; first threshold ($52,332) independently confirmed."
+      ],
+      "brackets": [
+        { "up_to": 52332, "rate": 0.094 },
+        { "up_to": 104666, "rate": 0.14 },
+        { "up_to": 193861, "rate": 0.16 },
+        { "up_to": null, "rate": 0.195 }
+      ]
+    },
+    "NS": {
+      "name": "Nova Scotia",
+      "indexation_factor": 1.016,
+      "basic_personal_amount": 11932,
+      "notes": [
+        "Nova Scotia began indexing brackets and credits in 2025; 1.6% factor for 2026.",
+        "Thresholds after the first are computed from 2025 values at the confirmed 1.6% factor; first threshold ($30,995) independently confirmed."
+      ],
+      "brackets": [
+        { "up_to": 30995, "rate": 0.0879 },
+        { "up_to": 61991, "rate": 0.1495 },
+        { "up_to": 97417, "rate": 0.1667 },
+        { "up_to": 157124, "rate": 0.175 },
+        { "up_to": null, "rate": 0.21 }
+      ]
+    },
+    "PE": {
+      "name": "Prince Edward Island",
+      "indexation_factor": 1.018,
+      "basic_personal_amount": null,
+      "notes": [
+        "PEI abolished its surtax as of 2024.",
+        "The PEI BPA is set by budget rather than indexation and the 2026 figure could not be verified from reachable sources (2025 value was $14,250); left null rather than guessed."
+      ],
+      "brackets": [
+        { "up_to": 33928, "rate": 0.095 },
+        { "up_to": 65820, "rate": 0.1347 },
+        { "up_to": 106890, "rate": 0.166 },
+        { "up_to": 142520, "rate": 0.1762 },
+        { "up_to": null, "rate": 0.19 }
+      ]
+    },
+    "NL": {
+      "name": "Newfoundland and Labrador",
+      "indexation_factor": 1.011,
+      "basic_personal_amount": 11189,
+      "notes": [
+        "BPA computed from 2025 value ($11,067) at the 1.1% provincial indexation factor implied by the confirmed 2026 bracket thresholds."
+      ],
+      "brackets": [
+        { "up_to": 44678, "rate": 0.087 },
+        { "up_to": 89354, "rate": 0.145 },
+        { "up_to": 159528, "rate": 0.158 },
+        { "up_to": 223340, "rate": 0.178 },
+        { "up_to": 285319, "rate": 0.198 },
+        { "up_to": 570638, "rate": 0.208 },
+        { "up_to": 1141275, "rate": 0.213 },
+        { "up_to": null, "rate": 0.218 }
+      ]
+    },
+    "YT": {
+      "name": "Yukon",
+      "indexation_factor": 1.02,
+      "basic_personal_amount": 16452,
+      "notes": [
+        "Yukon mirrors the federal bracket thresholds (except its own $500,000 top bracket) and the federal enhanced BPA."
+      ],
+      "brackets": [
+        { "up_to": 58523, "rate": 0.064 },
+        { "up_to": 117045, "rate": 0.09 },
+        { "up_to": 181440, "rate": 0.109 },
+        { "up_to": 500000, "rate": 0.128 },
+        { "up_to": null, "rate": 0.15 }
+      ]
+    },
+    "NT": {
+      "name": "Northwest Territories",
+      "indexation_factor": 1.02,
+      "basic_personal_amount": 18199,
+      "notes": [
+        "BPA computed from 2025 value ($17,842) at the confirmed 2% indexation factor."
+      ],
+      "brackets": [
+        { "up_to": 53003, "rate": 0.059 },
+        { "up_to": 106009, "rate": 0.086 },
+        { "up_to": 172346, "rate": 0.122 },
+        { "up_to": null, "rate": 0.1405 }
+      ]
+    },
+    "NU": {
+      "name": "Nunavut",
+      "indexation_factor": 1.02,
+      "basic_personal_amount": 19659,
+      "notes": [
+        "BPA computed from 2025 value ($19,274) at the confirmed 2% indexation factor.",
+        "Middle threshold appears as $111,601 or $111,602 in different sources (rounding); CRA convention rounding of $109,413 x 1.02 gives $111,601."
+      ],
+      "brackets": [
+        { "up_to": 55801, "rate": 0.04 },
+        { "up_to": 111601, "rate": 0.07 },
+        { "up_to": 181439, "rate": 0.09 },
+        { "up_to": null, "rate": 0.115 }
+      ]
+    }
+  }
+}

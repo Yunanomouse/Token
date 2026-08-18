@@ -1,0 +1,11 @@
+program,payer,rate,earnings_ceiling,exemption_or_band_floor,max_contribution
+CPP,employee,0.0595,74600,3500,4230.45
+CPP,self_employed,0.119,74600,3500,8460.9
+CPP2,employee,0.04,85000,74600,416.0
+CPP2,self_employed,0.08,85000,74600,832.0
+QPP,employee,0.063,74600,3500,4479.3
+EI,employee,0.0163,68900,0,1123.07
+EI,employer,0.02282,68900,0,1572.3
+EI_QC,employee,0.013,68900,0,895.7
+QPIP,employee,0.0043,103000,0,442.9
+QPIP,employer,0.00602,103000,0,620.06

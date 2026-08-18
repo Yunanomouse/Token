@@ -1,0 +1,64 @@
+{
+  "$description": "Canadian payroll contribution rates and maximums for 2026: CPP/CPP2, QPP/QPP2, EI (federal and Quebec), and QPIP. Rates are decimals.",
+  "tax_year": 2026,
+  "currency": "CAD",
+  "last_updated": "2026-08-18",
+  "cpp": {
+    "name": "Canada Pension Plan (base + first additional)",
+    "ympe": 74600,
+    "basic_exemption": 3500,
+    "employee_rate": 0.0595,
+    "employer_rate": 0.0595,
+    "self_employed_rate": 0.119,
+    "max_employee_contribution": 4230.45,
+    "max_self_employed_contribution": 8460.9,
+    "note": "YMPE (Year's Maximum Pensionable Earnings) rose from $71,300 in 2025 to $74,600 in 2026."
+  },
+  "cpp2": {
+    "name": "CPP second additional contribution (CPP2)",
+    "yampe": 85000,
+    "earnings_band": { "from": 74600, "to": 85000 },
+    "employee_rate": 0.04,
+    "employer_rate": 0.04,
+    "self_employed_rate": 0.08,
+    "max_employee_contribution": 416.0,
+    "max_self_employed_contribution": 832.0,
+    "note": "Applies to pensionable earnings between the YMPE and the YAMPE (Year's Additional Maximum Pensionable Earnings, $85,000 in 2026, up from $81,200 in 2025)."
+  },
+  "qpp": {
+    "name": "Quebec Pension Plan (base + first additional)",
+    "ympe": 74600,
+    "basic_exemption": 3500,
+    "employee_rate": 0.063,
+    "employer_rate": 0.063,
+    "max_employee_contribution": 4479.3,
+    "qpp2_rate": 0.04,
+    "qpp2_earnings_band": { "from": 74600, "to": 85000 },
+    "note": "Quebec reduced the QPP first-tier rate to 6.30% for 2026 (it was 6.40% in 2025). QPP2 mirrors CPP2 at 4% on the YMPE-YAMPE band."
+  },
+  "ei": {
+    "name": "Employment Insurance",
+    "maximum_insurable_earnings": 68900,
+    "employee_rate": 0.0163,
+    "employer_rate_multiplier": 1.4,
+    "employer_rate": 0.02282,
+    "max_employee_premium": 1123.07,
+    "max_employer_premium_per_employee": 1572.3,
+    "quebec": {
+      "employee_rate": 0.013,
+      "employer_rate": 0.0182,
+      "max_employee_premium": 895.7,
+      "note": "Quebec workers pay a reduced EI rate because parental benefits are provided through QPIP instead."
+    },
+    "note": "Maximum insurable earnings rose from $65,700 in 2025 to $68,900 in 2026; the employee rate is $1.63 per $100 of insurable earnings."
+  },
+  "qpip": {
+    "name": "Quebec Parental Insurance Plan",
+    "maximum_insurable_earnings": 103000,
+    "employee_rate": 0.0043,
+    "employer_rate": 0.00602,
+    "max_employee_premium": 442.9,
+    "max_employer_premium_per_employee": 620.06,
+    "note": "QPIP premium rates fell for 2026 (employee rate from 0.494% to 0.430%) while the insurable earnings maximum rose to $103,000."
+  }
+}

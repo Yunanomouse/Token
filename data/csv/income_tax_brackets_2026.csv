@@ -1,0 +1,69 @@
+jurisdiction_code,jurisdiction,bracket,income_from,income_to,marginal_rate
+CA,Canada (federal),1,0,58523,0.14
+CA,Canada (federal),2,58523,117045,0.205
+CA,Canada (federal),3,117045,181440,0.26
+CA,Canada (federal),4,181440,258482,0.29
+CA,Canada (federal),5,258482,,0.33
+AB,Alberta,1,0,61200,0.08
+AB,Alberta,2,61200,151234,0.1
+AB,Alberta,3,151234,181480,0.12
+AB,Alberta,4,181480,241975,0.13
+AB,Alberta,5,241975,362962,0.14
+AB,Alberta,6,362962,,0.15
+BC,British Columbia,1,0,50363,0.056
+BC,British Columbia,2,50363,100728,0.077
+BC,British Columbia,3,100728,115647,0.105
+BC,British Columbia,4,115647,140430,0.1229
+BC,British Columbia,5,140430,190405,0.147
+BC,British Columbia,6,190405,265545,0.168
+BC,British Columbia,7,265545,,0.205
+SK,Saskatchewan,1,0,54532,0.105
+SK,Saskatchewan,2,54532,155805,0.125
+SK,Saskatchewan,3,155805,,0.145
+MB,Manitoba,1,0,47564,0.108
+MB,Manitoba,2,47564,101200,0.1275
+MB,Manitoba,3,101200,,0.174
+ON,Ontario,1,0,53891,0.0505
+ON,Ontario,2,53891,107785,0.0915
+ON,Ontario,3,107785,150000,0.1116
+ON,Ontario,4,150000,220000,0.1216
+ON,Ontario,5,220000,,0.1316
+QC,Quebec,1,0,54345,0.14
+QC,Quebec,2,54345,108680,0.19
+QC,Quebec,3,108680,132245,0.24
+QC,Quebec,4,132245,,0.2575
+NB,New Brunswick,1,0,52332,0.094
+NB,New Brunswick,2,52332,104666,0.14
+NB,New Brunswick,3,104666,193861,0.16
+NB,New Brunswick,4,193861,,0.195
+NS,Nova Scotia,1,0,30995,0.0879
+NS,Nova Scotia,2,30995,61991,0.1495
+NS,Nova Scotia,3,61991,97417,0.1667
+NS,Nova Scotia,4,97417,157124,0.175
+NS,Nova Scotia,5,157124,,0.21
+PE,Prince Edward Island,1,0,33928,0.095
+PE,Prince Edward Island,2,33928,65820,0.1347
+PE,Prince Edward Island,3,65820,106890,0.166
+PE,Prince Edward Island,4,106890,142520,0.1762
+PE,Prince Edward Island,5,142520,,0.19
+NL,Newfoundland and Labrador,1,0,44678,0.087
+NL,Newfoundland and Labrador,2,44678,89354,0.145
+NL,Newfoundland and Labrador,3,89354,159528,0.158
+NL,Newfoundland and Labrador,4,159528,223340,0.178
+NL,Newfoundland and Labrador,5,223340,285319,0.198
+NL,Newfoundland and Labrador,6,285319,570638,0.208
+NL,Newfoundland and Labrador,7,570638,1141275,0.213
+NL,Newfoundland and Labrador,8,1141275,,0.218
+YT,Yukon,1,0,58523,0.064
+YT,Yukon,2,58523,117045,0.09
+YT,Yukon,3,117045,181440,0.109
+YT,Yukon,4,181440,500000,0.128
+YT,Yukon,5,500000,,0.15
+NT,Northwest Territories,1,0,53003,0.059
+NT,Northwest Territories,2,53003,106009,0.086
+NT,Northwest Territories,3,106009,172346,0.122
+NT,Northwest Territories,4,172346,,0.1405
+NU,Nunavut,1,0,55801,0.04
+NU,Nunavut,2,55801,111601,0.07
+NU,Nunavut,3,111601,181439,0.09
+NU,Nunavut,4,181439,,0.115

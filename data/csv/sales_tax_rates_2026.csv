@@ -1,0 +1,14 @@
+jurisdiction_code,jurisdiction,system,gst,pst_or_qst,hst,total_rate
+AB,Alberta,GST,0.05,0.0,,0.05
+BC,British Columbia,GST + PST,0.05,0.07,,0.12
+SK,Saskatchewan,GST + PST,0.05,0.06,,0.11
+MB,Manitoba,GST + RST,0.05,0.07,,0.12
+ON,Ontario,HST,,,0.13,0.13
+QC,Quebec,GST + QST,0.05,0.09975,,0.14975
+NB,New Brunswick,HST,,,0.15,0.15
+NS,Nova Scotia,HST,,,0.14,0.14
+PE,Prince Edward Island,HST,,,0.15,0.15
+NL,Newfoundland and Labrador,HST,,,0.15,0.15
+YT,Yukon,GST,0.05,0.0,,0.05
+NT,Northwest Territories,GST,0.05,0.0,,0.05
+NU,Nunavut,GST,0.05,0.0,,0.05

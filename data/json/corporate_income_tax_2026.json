@@ -1,0 +1,32 @@
+{
+  "$description": "Canadian corporate income tax rates for 2026: federal and provincial/territorial general and small-business (CCPC) rates on active business income. Rates are decimals.",
+  "tax_year": 2026,
+  "currency": "CAD",
+  "last_updated": "2026-08-18",
+  "federal": {
+    "general_rate": 0.15,
+    "small_business_rate": 0.09,
+    "small_business_limit": 500000,
+    "note": "General rate is 38% less 10% federal abatement less 13% general rate reduction = 15%. The small-business rate applies to CCPC active business income up to the business limit, shared among associated corporations and phased out at high taxable capital."
+  },
+  "provincial": {
+    "AB": { "name": "Alberta", "general_rate": 0.08, "small_business_rate": 0.02, "small_business_limit": 500000 },
+    "BC": { "name": "British Columbia", "general_rate": 0.12, "small_business_rate": 0.02, "small_business_limit": 500000 },
+    "SK": { "name": "Saskatchewan", "general_rate": 0.12, "small_business_rate": 0.01, "small_business_limit": 600000, "note": "Saskatchewan's 1% small-business rate was made permanent in 2025; its business limit is $600,000, the only province above $500,000." },
+    "MB": { "name": "Manitoba", "general_rate": 0.12, "small_business_rate": 0.0, "small_business_limit": 500000 },
+    "ON": { "name": "Ontario", "general_rate": 0.115, "small_business_rate": 0.032, "small_business_limit": 500000, "note": "Small-business rate reduced from 3.2% to 2.2% for taxation years beginning on or after July 1, 2026." },
+    "QC": { "name": "Quebec", "general_rate": 0.115, "small_business_rate": 0.032, "small_business_limit": 500000, "note": "Small-business rate reduced from 3.2% to 2.2% for taxation years beginning after April 29, 2026. Quebec's small-business rate requires minimum employee paid-hours; corporations that do not qualify pay the general rate." },
+    "NB": { "name": "New Brunswick", "general_rate": 0.14, "small_business_rate": 0.025, "small_business_limit": 500000 },
+    "NS": { "name": "Nova Scotia", "general_rate": 0.14, "small_business_rate": 0.015, "small_business_limit": 500000, "note": "General rate cut from 16% to 14% and small-business rate from 2.5% to 1.5% effective April 1, 2025." },
+    "PE": { "name": "Prince Edward Island", "general_rate": 0.16, "small_business_rate": 0.01, "small_business_limit": 500000 },
+    "NL": { "name": "Newfoundland and Labrador", "general_rate": 0.15, "small_business_rate": 0.02, "small_business_limit": 500000, "note": "Small-business rate reduced from 2.5% to 2.0% effective January 1, 2026." },
+    "YT": { "name": "Yukon", "general_rate": 0.12, "small_business_rate": 0.0, "small_business_limit": 500000 },
+    "NT": { "name": "Northwest Territories", "general_rate": 0.115, "small_business_rate": 0.02, "small_business_limit": 500000 },
+    "NU": { "name": "Nunavut", "general_rate": 0.12, "small_business_rate": 0.03, "small_business_limit": 500000 }
+  },
+  "notes": [
+    "Rates shown are calendar-2026 statutory rates; mid-year changes (ON and QC small-business cuts) apply by taxation-year start date and are noted per jurisdiction.",
+    "CCPC investment income is taxed federally at 38.67% (with refundable components) — not modelled here.",
+    "Verify against the relevant provincial finance department before filing; provincial budgets can change rates in-year."
+  ]
+}

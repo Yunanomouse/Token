@@ -1,0 +1,15 @@
+jurisdiction_code,jurisdiction,bpa_max,bpa_min_if_phased
+CA,Canada (federal),16452,14829
+AB,Alberta,22769,
+BC,British Columbia,13217,
+SK,Saskatchewan,19371,
+MB,Manitoba,15780,
+ON,Ontario,12989,
+QC,Quebec,18952,
+NB,New Brunswick,13664,
+NS,Nova Scotia,11932,
+PE,Prince Edward Island,,
+NL,Newfoundland and Labrador,11189,
+YT,Yukon,16452,
+NT,Northwest Territories,18199,
+NU,Nunavut,19659,

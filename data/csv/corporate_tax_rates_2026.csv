@@ -1,0 +1,15 @@
+jurisdiction_code,jurisdiction,general_rate,small_business_rate,small_business_limit
+CA,Canada (federal),0.15,0.09,500000
+AB,Alberta,0.08,0.02,500000
+BC,British Columbia,0.12,0.02,500000
+SK,Saskatchewan,0.12,0.01,600000
+MB,Manitoba,0.12,0.0,500000
+ON,Ontario,0.115,0.032,500000
+QC,Quebec,0.115,0.032,500000
+NB,New Brunswick,0.14,0.025,500000
+NS,Nova Scotia,0.14,0.015,500000
+PE,Prince Edward Island,0.16,0.01,500000
+NL,Newfoundland and Labrador,0.15,0.02,500000
+YT,Yukon,0.12,0.0,500000
+NT,Northwest Territories,0.115,0.02,500000
+NU,Nunavut,0.12,0.03,500000

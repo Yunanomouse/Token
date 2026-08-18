@@ -1,0 +1,24 @@
+{
+  "$description": "Canadian sales tax rates in effect for 2026 by province/territory: federal GST, provincial PST/QST, and harmonized HST. Rates are decimals; total_rate is the combined rate on a typical taxable sale.",
+  "as_of": "2026-08-18",
+  "federal_gst_rate": 0.05,
+  "jurisdictions": {
+    "AB": { "name": "Alberta", "system": "GST", "gst": 0.05, "pst": 0.0, "hst": null, "total_rate": 0.05 },
+    "BC": { "name": "British Columbia", "system": "GST + PST", "gst": 0.05, "pst": 0.07, "hst": null, "total_rate": 0.12 },
+    "SK": { "name": "Saskatchewan", "system": "GST + PST", "gst": 0.05, "pst": 0.06, "hst": null, "total_rate": 0.11 },
+    "MB": { "name": "Manitoba", "system": "GST + RST", "gst": 0.05, "pst": 0.07, "hst": null, "total_rate": 0.12 },
+    "ON": { "name": "Ontario", "system": "HST", "gst": null, "pst": null, "hst": 0.13, "total_rate": 0.13 },
+    "QC": { "name": "Quebec", "system": "GST + QST", "gst": 0.05, "pst": 0.09975, "hst": null, "total_rate": 0.14975 },
+    "NB": { "name": "New Brunswick", "system": "HST", "gst": null, "pst": null, "hst": 0.15, "total_rate": 0.15 },
+    "NS": { "name": "Nova Scotia", "system": "HST", "gst": null, "pst": null, "hst": 0.14, "total_rate": 0.14, "note": "HST reduced from 15% to 14% effective April 1, 2025." },
+    "PE": { "name": "Prince Edward Island", "system": "HST", "gst": null, "pst": null, "hst": 0.15, "total_rate": 0.15 },
+    "NL": { "name": "Newfoundland and Labrador", "system": "HST", "gst": null, "pst": null, "hst": 0.15, "total_rate": 0.15 },
+    "YT": { "name": "Yukon", "system": "GST", "gst": 0.05, "pst": 0.0, "hst": null, "total_rate": 0.05 },
+    "NT": { "name": "Northwest Territories", "system": "GST", "gst": 0.05, "pst": 0.0, "hst": null, "total_rate": 0.05 },
+    "NU": { "name": "Nunavut", "system": "GST", "gst": 0.05, "pst": 0.0, "hst": null, "total_rate": 0.05 }
+  },
+  "notes": [
+    "PST/QST bases differ by province (e.g. QST applies to the sale price excluding GST since 2013; BC/SK/MB PST have their own exemption lists).",
+    "Zero-rated (basic groceries, prescription drugs, exports) and exempt supplies (residential rent, most health/education services) exist under GST/HST in all jurisdictions."
+  ]
+}

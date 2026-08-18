@@ -1,0 +1,43 @@
+{
+  "$description": "Key Canadian tax credits, registered account limits, and system parameters for 2026.",
+  "tax_year": 2026,
+  "currency": "CAD",
+  "last_updated": "2026-08-18",
+  "registered_accounts": {
+    "tfsa": {
+      "annual_limit": 7000,
+      "cumulative_room_since_2009": 109000,
+      "note": "Cumulative room applies to someone 18+ in 2009 who has never contributed."
+    },
+    "rrsp": {
+      "annual_limit": 33810,
+      "formula": "18% of previous year's earned income, up to the annual limit; unused room carries forward indefinitely."
+    },
+    "fhsa": {
+      "annual_limit": 8000,
+      "lifetime_limit": 40000,
+      "max_carry_forward": 8000,
+      "note": "Maximum single-year contribution is $16,000 ($8,000 annual + $8,000 carried forward)."
+    }
+  },
+  "credits": {
+    "federal_basic_personal_amount": { "max": 16452, "min": 14829 },
+    "credit_rate_federal": 0.14,
+    "note": "Federal non-refundable credits are valued at the lowest federal rate (14% in 2026). Provincial credits use each province's lowest rate."
+  },
+  "oas": {
+    "clawback_threshold": 95323,
+    "recovery_rate": 0.15,
+    "note": "OAS recovery tax: 15% of net income above the threshold for the 2026 income year."
+  },
+  "capital_gains": {
+    "inclusion_rate": 0.5,
+    "note": "The proposed increase to a 2/3 inclusion rate was cancelled in March 2025; the rate remains 50%.",
+    "lifetime_capital_gains_exemption": 1250000
+  },
+  "other": {
+    "quebec_abatement_rate": 0.165,
+    "consumer_carbon_price": null,
+    "consumer_carbon_note": "The federal consumer fuel charge (carbon tax) was ended effective April 1, 2025."
+  }
+}
