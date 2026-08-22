@@ -16,6 +16,8 @@ Machine-readable dataset of Canada's tax system for the **2026 tax year**: perso
 | `examples/trader_scenario_comparison.py` | Compares sole-proprietor / max-RRSP / CCPC outcomes for full-time trading income |
 | `docs/trader_taxation.md` | How Canada taxes active ("scalp") trading and the legitimate levers to reduce it |
 | `docs/incorporation_checklist.md` | Step-by-step checklist for moving personal trading into a corporate brokerage account |
+| `web/` | Browser calculator: personal tax estimate, all-jurisdiction comparison, sales/corporate/limits reference |
+| `scripts/verify_web_parity.mjs` | Checks the browser engine against `income_tax_calculator.py` figure by figure |
 
 ## Quick start
 
@@ -26,6 +28,32 @@ python3 examples/income_tax_calculator.py 90000 ON
 # Regenerate the CSVs after editing the JSON
 python3 scripts/generate_csv.py
 ```
+
+### Web calculator
+
+The same estimate in the browser, plus a side-by-side comparison of all 14
+jurisdictions at your income. It reads the JSON directly, so there is no build
+step and no dependencies.
+
+```bash
+python3 -m http.server 8000    # from the repository root
+# then open http://localhost:8000/web/
+```
+
+Serve it rather than opening `web/index.html` with `file://`, which blocks the
+fetch of `data/json/`. State lives in the URL, so
+`?income=140000&province=BC` is shareable.
+
+The tax math lives in `web/tax.js` and mirrors `examples/income_tax_calculator.py`
+line for line. To prove the two agree:
+
+```bash
+node scripts/verify_web_parity.mjs
+```
+
+That compares federal tax, provincial tax, total deductions and take-home across
+every jurisdiction at 11 income levels and fails if any figure drifts by more
+than a cent. Re-run it after editing either implementation.
 
 All JSON files are plain UTF-8 with no dependencies; rates are decimals (0.14 = 14%), amounts are CAD, and bracket `up_to: null` means no upper bound.
 
