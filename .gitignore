@@ -5,3 +5,8 @@ __pycache__/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Scratch clones from research (reference only, never vendored)
+/quest/
+/QOKit/
+/QTensor/
