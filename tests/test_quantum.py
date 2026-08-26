@@ -980,6 +980,126 @@ class TestSubspace(unittest.TestCase):
             HammingSubspace.build(60, 30)
 
 
+class TestGroverSearch(unittest.TestCase):
+    """Grover adaptive search: correct algorithm, honestly accounted."""
+
+    def test_amplification_peaks_at_the_predicted_iteration(self):
+        from quantum.search import amplify, grover_iterations_for
+
+        rng = np.random.default_rng(0)
+        n_items = 4096
+        for n_marked in (1, 16, 64):
+            costs = np.ones(n_items)
+            costs[rng.choice(n_items, n_marked, replace=False)] = 0.0
+            marked = costs < 0.5
+            predicted = grover_iterations_for(n_items, n_marked)
+
+            amplitudes = np.full(n_items, 1 / math.sqrt(n_items))
+            amplify(amplitudes, marked, predicted)
+            probability = float((amplitudes[marked] ** 2).sum())
+            # At the predicted iteration the marked subspace should dominate.
+            self.assertGreater(probability, 0.9, f"k={n_marked}")
+
+    def test_amplification_preserves_norm(self):
+        from quantum.search import amplify
+
+        rng = np.random.default_rng(1)
+        n_items = 512
+        marked = rng.random(n_items) < 0.05
+        amplitudes = np.full(n_items, 1 / math.sqrt(n_items))
+        amplify(amplitudes, marked, 7)
+        self.assertAlmostEqual(float(np.linalg.norm(amplitudes)), 1.0, places=10)
+
+    def test_finds_the_true_minimum(self):
+        from quantum.search import grover_adaptive_search
+
+        for n_items in (128, 512, 2048):
+            hits = 0
+            for trial in range(10):
+                costs = np.random.default_rng(trial).normal(size=n_items)
+                result = grover_adaptive_search(
+                    costs, rng=np.random.default_rng(trial)
+                )
+                hits += result.found_optimum
+            self.assertGreaterEqual(hits, 9, f"N={n_items} found only {hits}/10")
+
+    def test_query_count_scales_sublinearly(self):
+        """Oracle calls should grow like sqrt(N), well below an exhaustive scan."""
+        from quantum.search import grover_adaptive_search
+
+        for n_items in (1024, 4096, 16384):
+            calls = [
+                grover_adaptive_search(
+                    np.random.default_rng(t).normal(size=n_items),
+                    rng=np.random.default_rng(t),
+                ).oracle_calls
+                for t in range(8)
+            ]
+            self.assertLess(float(np.mean(calls)), n_items / 4)
+
+    def test_reports_simulation_overhead_honestly(self):
+        """The result must not let a query-count speedup read as a wall-clock one."""
+        from quantum.search import grover_adaptive_search
+
+        costs = np.random.default_rng(0).normal(size=1024)
+        result = grover_adaptive_search(costs, rng=np.random.default_rng(0))
+        # Simulating the search does strictly more work than scanning the table.
+        self.assertGreater(result.simulated_element_ops, result.n_items)
+        self.assertGreater(result.simulation_overhead_vs_argmin, 1.0)
+        self.assertIn("oracle", result.hardware_note())
+
+    def test_degenerate_inputs(self):
+        from quantum.search import grover_adaptive_search
+
+        single = grover_adaptive_search(np.array([2.5]))
+        self.assertEqual(single.index, 0)
+        self.assertTrue(single.found_optimum)
+        with self.assertRaises(ValueError):
+            grover_adaptive_search(np.array([]))
+
+    def test_constant_landscape_terminates(self):
+        """No candidate beats the threshold: the loop must exit, not spin."""
+        from quantum.search import grover_adaptive_search
+
+        result = grover_adaptive_search(np.zeros(256), rng=np.random.default_rng(0))
+        self.assertTrue(result.found_optimum)
+        self.assertLess(result.oracle_calls, 256)
+
+    def test_portfolio_route_finds_the_constrained_optimum(self):
+        from quantum.market import synthetic_prices
+        from quantum.portfolio import (
+            PortfolioConstraints, PortfolioProblem, exhaustive_cardinality, solve_portfolio,
+        )
+
+        market = synthetic_prices(n_assets=14, n_days=756, seed=7)
+        cardinality = 4
+        problem = PortfolioProblem(
+            market.expected_returns, market.covariance, market.tickers,
+            risk_aversion=2.0,
+            constraints=PortfolioConstraints(cardinality=cardinality),
+        )
+        mask, _ = exhaustive_cardinality(
+            market.expected_returns, market.covariance, cardinality, 2.0
+        )
+        truth = set(np.nonzero(mask)[0].tolist())
+
+        result = solve_portfolio(problem, solver="grover", rng=np.random.default_rng(0))
+        self.assertEqual(set(np.nonzero(result.weights > 1e-9)[0].tolist()), truth)
+        self.assertEqual(len(result.holdings), cardinality)
+        detail = result.solver_result.detail
+        self.assertEqual(detail["feasible_candidates"], math.comb(14, cardinality))
+        self.assertLess(detail["oracle_calls"], detail["exhaustive_calls"])
+
+    def test_portfolio_route_requires_cardinality(self):
+        from quantum.market import synthetic_prices
+        from quantum.portfolio import PortfolioProblem, solve_portfolio
+
+        market = synthetic_prices(n_assets=6, n_days=300, seed=0)
+        problem = PortfolioProblem(market.expected_returns, market.covariance, market.tickers)
+        with self.assertRaises(ValueError):
+            solve_portfolio(problem, solver="grover")
+
+
 class TestLocality(unittest.TestCase):
     def test_dense_portfolio_gets_no_lightcone_benefit(self):
         """The measured finding: covariance couples everything, so cones are useless."""

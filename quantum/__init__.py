@@ -88,6 +88,7 @@ from .risk import (
     quantum_value_at_risk,
 )
 from .locality import LocalityReport, locality_report
+from .search import GroverSearchResult, amplify, grover_adaptive_search
 from .solvers import SOLVERS, available_solvers, get_solver
 from .storage import compare_codecs, load_compressed, save_compressed, shave_mantissa
 from .subspace import HammingSubspace, SubspaceQAOAResult, dicke_state, subspace_qaoa
@@ -116,5 +117,6 @@ __all__ = [
     # memory
     "HammingSubspace", "SubspaceQAOAResult", "subspace_qaoa", "dicke_state",
     "LocalityReport", "locality_report",
+    "GroverSearchResult", "grover_adaptive_search", "amplify",
     "save_compressed", "load_compressed", "compare_codecs", "shave_mantissa",
 ]

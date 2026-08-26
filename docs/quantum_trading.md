@@ -194,6 +194,43 @@ entirely. A detector that ignores costs reports opportunities that cannot be tra
 
 ---
 
+## Grover search for portfolio selection
+
+Grover finds a marked item among `N` in `O(√N)` queries instead of `O(N)`.
+Turned into an optimiser — Dürr–Høyer minimum finding, refined as Grover
+Adaptive Search — it lowers a cost threshold round by round, amplitude-amplifying
+whatever still beats it.
+
+Run over the `C(n,K)` *feasible* portfolios from `quantum/subspace.py`, the
+quadratic query advantage applies to an already-reduced set. On `C(18,5) = 8568`
+candidates it found the proven optimum **10/10** using ~140 oracle calls.
+
+### The caveat that makes the headline number meaningless in simulation
+
+Two measured facts:
+
+- **Building the cost table is itself an exhaustive `O(N)` scan.** A plain
+  `np.argmin` over it then returns the exact optimum in 57 microseconds. The
+  search cannot beat a scan it has already performed.
+- **Each Grover iteration touches all `N` amplitudes.** Simulating 140 oracle
+  calls costs ~1.2 million element operations against 8,568 for the argmin —
+  roughly **140× more work than simply looking**.
+
+`√N` is a *query-complexity* result. It is real only on hardware, where the
+oracle evaluates the cost in superposition and a query is genuinely `O(1)` in
+the candidate count. The API names this honestly: `query_speedup_vs_exhaustive`
+is the hardware figure of merit, `simulation_overhead_vs_argmin` is what the
+simulation actually costs, and `hardware_note()` spells out that a real device
+additionally needs the cost comparison compiled into a reversible arithmetic
+circuit — the dominant cost, skipped here entirely.
+
+And even on hardware the comparison is against **exhaustive** search, not
+against a good heuristic. Simulated bifurcation finds these same optima without
+examining `N` candidates. Grover offers a *worst-case* bound needing no
+structure in the landscape; a heuristic offers a good average case with no
+guarantee. Those are different products, and the honest pitch for Grover is the
+guarantee, not the speed.
+
 ## The solver comparison
 
 ```bash
@@ -206,6 +243,8 @@ python3 -m quantum benchmark --vars 10 --trials 10
 | `simulated_annealing` | classical thermal | yes — the baseline to beat |
 | `simulated_bifurcation` | quantum-derived, classical | **yes — ships on FPGAs/GPUs now** |
 | `qaoa` | gate-based quantum | no — research scale only |
+| `subspace_qaoa` | constraint-preserving QAOA | no — but the smallest state space here |
+| `grover` | amplitude amplification | no — query bound only, slower in simulation |
 
 **Simulated bifurcation** deserves attention. It discretises the equations of
 motion of Kerr-nonlinear parametric oscillators (Goto et al., *Science Advances*
@@ -437,7 +476,7 @@ are mutually exclusive.
 python3 -m unittest discover -s tests -v
 ```
 
-105 tests. The principle throughout: **every quantum routine is checked against
+114 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,
@@ -479,6 +518,9 @@ simulated bifurcation right now.
 - Goto, Tatsumura & Dixon (2019), *Combinatorial optimization by simulating adiabatic bifurcations*
 - Farhi, Goldstone & Gutmann (2014), *A Quantum Approximate Optimization Algorithm*
 - Grover & Rudolph (2002), *Creating superpositions that correspond to efficiently integrable probability distributions*
+- Dürr & Høyer (1996), *A Quantum Algorithm for Finding the Minimum*
+- Gilliam, Woerner & Gonciulea (2021), *Grover Adaptive Search for Constrained Polynomial Binary Optimization*
+- Boyer, Brassard, Høyer & Tapp (1998), *Tight bounds on quantum searching*
 - Ledoit & Wolf (2004), *A well-conditioned estimator for large-dimensional covariance matrices*
 - Hadfield et al. (2019), *From the QAOA to a Quantum Alternating Operator Ansatz*
 - Lykov et al. (2023), *Fast Simulation of High-Depth QAOA Circuits* (QOKit)

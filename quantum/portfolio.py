@@ -438,6 +438,8 @@ def solve_portfolio(
     """
     if solver in ("subspace_qaoa", "xy_qaoa"):
         return _solve_portfolio_subspace(problem, **solver_kwargs)
+    if solver in ("grover", "grover_search"):
+        return _solve_portfolio_grover(problem, **solver_kwargs)
 
     qubo = problem.to_qubo()
     result = get_solver(solver).solve(qubo, **solver_kwargs)
@@ -470,6 +472,57 @@ def _solve_portfolio_subspace(problem: PortfolioProblem, **kwargs) -> "Portfolio
             "compression": outcome.compression,
             "expectation_value": outcome.expectation,
             "ground_state_probability": outcome.ground_state_probability,
+            **outcome.detail,
+        },
+    )
+    return _finalise_portfolio(problem, bare, result)
+
+
+def _solve_portfolio_grover(problem: PortfolioProblem, **kwargs) -> "PortfolioResult":
+    """Cardinality-constrained portfolio by Grover adaptive search.
+
+    Searches the ``C(n, K)`` feasible portfolios directly, so the quadratic
+    query advantage applies to an already-reduced candidate set.
+
+    In simulation this is **slower** than scanning the table -- building the cost
+    vector is already an exhaustive pass, and each Grover iteration touches every
+    amplitude.  The advantage is a hardware query bound, and the guarantee is
+    against exhaustive search rather than against a good heuristic.  See
+    :mod:`quantum.search`.
+    """
+    from .search import grover_adaptive_search
+    from .solvers.base import SolverResult
+    from .subspace import HammingSubspace
+
+    cardinality = problem.constraints.cardinality
+    if cardinality is None:
+        raise ValueError("grover search requires a cardinality constraint")
+    if problem.encoding != "select":
+        raise ValueError("grover search requires the 'select' encoding")
+
+    bare = problem.to_qubo(include_cardinality_penalty=False)
+    subspace = HammingSubspace.build(problem.n_assets, cardinality)
+    costs = subspace.costs(bare)
+
+    started = time.perf_counter()
+    outcome = grover_adaptive_search(costs, **kwargs)
+    elapsed = time.perf_counter() - started
+
+    result = SolverResult(
+        assignment=subspace.bitstring(outcome.index),
+        energy=outcome.value,
+        solver="grover",
+        runtime_seconds=elapsed,
+        samples_evaluated=outcome.oracle_calls,
+        detail={
+            "oracle_calls": outcome.oracle_calls,
+            "feasible_candidates": outcome.n_items,
+            "exhaustive_calls": outcome.classical_exhaustive_calls,
+            "query_speedup_vs_exhaustive": outcome.query_speedup_vs_exhaustive,
+            "simulated_element_ops": outcome.simulated_element_ops,
+            "hardware_note": outcome.hardware_note(),
+            "found_optimum": outcome.found_optimum,
+            "rounds": outcome.rounds,
             **outcome.detail,
         },
     )

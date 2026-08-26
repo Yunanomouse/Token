@@ -35,10 +35,11 @@ postulates up in `quantum/statevector.py` and `quantum/amplitude.py`.
 | `quantum/pricing.py` | European and multi-asset basket options | Same |
 | `quantum/arbitrage.py` | Cyclic arbitrage as an Ising ground state | Deployable now, quantum-*inspired* |
 
-Four solvers consume the same `QUBO`: `exact` (proves the optimum below ~22
+Six solvers consume the same `QUBO`: `exact` (proves the optimum below ~22
 variables), `simulated_annealing`, `simulated_bifurcation` (the Toshiba SQBM+
-algorithm — quantum-derived, runs on classical silicon), and `qaoa` on the
-built-in simulator.
+algorithm — quantum-derived, runs on classical silicon), `qaoa` on the built-in
+simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
+`grover` (Grover adaptive search over the feasible set).
 
 ## Verified results
 
@@ -51,7 +52,7 @@ built-in simulator.
 - **Arbitrage** — no false positives on an arbitrage-free market; planted
   mispricings recovered; opportunities correctly vanish once fees are applied.
 
-105 tests: `python3 -m unittest discover -s tests -v`
+114 tests: `python3 -m unittest discover -s tests -v`
 
 ## Memory
 
