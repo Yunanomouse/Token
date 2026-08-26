@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/

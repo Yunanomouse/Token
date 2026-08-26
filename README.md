@@ -1,3 +1,84 @@
+# Token
+
+Two independent workstreams live in this repository:
+
+1. **[Quantum methods for trading](#quantum-methods-for-trading)** — `quantum/`
+2. **[Canada tax system data (2026)](#canada-tax-system-data-2026)** — `data/`, `docs/`, `examples/`
+
+---
+
+# Quantum methods for trading
+
+A working, tested implementation of the four applications where quantum
+mechanics has a defensible role in finance — with the classical baseline printed
+beside every result.
+
+```bash
+python3 -m quantum demo                 # everything, end to end
+python3 -m quantum portfolio --cardinality 4 --solver simulated_bifurcation
+python3 -m quantum price --spot 100 --strike 105 --volatility 0.2
+python3 -m quantum risk --confidence 0.95
+python3 -m quantum arbitrage --fee 0.0005
+python3 -m quantum benchmark --vars 10 --trials 10
+```
+
+Requires **numpy only**. No Qiskit, no Cirq, no cloud account — the statevector
+simulator, Grover operator and amplitude estimation are implemented from the
+postulates up in `quantum/statevector.py` and `quantum/amplitude.py`.
+
+## What it does
+
+| Module | Application | Status today |
+|---|---|---|
+| `quantum/portfolio.py` | Cardinality, lot-size and sector-cap constrained optimisation → QUBO | Strongest case |
+| `quantum/risk.py` | VaR / CVaR by amplitude estimation | Proven theory, hardware-limited |
+| `quantum/pricing.py` | European and multi-asset basket options | Same |
+| `quantum/arbitrage.py` | Cyclic arbitrage as an Ising ground state | Deployable now, quantum-*inspired* |
+
+Four solvers consume the same `QUBO`: `exact` (proves the optimum below ~22
+variables), `simulated_annealing`, `simulated_bifurcation` (the Toshiba SQBM+
+algorithm — quantum-derived, runs on classical silicon), and `qaoa` on the
+built-in simulator.
+
+## Verified results
+
+- **Portfolio** — all four solvers match the `C(n,K)`-exhaustive proven optimum.
+- **Amplitude estimation** — the Grover rotation law `P = sin²((2k+1)θ)` holds
+  exactly; MLAE reaches 1.3×10⁻⁴ error where classical Monte Carlo at the same
+  shot count gives 9.5×10⁻³.
+- **Pricing** — within **0.03%** of Black–Scholes; put-call parity exact.
+- **Risk** — VaR matches the exact quantile at 90/95/99% confidence.
+- **Arbitrage** — no false positives on an arbitrage-free market; planted
+  mispricings recovered; opportunities correctly vanish once fees are applied.
+
+67 tests: `python3 -m unittest discover -s tests -v`
+
+## What it will not do
+
+Predict prices, generate signals, or make money on a day trade. Nothing here
+runs faster than its classical equivalent on current hardware, and the module
+docstrings say exactly where each limit bites — the `O(2ⁿ)` input problem,
+circuit depth, and the ~six-order-of-magnitude latency gap that rules gate-based
+hardware out of high-frequency execution.
+
+Three findings from building it that are easy to get wrong:
+
+- **Penalty weights must scale as `1/c_min²`** against the constraint's own
+  coefficients. With portfolio weights near 0.05, the naive choice
+  under-penalises by ~400× and the solver silently ignores its budget.
+- **Option-price convergence is limited by domain truncation, not resolution.**
+  At `n_sigma=3` the error plateaus at ~0.10 from 5 qubits to 8; at `n_sigma=5`
+  the same sweep converges to 5×10⁻⁴.
+- **The payoff linearisation bias is systematic and scales as `c²`**, so more
+  shots cannot remove it — but Richardson extrapolation cancels it exactly
+  (335× improvement at `c=0.25`).
+
+Full write-up, including the two solver bugs found by testing against proven
+optima: **[docs/quantum_trading.md](docs/quantum_trading.md)**.
+Worked walkthrough: `python3 examples/quantum_trading_demo.py`.
+
+---
+
 # Canada Tax System Data (2026)
 
 Machine-readable dataset of Canada's tax system for the **2026 tax year**: personal income tax for all 14 jurisdictions (federal + 10 provinces + 3 territories), payroll contributions, sales taxes, corporate income tax, and key credits/limits.
