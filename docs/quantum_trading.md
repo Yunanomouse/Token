@@ -160,6 +160,50 @@ Use it with `c_approx ≥ 0.2` where bias dominates; below that, keep `c` small 
 spend the shots instead. Best configuration found: 8 qubits, `n_sigma=5`,
 `c_approx=0.15`, 8 powers, bias-corrected — **0.03% from Black–Scholes**.
 
+### The "quantum binomial model", tested
+
+Popular write-ups point to this as the case where quantum pricing gives
+*different* answers, because the underlying is "treated as a boson". The model
+distributes the `N` time steps as `N` particles over two states (up/down) and
+prices under the resulting occupancy statistics. Both variants are implemented
+in `quantum/pricing.py` and both are tested:
+
+| Statistics | Result |
+|---|---|
+| Maxwell–Boltzmann (distinguishable) | reproduces Cox–Ross–Rubinstein **exactly**, to 8 decimals at every step count |
+| Bose–Einstein, CRR probability | **not risk-neutral** — `E[S_T]/S₀e^{rT}` reaches 59 at 800 steps |
+| Bose–Einstein, recalibrated | risk-neutral, converges to the **arbitrage upper bound** |
+
+The Maxwell–Boltzmann equivalence is the model's own validation and is asserted
+in the test suite. It is also the giveaway: classical statistics give the
+classical price, so nothing quantum has entered yet.
+
+The Bose–Einstein variant is where "different answers" come from, and they do not
+survive inspection. Keeping the CRR up-probability breaks the martingale
+property outright — by 200 steps it quotes a one-year call on a $100 stock above
+$100, which is an immediate arbitrage, and by 800 steps it quotes $5,858.
+
+Re-solving the up-probability so the measure *is* risk-neutral fixes the
+arbitrage and the price then converges — to the no-arbitrage **upper bound**.
+Verified across strikes and both option types at 12,800 steps: a call converges
+to the entire spot, a put to the discounted strike.
+
+| | K=60 | K=105 | K=150 |
+|---|---|---|---|
+| BE call | 100.00 | 100.00 | 100.00 |
+| bound (S₀) | 100.00 | 100.00 | 100.00 |
+| BE put | 58.23 | 101.90 | 145.57 |
+| bound (Ke^{-rT}) | 58.23 | 101.90 | 145.57 |
+
+That is the most expensive an option can be without admitting arbitrage — a
+degenerate limit, not a refined price. The Bose–Einstein weighting concentrates
+terminal mass at the extremes, so the payoff ends up tracking the underlying
+itself.
+
+The distinction worth carrying: amplitude estimation computes **the same number
+faster**; the Bose–Einstein binomial model computes **a different number**, with
+no arbitrage argument behind it. Only the first kind is a quantum advantage.
+
 ### The input problem
 
 Loading an arbitrary distribution into `n` qubits costs `O(2ⁿ)` gates, which
@@ -476,7 +520,7 @@ are mutually exclusive.
 python3 -m unittest discover -s tests -v
 ```
 
-114 tests. The principle throughout: **every quantum routine is checked against
+121 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,
@@ -517,6 +561,7 @@ simulated bifurcation right now.
 - Stamatopoulos et al. (2020), *Option pricing using quantum computers*
 - Goto, Tatsumura & Dixon (2019), *Combinatorial optimization by simulating adiabatic bifurcations*
 - Farhi, Goldstone & Gutmann (2014), *A Quantum Approximate Optimization Algorithm*
+- Chen (2004), *Quantum Theory for the Binomial Model in Finance Theory*, arXiv:quant-ph/0112156
 - Grover & Rudolph (2002), *Creating superpositions that correspond to efficiently integrable probability distributions*
 - Dürr & Høyer (1996), *A Quantum Algorithm for Finding the Minimum*
 - Gilliam, Woerner & Gonciulea (2021), *Grover Adaptive Search for Constrained Polynomial Binary Optimization*

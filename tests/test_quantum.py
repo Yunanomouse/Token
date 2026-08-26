@@ -581,6 +581,87 @@ class TestPricing(unittest.TestCase):
         self.assertLess(abs(price - analytic), 4 * err)
 
 
+class TestQuantumBinomial(unittest.TestCase):
+    """The 'quantum binomial model', tested rather than repeated."""
+
+    def setUp(self):
+        self.spec = OptionSpec(100.0, 105.0, 0.03, 0.20, 1.0, "call")
+
+    def test_crr_converges_to_black_scholes(self):
+        from quantum.pricing import binomial_crr
+
+        coarse = abs(binomial_crr(self.spec, 20) - self.spec.analytic_price())
+        fine = abs(binomial_crr(self.spec, 2000) - self.spec.analytic_price())
+        self.assertLess(fine, coarse)
+        self.assertLess(fine, 0.01)
+
+    def test_maxwell_boltzmann_reproduces_crr_exactly(self):
+        """The model's own validation: classical statistics must give the classical price."""
+        from quantum.pricing import binomial_crr, quantum_binomial
+
+        for n_steps in (10, 50, 200, 800):
+            lattice = binomial_crr(self.spec, n_steps)
+            quantum = quantum_binomial(self.spec, n_steps, "maxwell-boltzmann")["price"]
+            self.assertAlmostEqual(quantum, lattice, places=8, msg=f"N={n_steps}")
+
+    def test_maxwell_boltzmann_is_risk_neutral(self):
+        from quantum.pricing import quantum_binomial
+
+        result = quantum_binomial(self.spec, 400, "maxwell-boltzmann")
+        self.assertTrue(result["risk_neutral"])
+        self.assertAlmostEqual(result["martingale_ratio"], 1.0, places=9)
+
+    def test_bose_einstein_with_crr_probability_admits_arbitrage(self):
+        """Keeping the CRR probability breaks the martingale property outright."""
+        from quantum.pricing import quantum_binomial
+
+        ratios = []
+        for n_steps in (50, 200, 800):
+            result = quantum_binomial(
+                self.spec, n_steps, "bose-einstein", enforce_martingale=False
+            )
+            # E[S_T] overshoots its own forward at every refinement.
+            self.assertFalse(result["risk_neutral"])
+            self.assertGreater(result["martingale_ratio"], 1.0)
+            ratios.append(result["martingale_ratio"])
+        self.assertEqual(ratios, sorted(ratios), "the breach should worsen with refinement")
+
+        # By 200 steps the call is quoted above the spot, which is an outright
+        # arbitrage: a call can never be worth more than the stock it is on.
+        for n_steps in (200, 800):
+            result = quantum_binomial(
+                self.spec, n_steps, "bose-einstein", enforce_martingale=False
+            )
+            self.assertGreater(result["price"], self.spec.spot)
+
+    def test_bose_einstein_recalibrated_saturates_the_arbitrage_bound(self):
+        """Restoring risk-neutrality gives a degenerate limit, not a better price."""
+        from quantum.pricing import quantum_binomial
+
+        for strike in (60.0, 105.0, 150.0):
+            for option in ("call", "put"):
+                spec = OptionSpec(100.0, strike, 0.03, 0.20, 1.0, option)
+                result = quantum_binomial(spec, 12800, "bose-einstein")
+                self.assertTrue(result["risk_neutral"])
+                self.assertTrue(
+                    result["saturates_upper_bound"],
+                    f"{option} K={strike}: {result['price']} vs bound "
+                    f"{result['arbitrage_upper_bound']}",
+                )
+
+    def test_bose_einstein_never_matches_black_scholes(self):
+        from quantum.pricing import quantum_binomial
+
+        result = quantum_binomial(self.spec, 6400, "bose-einstein")
+        self.assertGreater(abs(result["price"] - self.spec.analytic_price()), 50.0)
+
+    def test_rejects_unknown_statistics(self):
+        from quantum.pricing import quantum_binomial
+
+        with self.assertRaises(ValueError):
+            quantum_binomial(self.spec, 50, "fermi-dirac")
+
+
 class TestRisk(unittest.TestCase):
     def setUp(self):
         self.market = synthetic_prices(n_assets=6, n_days=756, seed=2)

@@ -52,7 +52,7 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
 - **Arbitrage** — no false positives on an arbitrage-free market; planted
   mispricings recovered; opportunities correctly vanish once fees are applied.
 
-114 tests: `python3 -m unittest discover -s tests -v`
+121 tests: `python3 -m unittest discover -s tests -v`
 
 ## Memory
 

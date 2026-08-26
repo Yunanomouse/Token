@@ -63,6 +63,8 @@ __all__ = [
     "build_european_payoff_circuit",
     "price_european_option",
     "price_basket_option",
+    "binomial_crr",
+    "quantum_binomial",
 ]
 
 
@@ -518,3 +520,154 @@ def price_basket_option(
             "circuit_resources": circuit.resource_estimate(),
         },
     )
+
+
+# --------------------------------------------------------------------------
+# Lattice models, and the "quantum binomial" claim
+# --------------------------------------------------------------------------
+
+
+def binomial_crr(spec: OptionSpec, n_steps: int = 200) -> float:
+    """Cox-Ross-Rubinstein binomial price by backward induction.
+
+    The standard discrete-time pricer, here as a third independent reference
+    alongside Black-Scholes and amplitude estimation.
+    """
+    spec.validate()
+    dt = spec.maturity / n_steps
+    up = math.exp(spec.volatility * math.sqrt(dt))
+    down = 1.0 / up
+    p = (math.exp(spec.rate * dt) - down) / (up - down)
+    if not 0.0 < p < 1.0:
+        raise ValueError("lattice is not arbitrage-free; reduce the step size")
+
+    k = np.arange(n_steps + 1)
+    terminal = spec.spot * up**k * down ** (n_steps - k)
+    values = (
+        np.maximum(terminal - spec.strike, 0.0)
+        if spec.option == "call"
+        else np.maximum(spec.strike - terminal, 0.0)
+    )
+    discount = math.exp(-spec.rate * dt)
+    for _ in range(n_steps):
+        values = discount * (p * values[1:] + (1.0 - p) * values[:-1])
+    return float(values[0])
+
+
+def _terminal_lattice(spec: OptionSpec, n_steps: int):
+    dt = spec.maturity / n_steps
+    up = math.exp(spec.volatility * math.sqrt(dt))
+    down = 1.0 / up
+    k = np.arange(n_steps + 1)
+    prices = spec.spot * up**k * down ** (n_steps - k)
+    p_crr = (math.exp(spec.rate * dt) - down) / (up - down)
+    return prices, k, p_crr
+
+
+def _statistics_weights(p: float, n_steps: int, statistics: str) -> np.ndarray:
+    """Terminal-node weights under Maxwell-Boltzmann or Bose-Einstein counting."""
+    k = np.arange(n_steps + 1)
+    if not 0.0 < p < 1.0:
+        raise ValueError("probability must lie strictly in (0, 1)")
+    log_core = k * math.log(p) + (n_steps - k) * math.log(1.0 - p)
+
+    if statistics in ("maxwell-boltzmann", "mb", "classical"):
+        # Distinguishable particles: the C(N, k) path arrangements are distinct
+        # states, so each terminal node carries its multinomial multiplicity.
+        log_core = log_core + np.array(
+            [math.lgamma(n_steps + 1) - math.lgamma(i + 1) - math.lgamma(n_steps - i + 1)
+             for i in k]
+        )
+    elif statistics not in ("bose-einstein", "be", "boson"):
+        raise ValueError("statistics must be 'maxwell-boltzmann' or 'bose-einstein'")
+    # Bose-Einstein: indistinguishable particles, so all paths reaching a node
+    # are one state and the multiplicity coefficient drops out entirely.
+
+    log_core = log_core - log_core.max()
+    weights = np.exp(log_core)
+    return weights / weights.sum()
+
+
+def quantum_binomial(
+    spec: OptionSpec,
+    n_steps: int = 200,
+    statistics: str = "maxwell-boltzmann",
+    enforce_martingale: bool = True,
+) -> dict:
+    """The "quantum binomial model" -- Chen's reformulation, both statistics.
+
+    The construction treats the ``N`` time steps as ``N`` particles distributed
+    over two states (up and down), and prices the option under the resulting
+    occupancy statistics:
+
+    * **Maxwell-Boltzmann** (distinguishable particles) reproduces
+      Cox-Ross-Rubinstein *exactly*.  That equivalence is the model's own
+      validation, and it is asserted in the test suite.
+    * **Bose-Einstein** (indistinguishable particles -- "the stock treated as a
+      boson") drops the multiplicity coefficient, giving different prices.  This
+      is the variant popular write-ups point to when they say quantum pricing
+      gives different answers.
+
+    Those different answers do not survive inspection, and this function reports
+    why rather than just returning a number:
+
+    ``enforce_martingale=False`` keeps the CRR up-probability, and the resulting
+    measure is **not risk-neutral** -- measured ``E[S_T] / S_0 e^{rT}`` reaches
+    59 at 800 steps, so it prices a one-year call on a $100 stock at $5,858. That
+    is a straightforward arbitrage, not a refinement.
+
+    ``enforce_martingale=True`` (default) re-solves the up-probability so the
+    measure *is* risk-neutral.  The price then converges -- to the no-arbitrage
+    **upper bound**: a call worth the entire spot, a put worth the discounted
+    strike, verified across strikes.  It is the most expensive an option can be
+    without admitting arbitrage: a degenerate limit, not a better price.
+
+    Returns a dict with the price, the martingale ratio, and the probability
+    used, so the diagnosis travels with the number.
+    """
+    spec.validate()
+    prices, k, p_crr = _terminal_lattice(spec, n_steps)
+    target = spec.spot * math.exp(spec.rate * spec.maturity)
+
+    probability = p_crr
+    if enforce_martingale and statistics in ("bose-einstein", "be", "boson"):
+        # Bisect for the p that restores E[S_T] = S_0 e^{rT}.
+        def excess(candidate: float) -> float:
+            w = _statistics_weights(candidate, n_steps, statistics)
+            return float(np.dot(w, prices)) - target
+
+        lo, hi = 1e-12, 1.0 - 1e-12
+        if excess(lo) * excess(hi) <= 0:
+            for _ in range(200):
+                mid = 0.5 * (lo + hi)
+                if excess(lo) * excess(mid) <= 0:
+                    hi = mid
+                else:
+                    lo = mid
+            probability = 0.5 * (lo + hi)
+
+    weights = _statistics_weights(probability, n_steps, statistics)
+    payoff = (
+        np.maximum(prices - spec.strike, 0.0)
+        if spec.option == "call"
+        else np.maximum(spec.strike - prices, 0.0)
+    )
+    price = math.exp(-spec.rate * spec.maturity) * float(np.dot(weights, payoff))
+    martingale = float(np.dot(weights, prices)) / target
+    upper_bound = (
+        spec.spot
+        if spec.option == "call"
+        else spec.strike * math.exp(-spec.rate * spec.maturity)
+    )
+
+    return {
+        "price": price,
+        "statistics": statistics,
+        "probability": probability,
+        "crr_probability": p_crr,
+        "martingale_ratio": martingale,
+        "risk_neutral": abs(martingale - 1.0) < 1e-6,
+        "arbitrage_upper_bound": upper_bound,
+        "saturates_upper_bound": abs(price - upper_bound) < 1e-2 * max(upper_bound, 1.0),
+        "n_steps": n_steps,
+    }
