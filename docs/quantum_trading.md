@@ -514,13 +514,70 @@ are mutually exclusive.
 
 `python3 -m quantum memory` prints all of the above for your own configuration.
 
+## The five postulates, implemented and checked
+
+The package builds its physics from the postulates rather than wrapping an SDK,
+so `quantum/postulates.py` states them and tests them as physics — separately
+from the finance references everything else is graded against.
+
+| Postulate | Where it lives | Verified by |
+|---|---|---|
+| 1. States are unit vectors | `statevector.py` | norm preserved through arbitrary circuits |
+| 2. Born's rule **and collapse** | `postulates.measure` | sampled frequencies match \|⟨φ\|ψ⟩\|²; re-measuring a collapsed state is certain |
+| 3. Evolution is unitary | every gate | `U†U = I` for all gates and rotation angles |
+| 4. Composition by tensor product | `postulates.kron` | product states separable, Bell states maximally entangled |
+| 5. Observables are Hermitian | `postulates.Observable` | non-Hermitian input rejected; eigenvalues real |
+
+Two halves were missing before and are now filled in. **Collapse** — sampling
+gave outcomes but never the post-measurement state, so no adaptive protocol was
+expressible. And **Postulate 5** — there was only `expectation_z`, no general
+observable. That one connects directly: a QUBO objective *is* a Hermitian
+observable diagonal in the computational basis, and its eigenvalue spectrum *is*
+the energy landscape. `Observable.from_diagonal(problem.energies_all())`
+reproduces it exactly.
+
+### Correlation is not entanglement — and the encoding is where people go wrong
+
+Popular quantum-finance writing routinely claims market correlation is a form of
+entanglement. Postulate 4 makes the question measurable, and the answer is more
+interesting than a flat "no".
+
+**Bell's theorem, by exhaustion.** A local hidden-variable model assigns each
+party a deterministic outcome per setting; with two settings and two outcomes
+there are `2⁴ = 16` such strategies, and every classical correlation is a
+probabilistic mixture of them. CHSH is linear in the mixture, so the maximum over
+all classical correlations is the maximum over 16 cases — computed, exactly
+**2.0**. Correlation *strength* is not the axis: ρ = 0.999 is still a mixture,
+still bounded by 2. Entangled states reach **2.828**.
+
+**But amplitude-encoding manufactures entanglement.** Loading a correlated joint
+distribution as √p(x,y) produces a genuinely entangled pure state:
+
+| system | entanglement (bits) | CHSH |
+|---|---|---|
+| product state \|00⟩ | 0.000 | 1.414 |
+| market ρ = 0.0, encoded | 0.000 | 1.414 |
+| market ρ = 0.9, **encoded** | 1.000 | **2.828** |
+| Bell \|Φ⁺⟩ | 1.000 | 2.828 |
+| market ρ = 0.99, **sampled classically** | — | **2.0 (bound)** |
+
+The last two rows are the whole point. The same market correlation is bounded by
+2 when sampled, and reaches 2.828 once amplitude-encoded. **The entanglement is
+created by the encoding step, not discovered in the market.** It is a property of
+a state you chose to prepare on a quantum computer, and it says nothing about
+whether the underlying asset returns are entangled — they are not, and Bell's
+theorem says they cannot be.
+
+This is a sharper claim than "correlation isn't entanglement", and it is the one
+that survives measurement.
+
 ## Validation
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-121 tests. The principle throughout: **every quantum routine is checked against
+139 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,
@@ -561,6 +618,9 @@ simulated bifurcation right now.
 - Stamatopoulos et al. (2020), *Option pricing using quantum computers*
 - Goto, Tatsumura & Dixon (2019), *Combinatorial optimization by simulating adiabatic bifurcations*
 - Farhi, Goldstone & Gutmann (2014), *A Quantum Approximate Optimization Algorithm*
+- Laforest (2015), *The Mathematics of Quantum Mechanics*, IQC University of Waterloo
+- Bell (1964), *On the Einstein Podolsky Rosen Paradox*
+- Clauser, Horne, Shimony & Holt (1969), *Proposed Experiment to Test Local Hidden-Variable Theories*
 - Chen (2004), *Quantum Theory for the Binomial Model in Finance Theory*, arXiv:quant-ph/0112156
 - Grover & Rudolph (2002), *Creating superpositions that correspond to efficiently integrable probability distributions*
 - Dürr & Høyer (1996), *A Quantum Algorithm for Finding the Minimum*

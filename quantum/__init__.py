@@ -68,6 +68,20 @@ from .portfolio import (
     solve_portfolio,
     unconstrained_mean_variance,
 )
+from .postulates import (
+    Observable,
+    bell_states,
+    chsh_value,
+    entanglement_entropy,
+    expectation,
+    is_hermitian,
+    is_separable,
+    is_unitary,
+    kron,
+    max_classical_chsh,
+    measure,
+    reduced_density_matrix,
+)
 from .preparation import GridDistribution, lognormal_grid, normal_grid, prepare_distribution
 from .pricing import (
     OptionSpec,
@@ -117,6 +131,10 @@ __all__ = [
     # memory
     "HammingSubspace", "SubspaceQAOAResult", "subspace_qaoa", "dicke_state",
     "LocalityReport", "locality_report",
+    # postulates
+    "kron", "measure", "is_unitary", "is_hermitian", "Observable", "expectation",
+    "bell_states", "entanglement_entropy", "is_separable", "reduced_density_matrix",
+    "chsh_value", "max_classical_chsh",
     "GroverSearchResult", "grover_adaptive_search", "amplify",
     "save_compressed", "load_compressed", "compare_codecs", "shave_mantissa",
 ]

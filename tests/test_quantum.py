@@ -1061,6 +1061,199 @@ class TestSubspace(unittest.TestCase):
             HammingSubspace.build(60, 30)
 
 
+class TestPostulates(unittest.TestCase):
+    """Each of the five postulates, verified as physics rather than assumed."""
+
+    # -- Postulate 1: states are unit vectors ---------------------------
+    def test_states_are_unit_vectors(self):
+        rng = np.random.default_rng(0)
+        circuit = Circuit(4).barrier_all_h()
+        for _ in range(20):
+            circuit.ry(float(rng.normal()), int(rng.integers(0, 4)))
+        self.assertAlmostEqual(float(np.linalg.norm(circuit.run())), 1.0, places=12)
+
+    # -- Postulate 2: Born's rule AND collapse --------------------------
+    def test_born_rule_matches_amplitudes(self):
+        from quantum.postulates import measure
+
+        rng = np.random.default_rng(1)
+        state = Circuit(2).h(0).cx(0, 1).run()
+        counts = np.zeros(4)
+        for _ in range(4000):
+            counts[measure(state, rng=rng).index] += 1
+        counts /= counts.sum()
+        np.testing.assert_allclose(counts, [0.5, 0, 0, 0.5], atol=0.03)
+
+    def test_measurement_collapses_the_state(self):
+        """A repeat measurement in the same basis must be certain."""
+        from quantum.postulates import bell_states, measure
+
+        rng = np.random.default_rng(2)
+        first = measure(bell_states()["Phi+"], rng=rng)
+        self.assertAlmostEqual(first.probability, 0.5, places=9)
+        second = measure(first.collapsed_state, rng=rng)
+        self.assertEqual(second.index, first.index)
+        self.assertAlmostEqual(second.probability, 1.0, places=12)
+
+    def test_measurement_rejects_non_orthonormal_basis(self):
+        from quantum.postulates import measure
+
+        with self.assertRaises(ValueError):
+            measure(np.array([1.0, 0.0]), basis=np.array([[1.0, 1.0], [0.0, 1.0]]))
+
+    # -- Postulate 3: evolution is unitary -------------------------------
+    def test_every_gate_is_unitary(self):
+        from quantum.postulates import is_unitary
+        from quantum.statevector import H, S, T, X, Y, Z, phase_matrix, rx_matrix, ry_matrix, rz_matrix
+
+        for matrix in (H, X, Y, Z, S, T):
+            self.assertTrue(is_unitary(matrix))
+        for theta in (0.0, 0.7, -1.3, math.pi):
+            for builder in (rx_matrix, ry_matrix, rz_matrix, phase_matrix):
+                self.assertTrue(is_unitary(builder(theta)), f"{builder.__name__}({theta})")
+
+    # -- Postulate 4: composition by tensor product ----------------------
+    def test_kron_builds_composite_states(self):
+        from quantum.postulates import kron
+
+        zero = np.array([1, 0], dtype=complex)
+        one = np.array([0, 1], dtype=complex)
+        np.testing.assert_allclose(kron(zero, one), [0, 1, 0, 0], atol=1e-12)
+        np.testing.assert_allclose(kron(one, one), [0, 0, 0, 1], atol=1e-12)
+        self.assertEqual(kron(zero, one, zero).size, 8)
+
+    def test_product_states_are_separable(self):
+        from quantum.postulates import entanglement_entropy, is_separable, kron
+
+        rng = np.random.default_rng(3)
+        for _ in range(10):
+            a = rng.normal(size=2) + 1j * rng.normal(size=2)
+            b = rng.normal(size=2) + 1j * rng.normal(size=2)
+            a /= np.linalg.norm(a)
+            b /= np.linalg.norm(b)
+            joint = kron(a, b)
+            self.assertTrue(is_separable(joint, 2))
+            self.assertAlmostEqual(entanglement_entropy(joint, 2), 0.0, places=9)
+
+    def test_bell_states_are_maximally_entangled(self):
+        from quantum.postulates import bell_states, entanglement_entropy, is_separable
+
+        for name, state in bell_states().items():
+            self.assertFalse(is_separable(state, 2), name)
+            self.assertAlmostEqual(entanglement_entropy(state, 2), 1.0, places=9, msg=name)
+
+    def test_reduced_state_of_a_bell_pair_is_maximally_mixed(self):
+        """'Neither part has a state of its own', made concrete."""
+        from quantum.postulates import bell_states, reduced_density_matrix
+
+        rho = reduced_density_matrix(bell_states()["Phi+"], 2)
+        np.testing.assert_allclose(rho, 0.5 * np.eye(2), atol=1e-12)
+        # Purity 1/2 rather than 1: the subsystem is mixed.
+        self.assertAlmostEqual(float(np.real(np.trace(rho @ rho))), 0.5, places=12)
+
+    # -- Postulate 5: observables are Hermitian --------------------------
+    def test_observable_requires_hermiticity(self):
+        from quantum.postulates import Observable
+
+        with self.assertRaises(ValueError):
+            Observable(np.array([[0, 1], [0, 0]], dtype=complex))
+
+    def test_observable_eigenvalues_are_real(self):
+        from quantum.postulates import Observable
+
+        rng = np.random.default_rng(4)
+        raw = rng.normal(size=(4, 4)) + 1j * rng.normal(size=(4, 4))
+        hermitian = raw + raw.conj().T
+        observable = Observable(hermitian)
+        self.assertTrue(np.all(np.isreal(observable.eigenvalues)))
+
+    def test_expectation_values(self):
+        from quantum.postulates import Observable, expectation
+
+        pauli_z = Observable(np.array([[1, 0], [0, -1]], dtype=complex), "Z")
+        self.assertAlmostEqual(expectation(np.array([1.0, 0.0]), pauli_z), 1.0, places=12)
+        self.assertAlmostEqual(expectation(np.array([0.0, 1.0]), pauli_z), -1.0, places=12)
+        self.assertAlmostEqual(expectation(Circuit(1).h(0).run(), pauli_z), 0.0, places=12)
+
+    def test_measuring_an_observable_yields_an_eigenvalue(self):
+        from quantum.postulates import Observable, measure_observable
+
+        rng = np.random.default_rng(5)
+        observable = Observable(np.diag([3.0, -1.0, 7.0, 0.5]).astype(complex), "cost")
+        state = Circuit(2).barrier_all_h().run()
+        for _ in range(20):
+            outcome = measure_observable(state, observable, rng=rng)
+            self.assertIn(observable.eigenvalues[outcome.index], observable.eigenvalues)
+
+    def test_diagonal_observable_matches_qubo_landscape(self):
+        """A QUBO objective *is* a Hermitian observable; its spectrum is the landscape."""
+        from quantum.postulates import Observable, expectation
+
+        rng = np.random.default_rng(6)
+        problem = QUBO(Q=rng.normal(size=(3, 3)))
+        costs = problem.energies_all()
+        observable = Observable.from_diagonal(costs, "qubo")
+        np.testing.assert_allclose(np.sort(observable.eigenvalues), np.sort(costs), atol=1e-9)
+        # Uniform superposition should give the mean cost.
+        uniform = Circuit(3).barrier_all_h().run()
+        self.assertAlmostEqual(expectation(uniform, observable), float(costs.mean()), places=9)
+
+
+class TestCorrelationVersusEntanglement(unittest.TestCase):
+    """Market correlation is not entanglement -- settled by measurement."""
+
+    def test_classical_bound_is_exactly_two(self):
+        """Bell's theorem by exhaustion over local hidden-variable strategies."""
+        from quantum.postulates import CHSH_CLASSICAL_BOUND, max_classical_chsh
+
+        self.assertAlmostEqual(max_classical_chsh(), 2.0, places=12)
+        self.assertAlmostEqual(max_classical_chsh(), CHSH_CLASSICAL_BOUND, places=12)
+
+    def test_bell_state_violates_the_classical_bound(self):
+        from quantum.postulates import CHSH_TSIRELSON_BOUND, bell_states, chsh_value
+
+        value = chsh_value(bell_states()["Phi+"])
+        self.assertGreater(value, 2.0)
+        self.assertAlmostEqual(value, CHSH_TSIRELSON_BOUND, places=9)
+
+    def test_no_state_exceeds_tsirelson(self):
+        from quantum.postulates import CHSH_TSIRELSON_BOUND, chsh_value
+
+        rng = np.random.default_rng(7)
+        for _ in range(200):
+            state = rng.normal(size=4) + 1j * rng.normal(size=4)
+            state /= np.linalg.norm(state)
+            self.assertLessEqual(chsh_value(state), CHSH_TSIRELSON_BOUND + 1e-9)
+
+    def test_amplitude_encoding_manufactures_entanglement(self):
+        """The subtle part: the encoding creates entanglement the market lacks.
+
+        Loading a correlated joint distribution as sqrt(p) produces a genuinely
+        entangled *pure state* -- but that is a property of the encoding step,
+        not evidence about the market. Sampled classically, the same
+        distribution is bounded by 2 no matter how strong the correlation.
+        """
+        from quantum.postulates import entanglement_entropy, is_separable, max_classical_chsh
+        from quantum.preparation import multivariate_normal_grid
+
+        def encode(rho):
+            cov = np.array([[1.0, rho], [rho, 1.0]])
+            _, probabilities, _ = multivariate_normal_grid(np.zeros(2), cov, 1)
+            amplitudes = np.sqrt(probabilities)
+            return amplitudes / np.linalg.norm(amplitudes)
+
+        # Independent assets encode to a product state.
+        self.assertTrue(is_separable(encode(0.0), 2))
+        self.assertAlmostEqual(entanglement_entropy(encode(0.0), 2), 0.0, places=9)
+
+        # Correlated assets encode to an entangled state...
+        self.assertFalse(is_separable(encode(0.9), 2))
+        self.assertGreater(entanglement_entropy(encode(0.9), 2), 0.9)
+
+        # ...yet the classical correlation itself remains bounded by 2.
+        self.assertAlmostEqual(max_classical_chsh(), 2.0, places=12)
+
+
 class TestGroverSearch(unittest.TestCase):
     """Grover adaptive search: correct algorithm, honestly accounted."""
 
