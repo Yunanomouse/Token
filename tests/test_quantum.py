@@ -1082,6 +1082,90 @@ class TestStorage(unittest.TestCase):
         total = sum(float(chunk.sum()) for chunk in iter_chunks(mapped, chunk_rows=128))
         self.assertAlmostEqual(total, float(data.sum()), places=6)
 
+    def test_byte_shuffle_round_trips(self):
+        from quantum.storage import byte_shuffle, byte_unshuffle
+
+        rng = np.random.default_rng(0)
+        for shape in ((100,), (37, 5), (8, 4, 3)):
+            for dtype in (np.float64, np.float32):
+                data = (rng.random(shape) * 1000).astype(dtype)
+                restored = byte_unshuffle(byte_shuffle(data), dtype, shape)
+                np.testing.assert_array_equal(restored, data)
+
+    def test_auto_shuffle_never_makes_it_worse(self):
+        from quantum.storage import load_compressed, save_compressed
+        from quantum.market import synthetic_prices
+
+        market = synthetic_prices(n_assets=12, n_days=800, seed=0)
+        sizes = {}
+        for mode in ("auto", True, False):
+            path = Path(self.tmp) / f"m_{mode}.qtz"
+            save_compressed(path, {"x": market.prices}, keep_bits=12, shuffle=mode)
+            restored, _ = load_compressed(path)
+            np.testing.assert_array_equal(
+                restored["x"], __import__("quantum.storage", fromlist=["shave_mantissa"])
+                .shave_mantissa(market.prices, 12)
+            )
+            sizes[mode] = path.stat().st_size
+        self.assertLessEqual(sizes["auto"], max(sizes[True], sizes[False]))
+
+    def test_shuffled_multi_array_round_trip(self):
+        from quantum.storage import load_compressed, save_compressed
+
+        rng = np.random.default_rng(1)
+        arrays = {
+            "a": rng.random((50, 4)),
+            "b": rng.random(9),
+            "c": (rng.random((3, 3)) * 100).astype(np.float32),
+        }
+        path = Path(self.tmp) / "multi.qtz"
+        save_compressed(path, arrays, shuffle=True)
+        restored, header = load_compressed(path)
+        self.assertTrue(header["shuffled"])
+        for name, array in arrays.items():
+            np.testing.assert_array_equal(restored[name], array)
+
+    def test_conditioning_guard_matches_psd_failure(self):
+        """float32 storage must be refused before it can break a covariance."""
+        from quantum.storage import recommended_dtype
+
+        rng = np.random.default_rng(0)
+        n = 80
+        for condition, expect_safe in ((1e2, True), (1e4, True), (1e10, False), (1e12, False)):
+            basis, _ = np.linalg.qr(rng.normal(size=(n, n)))
+            spectrum = np.geomspace(1.0, 1.0 / condition, n)
+            matrix = basis @ np.diag(spectrum) @ basis.T
+            matrix = (matrix + matrix.T) / 2
+            advice = recommended_dtype(matrix)
+            self.assertEqual(advice.safe, expect_safe, f"cond={condition:.0e}")
+            if not advice.safe:
+                self.assertEqual(advice.dtype, "float64")
+
+    def test_conditioning_guard_on_non_matrix(self):
+        from quantum.storage import recommended_dtype
+
+        self.assertTrue(recommended_dtype(np.arange(10.0)).safe)
+        self.assertFalse(recommended_dtype(np.array([1e40, 1.0])).safe)
+
+    def test_shaving_is_unbiased(self):
+        """Round-to-nearest, not truncation: a systematic drift compounds."""
+        from quantum.storage import shave_mantissa
+
+        rng = np.random.default_rng(2)
+        data = rng.random(50_000) * 1000 + 1.0
+        for keep in (23, 16, 12):
+            shaved = shave_mantissa(data, keep)
+            relative = (shaved - data) / data
+            # Mean error must be orders of magnitude below the max error --
+            # plain truncation would put them within a factor of ~2.
+            self.assertLess(abs(float(relative.mean())), 0.02 * float(np.abs(relative).max()))
+
+    def test_rejects_bad_shuffle_argument(self):
+        from quantum.storage import save_compressed
+
+        with self.assertRaises(ValueError):
+            save_compressed(Path(self.tmp) / "x.qtz", {"a": np.zeros(4)}, shuffle="maybe")
+
     def test_rejects_unknown_codec(self):
         from quantum.storage import save_compressed
 

@@ -295,6 +295,29 @@ exponentially small overlap. Google's qsim defaults to single precision; Qiskit
 Aer exposes it as `precision="single"`. Use `complex128` for the final expectation
 reduction regardless — that is where precision loss would actually bite.
 
+### Matrix Product States — also measured, also not applicable
+
+MPS stores a state as a chain of tensors, costing `O(n·χ²)` instead of `O(2ⁿ)`,
+where `χ` is the bond dimension. It is the standard answer to "the statevector is
+too big". Two measurements rule it out here:
+
+**It loses below ~24 qubits.** The crossover is roughly `n·χ² > 2ⁿ/2`. At n=16
+with a random circuit, χ saturates at its exact maximum `2^(n/2)=256` and MPS
+costs 2.80 MB against 1.05 MB for a plain statevector. This package operates
+well below that crossover.
+
+**Sparsity is not the criterion — bandwidth under the 1D ordering is.** A random
+3-regular MaxCut graph is maximally sparse and still saturates χ at `2^(n/2)` by
+p=3, with entanglement entropy 8.35 of a possible 10 bits. A path graph of the
+same degree stays at χ=32 through p=5 with zero truncation error. Dense
+covariance couplings are the bad case twice over.
+
+Worth recording, since it corrects a common assumption: **Grover is near-*best*
+case for MPS**, not worst. The state `a|marked⟩ + b|rest⟩` has Schmidt rank
+exactly 2 across any cut, so entanglement is bounded by 1 bit independent of `n` —
+verified to 30 qubits at χ=2 exactly. The genuine MPS killers are QFT-based
+algorithms, where the required bond dimension grows super-polynomially.
+
 ### The technique that changes the asymptotics — and why it is not used here
 
 For a p-layer QAOA with a local mixer, `⟨Z_i Z_j⟩` depends only on qubits within
@@ -356,6 +379,51 @@ above does not merely get easier here — it stops existing.
 Mantissa shaving is the lever: the low bits of a float are effectively random,
 and random bits are incompressible. Zeroing them leaves runs a codec can collapse.
 
+Three details that decide whether this is safe:
+
+**Round to nearest, never truncate.** Masking low bits always rounds toward
+zero, and that bias compounds through a return series or a covariance sum.
+Measured here, adding half a ULP before masking cuts the mean relative error by
+~1000× at identical compression ratio — there is no reason to accept the bias:
+
+| kept bits | truncation (mean) | round-to-nearest (mean) |
+|---|---|---|
+| 23 | −4.2×10⁻⁸ | **+3.7×10⁻¹¹** |
+| 12 | −8.6×10⁻⁵ | **+2.4×10⁻⁸** |
+
+**Byte-shuffle, but measure it.** Transposing bytes so all exponent bytes sit
+together gives a compressor long low-entropy runs. It is worth +17% on prices
+and +19% on float32 prices — but it *hurt* an unshaved covariance matrix by 29%,
+because a covariance spans a wide dynamic range and its exponents are
+high-entropy too. `save_compressed(shuffle="auto")` measures both on a sample and
+keeps the winner rather than assuming.
+
+**Deflate level 1, not 9.** Measured on prices: level 1 gives 1.056×, level 6
+gives 1.064×, level 9 is identical to level 6. A 0.8% ratio gain for 25% more
+time. High deflate levels buy nothing on float data — the entropy is in the
+mantissas, not in repeated substrings.
+
+### The float32 trap in covariance storage
+
+Downcasting a covariance matrix can turn a valid one into a matrix that is no
+longer positive semi-definite — which breaks Cholesky and makes the optimiser
+return nonsense rather than an error. A relative perturbation of `eps` shifts
+eigenvalues by about `eps·λ_max`, so the matrix survives only while
+`cond(C) ≲ 0.1/eps` — roughly 10⁶ for float32, 10⁴ for float16.
+
+Measured on constructed spectra at n=200: float32 Cholesky succeeds through
+cond 10⁸ and fails at 10¹⁰. `recommended_dtype()` flags at 10⁶ — deliberately
+conservative, since the failure is silent. This is exactly the case a sample
+covariance walks into when observations are scarce relative to assets, which is
+why shrinkage comes first and downcasting second.
+
+Storage precision and *arithmetic* precision are separate decisions: computing
+in float64 while storing in float32 is fine, and is what this package does.
+
+**float16 is not usable for finance at all** — its 65504 ceiling breaks on
+unscaled prices and its 6.1×10⁻⁵ subnormal floor destroys daily returns and
+off-diagonal covariance entries.
+
 One distinction worth keeping straight: **compression saves disk, not RAM** — a
 decompressed array is full size. For RAM use `load_mmap()` + `iter_chunks()`, and
 those cannot be combined with compression, because random access and compression
@@ -369,7 +437,7 @@ are mutually exclusive.
 python3 -m unittest discover -s tests -v
 ```
 
-98 tests. The principle throughout: **every quantum routine is checked against
+105 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,

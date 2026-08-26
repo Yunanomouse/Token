@@ -51,7 +51,7 @@ built-in simulator.
 - **Arbitrage** — no false positives on an arbitrage-free market; planted
   mispricings recovered; opportunities correctly vanish once fees are applied.
 
-98 tests: `python3 -m unittest discover -s tests -v`
+105 tests: `python3 -m unittest discover -s tests -v`
 
 ## Memory
 
@@ -79,7 +79,9 @@ Verified exact against a full-register simulation to `1.3×10⁻¹⁵` with zero
 leakage, and *more* accurate than the penalty formulation — 25/25 proven optima
 against 18/25 at K=5.
 
-The famous **light-cone** trick does not apply here, and `quantum/locality.py`
+Two well-known techniques were measured and rejected: **light cones** need a
+sparse coupling graph, and **MPS** loses below ~24 qubits and saturates its bond
+dimension on dense couplings. The light-cone case, and `quantum/locality.py`
 ships the measurement that shows why: a covariance matrix couples every asset to
 every other, so the coupling graph is complete (density 0.92–1.00) and the
 radius-1 cone is already the whole problem.
