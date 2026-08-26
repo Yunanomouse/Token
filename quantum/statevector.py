@@ -42,6 +42,7 @@ __all__ = [
     "Operation",
     "statevector",
     "sample",
+    "estimate_memory",
     "expectation_z",
     "probabilities",
     "H",
@@ -100,12 +101,152 @@ def phase_matrix(lam: float) -> np.ndarray:
 
 
 def _contract(tensor: np.ndarray, matrix: np.ndarray, axes: Sequence[int]) -> np.ndarray:
-    """Apply ``matrix`` (2^k x 2^k) to the given ``axes`` of a rank-n tensor."""
+    """Apply ``matrix`` (2^k x 2^k) to the given ``axes`` of a rank-n tensor.
+
+    General fallback for multi-target gates.  Allocates; the single-qubit path
+    in :func:`_apply_1q_inplace` is used instead wherever it applies, which is
+    every gate this package actually builds.
+    """
     k = len(axes)
     op = matrix.reshape([2] * (2 * k))
     out = np.tensordot(op, tensor, axes=(list(range(k, 2 * k)), list(axes)))
     # tensordot puts the k new axes in front; put them back where they belong.
     return np.moveaxis(out, list(range(k)), list(axes))
+
+
+class _Scratch:
+    """Two reusable half-state buffers, grown on demand.
+
+    A gate mixes exactly two amplitude slices, so the working set is two arrays
+    of half the statevector -- independent of how many gates run.  Allocating
+    them once per circuit turns per-gate allocation churn into a fixed cost, and
+    keeps peak memory at 2x the statevector instead of the 3x that
+    ``tensordot`` + ``moveaxis`` reached.
+    """
+
+    __slots__ = ("a", "b", "dtype")
+
+    def __init__(self, dtype: np.dtype) -> None:
+        self.dtype = dtype
+        self.a = np.empty(0, dtype=dtype)
+        self.b = np.empty(0, dtype=dtype)
+
+    def pair(self, shape: tuple[int, ...]) -> tuple[np.ndarray, np.ndarray]:
+        size = int(np.prod(shape)) if shape else 1
+        if self.a.size < size:
+            self.a = np.empty(size, dtype=self.dtype)
+            self.b = np.empty(size, dtype=self.dtype)
+        return self.a[:size].reshape(shape), self.b[:size].reshape(shape)
+
+
+def _slice_pair(view: np.ndarray, axis: int) -> tuple[np.ndarray, np.ndarray]:
+    """The |0> and |1> half-slices along ``axis`` -- views, never copies.
+
+    Length-1 slices rather than integer indices, deliberately.  Integer indexing
+    that reduces an array to rank 0 returns a numpy *scalar*, which is a copy:
+    writing through it silently does nothing on a 1-qubit circuit or on the
+    innermost axis of a fully controlled gate.  Slicing always yields a view and
+    preserves rank, so the in-place update is correct at every width.
+    """
+    prefix = (slice(None),) * axis
+    return view[prefix + (slice(0, 1),)], view[prefix + (slice(1, 2),)]
+
+
+def _control_key(n_qubits: int, controls: Sequence[int], control_values: Sequence[int]) -> tuple:
+    """Index selecting the controlled subspace, using slices to preserve rank."""
+    index: list = [slice(None)] * n_qubits
+    for ctrl, val in zip(controls, control_values):
+        index[ctrl] = slice(val, val + 1)
+    return tuple(index)
+
+
+def _apply_multiplexed_ry(
+    state: np.ndarray,
+    n_qubits: int,
+    angles: np.ndarray,
+    target: int,
+    controls: Sequence[int],
+    scratch: "_Scratch",
+) -> None:
+    """Apply a different ``Ry`` to ``target`` for each pattern of ``controls``.
+
+    ``angles`` is indexed by the control pattern with ``controls[0]`` as the most
+    significant bit; ``controls`` must be ascending.
+
+    The angle table reshapes to a broadcast-compatible shape -- length 2 on the
+    control axes, length 1 everywhere else -- so all ``2**k`` rotations apply in
+    a single vectorised pass over the statevector instead of ``2**k`` separate
+    gate applications.
+    """
+    tensor = state.reshape([2] * n_qubits)
+    a, b = _slice_pair(tensor, target)
+
+    shape = [1] * n_qubits
+    for c in controls:
+        shape[c] = 2
+    theta = np.asarray(angles, dtype=np.float64).reshape(shape)
+    cos = np.cos(theta / 2.0)
+    sin = np.sin(theta / 2.0)
+
+    s1, s2 = scratch.pair(a.shape)
+    # new_a = cos*a - sin*b ; new_b = sin*a + cos*b
+    np.multiply(a, cos, out=s1)
+    np.multiply(b, sin, out=s2)
+    s1 -= s2
+    np.multiply(a, sin, out=s2)
+    np.multiply(b, cos, out=b)
+    b += s2
+    a[...] = s1
+
+
+def _apply_1q_inplace(
+    state: np.ndarray,
+    n_qubits: int,
+    matrix: np.ndarray,
+    target: int,
+    controls: Sequence[int],
+    control_values: Sequence[int],
+    scratch: "_Scratch",
+) -> None:
+    """Apply a one-qubit gate to ``state`` in place.
+
+    A one-qubit unitary acts independently on each pair of amplitudes that
+    differ only in the target bit::
+
+        a' = U00*a + U01*b
+        b' = U10*a + U11*b
+
+    Slicing the target axis gives those two halves as *views*, so the update
+    touches the statevector directly rather than rebuilding it.  Controls simply
+    narrow the view to the controlled subspace first, which is still basic
+    indexing and therefore still a view.
+    """
+    tensor = state.reshape([2] * n_qubits)
+    if controls:
+        if not control_values:
+            control_values = [1] * len(controls)
+        # Slice-based selection keeps the control axes present with length 1, so
+        # the target axis index is unchanged and the result stays a view.
+        view = tensor[_control_key(n_qubits, controls, control_values)]
+    else:
+        view = tensor
+    axis = target
+
+    a, b = _slice_pair(view, axis)
+    u00, u01, u10, u11 = matrix[0, 0], matrix[0, 1], matrix[1, 0], matrix[1, 1]
+    s1, s2 = scratch.pair(a.shape)
+
+    # new_a into scratch; both originals are still intact for the second row.
+    np.multiply(a, u00, out=s1)
+    np.multiply(b, u01, out=s2)
+    s1 += s2
+
+    # new_b can consume b in place, since only the original a is still needed.
+    np.multiply(a, u10, out=s2)
+    np.multiply(b, u11, out=b)
+    b += s2
+
+    a[...] = s1
 
 
 def _apply(
@@ -124,16 +265,11 @@ def _apply(
     if not control_values:
         control_values = [1] * len(controls)
 
-    # Integer (basic) indexing yields a writable view, so we can operate on the
-    # controlled subspace in place.
-    index: list = [slice(None)] * n_qubits
-    for ctrl, val in zip(controls, control_values):
-        index[ctrl] = val
-    sub = tensor[tuple(index)]
-
-    remaining = [q for q in range(n_qubits) if q not in set(controls)]
-    sub_axes = [remaining.index(t) for t in targets]
-    tensor[tuple(index)] = _contract(sub, matrix, sub_axes)
+    # Slice-based selection yields a writable view of the controlled subspace
+    # that keeps every axis present, so target axis indices are unchanged.
+    key = _control_key(n_qubits, controls, control_values)
+    sub = tensor[key]
+    tensor[key] = _contract(sub, matrix, list(targets))
     return tensor.reshape(-1)
 
 
@@ -149,20 +285,29 @@ def _apply_diagonal(
     controls: Sequence[int] = (),
     control_values: Sequence[int] = (),
 ) -> np.ndarray:
-    """Apply ``diag(exp(i * phases))``, optionally gated on control qubits."""
-    factor = np.exp(1j * np.asarray(phases, dtype=np.float64))
+    """Apply ``diag(exp(i * phases))`` in place, optionally gated on controls.
+
+    The uncontrolled path -- the one QAOA takes on every cost layer -- multiplies
+    straight into the statevector.  The controlled path reshapes rather than
+    building a boolean mask over all ``2**n`` basis states: fixing the control
+    bits is just an index into the tensor view, which costs nothing.
+    """
+    phases = np.asarray(phases, dtype=np.float64)
     if not controls:
-        return state * factor
+        factor = np.exp(1j * phases)
+        state *= factor.astype(state.dtype, copy=False)
+        return state
+
     if not control_values:
         control_values = [1] * len(controls)
-    idx = np.arange(state.size)
-    mask = np.ones(state.size, dtype=bool)
-    for ctrl, val in zip(controls, control_values):
-        bit = (idx >> (n_qubits - 1 - ctrl)) & 1
-        mask &= bit == val
-    out = state.copy()
-    out[mask] = out[mask] * factor[mask]
-    return out
+
+    tensor = state.reshape([2] * n_qubits)
+    phase_tensor = phases.reshape([2] * n_qubits)
+    key = _control_key(n_qubits, controls, control_values)
+    sub = tensor[key]
+    factor = np.exp(1j * phase_tensor[key])
+    sub *= factor.astype(state.dtype, copy=False)
+    return state
 
 
 @dataclass(frozen=True)
@@ -174,6 +319,16 @@ class Operation:
     targets: tuple[int, ...]
     controls: tuple[int, ...] = ()
     control_values: tuple[int, ...] = ()
+    angles: np.ndarray | None = None
+    """Rotation angles for a *multiplexed* Ry, one per control pattern.
+
+    A state-preparation level applies a different Ry to the target for every
+    assignment of the control qubits.  Written as individual multi-controlled
+    gates that is ``2**k`` :class:`Operation` objects -- 4095 of them for a
+    12-qubit load, megabytes of Python object overhead for what is really an
+    array of 4095 floats.  Held as one array instead it is a single operation,
+    and the rotations apply in one broadcast pass."""
+
     diagonal: np.ndarray | None = None
     """Phase angles per basis state, for operators diagonal in the computational
     basis.  Stored as a length-``2**n`` vector rather than a ``2**n x 2**n``
@@ -195,6 +350,16 @@ class Operation:
                 controls=self.controls,
                 control_values=self.control_values,
                 diagonal=-self.diagonal,
+            )
+        if self.angles is not None:
+            # Ry(-theta) inverts Ry(theta), so negating the table suffices.
+            return Operation(
+                name=self.name + "^dg",
+                matrix=None,
+                targets=self.targets,
+                controls=self.controls,
+                control_values=self.control_values,
+                angles=-self.angles,
             )
         return Operation(
             name=self.name + "^dg",
@@ -245,7 +410,12 @@ class Circuit:
         for op in self.ops:
             c = op.n_controls
             max_controls = max(max_controls, c)
-            if op.diagonal is not None:
+            if op.angles is not None:
+                # Honest accounting: hardware needs one rotation per control
+                # pattern, even though this stores and applies them as one array.
+                elementary += int(op.angles.size)
+                max_controls = max(max_controls, int(round(math.log2(max(op.angles.size, 1)))))
+            elif op.diagonal is not None:
                 # A dense diagonal is a black box: compiling it in general costs
                 # O(2**n) gates.  Count it that way rather than flattering it.
                 elementary += 2**self.n_qubits
@@ -262,8 +432,8 @@ class Circuit:
 
     # -- composition ------------------------------------------------------
     def append(self, op: Operation) -> "Circuit":
-        if op.matrix is None and op.diagonal is None:
-            raise ValueError("an operation needs either a matrix or a diagonal")
+        if op.matrix is None and op.diagonal is None and op.angles is None:
+            raise ValueError("an operation needs a matrix, a diagonal, or angles")
         for q in tuple(op.targets) + tuple(op.controls):
             if not 0 <= q < self.n_qubits:
                 raise ValueError(f"qubit {q} out of range for {self.n_qubits}-qubit circuit")
@@ -288,6 +458,7 @@ class Circuit:
                     controls=tuple(mapping[c] for c in op.controls),
                     control_values=op.control_values,
                     diagonal=op.diagonal,
+                    angles=op.angles,
                 )
             )
         return self
@@ -317,6 +488,7 @@ class Circuit:
                     controls=tuple(op.controls) + (control_qubit,),
                     control_values=tuple(op.control_values or (1,) * len(op.controls)) + (1,),
                     diagonal=op.diagonal,
+                    angles=op.angles,
                 )
             )
         return out
@@ -416,6 +588,27 @@ class Circuit:
         return self.append(Operation("mcz", Z, (int(target),), ctrls, vals))
 
     # -- diagonal / multi-qubit helpers -----------------------------------
+    def multiplexed_ry(
+        self,
+        angles: np.ndarray,
+        controls: Sequence[int],
+        target: int,
+    ) -> "Circuit":
+        """One ``Ry`` per control pattern, stored as an array rather than gates.
+
+        ``angles`` must have length ``2**len(controls)``, indexed with the
+        lowest-numbered control as the most significant bit.
+        """
+        ctrls = tuple(sorted(int(c) for c in controls))
+        angles = np.asarray(angles, dtype=np.float64).reshape(-1)
+        if angles.size != 2 ** len(ctrls):
+            raise ValueError("angle table must cover every control pattern")
+        if int(target) in ctrls:
+            raise ValueError("target cannot also be a multiplexing control")
+        return self.append(
+            Operation("mux_ry", None, (int(target),), controls=ctrls, angles=angles)
+        )
+
     def diagonal_phase(self, phases: np.ndarray) -> "Circuit":
         """Apply ``diag(exp(i * phases))`` across the whole register.
 
@@ -448,20 +641,69 @@ class Circuit:
         return self
 
     # -- execution --------------------------------------------------------
-    def run(self, initial_state: np.ndarray | None = None) -> np.ndarray:
-        """Evolve a state through the circuit and return the final statevector."""
+    def run(
+        self,
+        initial_state: np.ndarray | None = None,
+        dtype: np.dtype = np.complex128,
+        out: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Evolve a state through the circuit and return the final statevector.
+
+        Parameters
+        ----------
+        dtype:
+            ``complex128`` (default) or ``complex64``.  Single precision halves
+            the memory -- 2 bytes per amplitude per qubit added -- at roughly
+            ``1e-7`` relative error per gate, which is negligible against the
+            shot noise of any sampled estimator here but *not* against an exact
+            statevector comparison.  See :func:`estimate_memory`.
+        out:
+            Optional pre-allocated buffer to evolve in place, so a repeated call
+            (a Grover power, a variational loop) allocates nothing at all.
+
+        Evolution is in place: each gate rewrites the statevector through views
+        rather than building a new array, so peak memory is the statevector plus
+        one half-state scratch pair, whatever the circuit length.
+        """
         dim = 2**self.n_qubits
-        if initial_state is None:
-            state = np.zeros(dim, dtype=np.complex128)
+        dtype = np.dtype(dtype)
+
+        if out is not None:
+            if out.size != dim:
+                raise ValueError("output buffer has the wrong dimension")
+            state = out.reshape(-1)
+            if initial_state is None:
+                state[:] = 0.0
+                state[0] = 1.0
+            else:
+                state[:] = np.asarray(initial_state).reshape(-1)
+        elif initial_state is None:
+            state = np.zeros(dim, dtype=dtype)
             state[0] = 1.0
         else:
-            state = np.asarray(initial_state, dtype=np.complex128).reshape(-1).copy()
+            state = np.array(initial_state, dtype=dtype).reshape(-1)
             if state.size != dim:
                 raise ValueError("initial state has the wrong dimension")
+
+        scratch = _Scratch(state.dtype)
         for op in self.ops:
-            if op.diagonal is not None:
+            if op.angles is not None:
+                _apply_multiplexed_ry(
+                    state, self.n_qubits, op.angles, op.targets[0], op.controls, scratch
+                )
+            elif op.diagonal is not None:
                 state = _apply_diagonal(
                     state, self.n_qubits, op.diagonal, op.controls, op.control_values
+                )
+            elif len(op.targets) == 1:
+                _apply_1q_inplace(
+                    state,
+                    self.n_qubits,
+                    op.matrix,
+                    op.targets[0],
+                    op.controls,
+                    op.control_values,
+                    scratch,
                 )
             else:
                 state = _apply(
@@ -474,10 +716,34 @@ class Circuit:
                 )
         return state
 
+    def memory_estimate(self, dtype: np.dtype = np.complex128) -> dict[str, float]:
+        """Bytes needed to simulate this circuit, and where they go."""
+        return estimate_memory(self.n_qubits, dtype)
+
 
 # --------------------------------------------------------------------------
 # Measurement helpers
 # --------------------------------------------------------------------------
+
+
+def estimate_memory(n_qubits: int, dtype: np.dtype = np.complex128) -> dict[str, float]:
+    """Memory required to simulate ``n_qubits``, in bytes.
+
+    Peak is the statevector plus the half-state scratch pair -- ``2x`` the
+    statevector, flat in circuit depth.  Every qubit added doubles it, which is
+    the wall this whole package runs into: 30 qubits is 32 GB in double
+    precision, 16 GB in single.
+    """
+    width = np.dtype(dtype).itemsize
+    vector = (2**n_qubits) * width
+    return {
+        "qubits": n_qubits,
+        "dtype": np.dtype(dtype).name,
+        "statevector_bytes": float(vector),
+        "scratch_bytes": float(vector),
+        "peak_bytes": float(2 * vector),
+        "peak_mb": float(2 * vector) / 1e6,
+    }
 
 
 def statevector(circuit: Circuit) -> np.ndarray:

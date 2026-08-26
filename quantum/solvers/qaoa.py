@@ -48,7 +48,7 @@ class QAOASolver(Solver):
         problem: QUBO,
         p: int = 2,
         n_starts: int = 6,
-        max_vars: int = 16,
+        max_vars: int = 20,
         shots: int = 2048,
         rng: np.random.Generator | None = None,
         max_iter: int = 200,
@@ -59,7 +59,8 @@ class QAOASolver(Solver):
         if n > max_vars:
             raise ValueError(
                 f"QAOA simulation refuses {n} variables (limit {max_vars}); "
-                "statevector memory grows as 2**n"
+                f"statevector memory grows as 2**n -- {n} would need about "
+                f"{(2**n) * 16 * 3 / 1e6:.0f} MB of buffers"
             )
         start = time.perf_counter()
 
@@ -73,21 +74,34 @@ class QAOASolver(Solver):
         history: list[float] = []
         evaluations = 0
 
+        # The optimiser calls the objective hundreds of times on an identical
+        # circuit shape, so every buffer is allocated once and reused: the
+        # statevector, the phase vector, and the probability scratch.  Without
+        # this each evaluation allocates and frees several 2**n arrays, which
+        # dominates both runtime and peak memory for the whole solve.
+        state_buffer = np.empty(2**n, dtype=np.complex128)
+        phase_buffer = np.empty(2**n, dtype=np.float64)
+        prob_buffer = np.empty(2**n, dtype=np.float64)
+
         def prepare(params: np.ndarray) -> np.ndarray:
             gammas, betas = params[:p], params[p:]
             circuit = Circuit(n, name="qaoa")
             circuit.barrier_all_h()
             for layer in range(p):
-                circuit.diagonal_phase(-gammas[layer] * costs * scale)
+                np.multiply(costs, -gammas[layer] * scale, out=phase_buffer)
+                circuit.diagonal_phase(phase_buffer.copy())
                 for q in range(n):
                     circuit.rx(2.0 * betas[layer], q)
-            return circuit.run()
+            return circuit.run(out=state_buffer)
 
         def objective(params: np.ndarray) -> float:
             nonlocal evaluations
             evaluations += 1
-            probs = probabilities(prepare(params))
-            value = float(np.dot(probs, costs))
+            state = prepare(params)
+            # |psi|^2 without materialising an intermediate magnitude array.
+            np.abs(state, out=prob_buffer)
+            np.square(prob_buffer, out=prob_buffer)
+            value = float(np.dot(prob_buffer, costs))
             history.append(value)
             return value
 
@@ -101,7 +115,10 @@ class QAOASolver(Solver):
         )
 
         # Measure the optimised state and keep the best bitstring actually seen.
-        probs = probabilities(prepare(best.x))
+        state = prepare(best.x)
+        np.abs(state, out=prob_buffer)
+        np.square(prob_buffer, out=prob_buffer)
+        probs = prob_buffer
         counts = rng.multinomial(shots, probs / probs.sum())
         observed = np.nonzero(counts)[0]
         energies = costs[observed]

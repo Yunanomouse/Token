@@ -85,24 +85,38 @@ def prepare_distribution(
     amps = np.sqrt(p)
     # Walk the binary tree level by level.  At each node the rotation angle is
     # set by how the node's probability mass splits between its two children.
+    #
+    # Every node at a given level shares the same controls and target and differs
+    # only in its angle, so the whole level is one *multiplexed* Ry rather than
+    # 2**level separate multi-controlled gates.  That turns the circuit from
+    # O(2**n) Operation objects into n of them holding O(2**n) floats between
+    # them -- same physics, a fraction of the Python object overhead.
     for level in range(n):
         block = 2 ** (n - level)
         half = block // 2
-        for prefix in range(2**level):
-            segment = amps[prefix * block : (prefix + 1) * block]
-            parent = float(np.linalg.norm(segment))
-            if parent < _TOL:
-                continue
-            left = float(np.linalg.norm(segment[:half]))
-            ratio = min(1.0, max(0.0, left / parent))
-            theta = 2.0 * math.acos(ratio)
-            if abs(theta) < _TOL:
-                continue
-            if level == 0:
-                circuit.ry(theta, qs[0])
-            else:
+        norms = np.linalg.norm(amps.reshape(2**level, block), axis=1)
+        left = np.linalg.norm(amps.reshape(2**level, 2, half), axis=2)[:, 0]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.where(norms > _TOL, left / np.where(norms > _TOL, norms, 1.0), 1.0)
+        angles = 2.0 * np.arccos(np.clip(ratio, 0.0, 1.0))
+
+        if not np.any(np.abs(angles) > _TOL):
+            continue
+        if level == 0:
+            circuit.ry(float(angles[0]), qs[0])
+            continue
+
+        controls = qs[:level]
+        if list(controls) == sorted(controls):
+            circuit.multiplexed_ry(angles, controls, qs[level])
+        else:
+            # Custom qubit orderings break the angle table's bit convention;
+            # fall back to explicit gates rather than silently mis-indexing.
+            for prefix, theta in enumerate(angles):
+                if abs(float(theta)) < _TOL:
+                    continue
                 bits = [(prefix >> (level - 1 - b)) & 1 for b in range(level)]
-                circuit.mcry(theta, qs[:level], qs[level], control_values=bits)
+                circuit.mcry(float(theta), controls, qs[level], control_values=bits)
     return circuit
 
 

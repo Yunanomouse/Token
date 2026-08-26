@@ -46,6 +46,8 @@ from quantum.pricing import (
     integer_comparator,
     price_european_option,
 )
+from pathlib import Path
+
 from quantum.qubo import QUBO
 from quantum.risk import (
     classical_var_cvar,
@@ -670,6 +672,233 @@ class TestArbitrage(unittest.TestCase):
         path = [0, 1, 2]
         expected = matrix[0, 1] * matrix[1, 2] * matrix[2, 0]
         self.assertAlmostEqual(cycle_profit(matrix, path)[0], expected, places=12)
+
+
+class TestMemoryEfficiency(unittest.TestCase):
+    """The optimisations must not change any answer -- only the resources used."""
+
+    def test_energies_all_matches_naive_reference(self):
+        """Recursive doubling must reproduce the bit-matrix contraction exactly."""
+        rng = np.random.default_rng(0)
+        for _ in range(30):
+            n = int(rng.integers(1, 9))
+            problem = QUBO(Q=rng.normal(size=(n, n)), offset=float(rng.normal()))
+            got = problem.energies_all()
+            want = np.array([
+                problem.energy(np.array([(x >> (n - 1 - i)) & 1 for i in range(n)]))
+                for x in range(2**n)
+            ])
+            np.testing.assert_allclose(got, want, atol=1e-9)
+
+    def test_energies_all_peak_memory_is_bounded(self):
+        """Peak must be ~2x the result, not ~n x the result."""
+        import tracemalloc
+
+        n = 16
+        problem = QUBO(Q=np.random.default_rng(0).normal(size=(n, n)))
+        tracemalloc.start()
+        problem.energies_all()
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        self.assertLess(peak, 2.6 * (2**n) * 8)
+
+    def test_energy_chunks_reconstruct_full_landscape(self):
+        rng = np.random.default_rng(1)
+        for _ in range(8):
+            n = int(rng.integers(4, 11))
+            problem = QUBO(Q=rng.normal(size=(n, n)), offset=float(rng.normal()))
+            full = problem.energies_all()
+            out = np.empty_like(full)
+            for start, chunk in problem.iter_energy_chunks(chunk_bits=3):
+                out[start : start + chunk.size] = chunk
+            np.testing.assert_allclose(full, out, atol=1e-9)
+
+    def test_streaming_brute_force_agrees_with_materialised(self):
+        rng = np.random.default_rng(2)
+        problem = QUBO(Q=rng.normal(size=(10, 10)))
+        bits_a, energy_a = problem.brute_force(max_materialise_bits=22)
+        bits_b, energy_b = problem.brute_force(max_materialise_bits=4)  # forces streaming
+        self.assertAlmostEqual(energy_a, energy_b, places=9)
+        np.testing.assert_array_equal(bits_a, bits_b)
+
+    def test_inplace_kernel_matches_tensordot(self):
+        """The in-place gate path must equal the general contraction path."""
+        from quantum.statevector import _apply
+
+        rng = np.random.default_rng(3)
+        for _ in range(30):
+            n = int(rng.integers(1, 6))
+            target = int(rng.integers(0, n))
+            controls = tuple(q for q in range(n) if q != target and rng.random() < 0.4)
+            matrix = ry_matrix_random(rng)
+            init = rng.normal(size=2**n) + 1j * rng.normal(size=2**n)
+            init /= np.linalg.norm(init)
+
+            circuit = Circuit(n)
+            circuit.append(
+                __import__("quantum.statevector", fromlist=["Operation"]).Operation(
+                    "test", matrix, (target,), controls, (1,) * len(controls)
+                )
+            )
+            got = circuit.run(init)
+            want = _apply(
+                np.array(init, dtype=np.complex128), n, matrix, (target,),
+                controls, (1,) * len(controls),
+            )
+            np.testing.assert_allclose(got, want, atol=1e-12)
+
+    def test_single_qubit_circuit_writes_through(self):
+        """Regression: rank-collapsing index turns a view into a scalar copy."""
+        state = Circuit(1).x(0).run()
+        np.testing.assert_allclose(state, np.array([0.0, 1.0]), atol=1e-12)
+        # A fully-controlled gate collapses the same way.
+        state = Circuit(2).x(0).cx(0, 1).run()
+        np.testing.assert_allclose(np.abs(state) ** 2, [0, 0, 0, 1], atol=1e-12)
+
+    def test_run_into_preallocated_buffer(self):
+        circuit = Circuit(4).barrier_all_h()
+        buffer = np.empty(16, dtype=np.complex128)
+        got = circuit.run(out=buffer)
+        self.assertIs(got.base if got.base is not None else got, buffer)
+        np.testing.assert_allclose(got, circuit.run(), atol=1e-12)
+
+    def test_complex64_stays_accurate_enough(self):
+        rng = np.random.default_rng(4)
+        circuit = Circuit(8).barrier_all_h()
+        for _ in range(80):
+            q, t = int(rng.integers(0, 8)), int(rng.integers(0, 8))
+            circuit.ry(float(rng.normal()), q)
+            if q != t:
+                circuit.cx(q, t)
+        double = circuit.run(dtype=np.complex128)
+        single = circuit.run(dtype=np.complex64)
+        self.assertLess(float(np.abs(double - single).max()), 1e-5)
+        self.assertAlmostEqual(float((np.abs(single) ** 2).sum()), 1.0, places=5)
+
+    def test_multiplexed_ry_matches_explicit_gates(self):
+        rng = np.random.default_rng(5)
+        for _ in range(20):
+            n = int(rng.integers(2, 6))
+            target = int(rng.integers(0, n))
+            controls = sorted(q for q in range(n) if q != target)
+            angles = rng.normal(size=2 ** len(controls))
+            init = rng.normal(size=2**n) + 1j * rng.normal(size=2**n)
+            init /= np.linalg.norm(init)
+
+            explicit = Circuit(n)
+            for pattern, theta in enumerate(angles):
+                bits = [
+                    (pattern >> (len(controls) - 1 - b)) & 1 for b in range(len(controls))
+                ]
+                explicit.mcry(float(theta), controls, target, control_values=bits)
+            muxed = Circuit(n).multiplexed_ry(angles, controls, target)
+            np.testing.assert_allclose(muxed.run(init), explicit.run(init), atol=1e-12)
+
+    def test_multiplexed_ry_inverts(self):
+        angles = np.array([0.3, -1.1, 2.0, 0.7])
+        circuit = Circuit(3).multiplexed_ry(angles, [0, 1], 2)
+        state = circuit.run()
+        np.testing.assert_allclose(circuit.inverse().run(state), Circuit(3).run(), atol=1e-12)
+
+    def test_preparation_uses_linear_gate_count(self):
+        """State loading must be n operations, not 2**n."""
+        for n in (6, 8, 10):
+            circuit = prepare_distribution(np.full(2**n, 1.0 / 2**n), n)
+            self.assertLessEqual(len(circuit.ops), n)
+
+    def test_preparation_still_exact_after_optimisation(self):
+        rng = np.random.default_rng(6)
+        for n in (3, 5, 7):
+            target = rng.random(2**n)
+            target /= target.sum()
+            got = probabilities(prepare_distribution(target, n).run())
+            np.testing.assert_allclose(got, target, atol=1e-12)
+
+    def test_resource_estimate_still_reports_hardware_cost(self):
+        """Storing a level as one array must not understate the gate count."""
+        circuit = prepare_distribution(np.full(64, 1 / 64), 6)
+        self.assertGreaterEqual(circuit.resource_estimate()["estimated_elementary_gates"], 63)
+
+
+def ry_matrix_random(rng) -> np.ndarray:
+    """A random 2x2 unitary, for kernel-equivalence testing."""
+    theta, phi, lam = rng.uniform(0, 2 * np.pi, size=3)
+    c, s = math.cos(theta / 2), math.sin(theta / 2)
+    return np.array(
+        [
+            [c, -np.exp(1j * lam) * s],
+            [np.exp(1j * phi) * s, np.exp(1j * (phi + lam)) * c],
+        ],
+        dtype=np.complex128,
+    )
+
+
+class TestStorage(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp()
+
+    def test_round_trip_lossless(self):
+        from quantum.storage import load_compressed, save_compressed
+
+        rng = np.random.default_rng(0)
+        arrays = {"prices": rng.random((200, 8)) * 100, "weights": rng.random(8)}
+        path = Path(self.tmp) / "data.qtz"
+        save_compressed(path, arrays)
+        restored, header = load_compressed(path)
+        for name, array in arrays.items():
+            np.testing.assert_allclose(restored[name], array, atol=0)
+        self.assertEqual(header["codec"], "zlib")
+
+    def test_mantissa_shaving_bounds_error(self):
+        from quantum.storage import precision_report, shave_mantissa
+
+        rng = np.random.default_rng(1)
+        data = rng.random(10_000) * 1000
+        for keep, tolerance in ((20, 1e-5), (12, 1e-3), (30, 1e-8)):
+            shaved = shave_mantissa(data, keep)
+            self.assertEqual(shaved.dtype, data.dtype)
+            self.assertLess(precision_report(data, shaved), tolerance)
+
+    def test_shaving_improves_compression(self):
+        import zlib
+
+        from quantum.storage import shave_mantissa
+        from quantum.market import synthetic_prices
+
+        prices = synthetic_prices(n_assets=20, n_days=2000, seed=0).prices
+        raw = len(zlib.compress(prices.tobytes(), 6))
+        shaved = len(zlib.compress(shave_mantissa(prices, 12).tobytes(), 6))
+        self.assertLess(shaved, raw)
+
+    def test_downcast_round_trip(self):
+        from quantum.storage import load_compressed, precision_report, save_compressed
+
+        rng = np.random.default_rng(2)
+        data = rng.random((500, 4)) * 50
+        path = Path(self.tmp) / "small.qtz"
+        save_compressed(path, {"x": data}, dtype="float32")
+        restored, _ = load_compressed(path)
+        self.assertEqual(restored["x"].dtype, np.float32)
+        self.assertLess(precision_report(data, restored["x"]), 1e-6)
+
+    def test_mmap_and_chunking(self):
+        from quantum.storage import iter_chunks, load_mmap
+
+        rng = np.random.default_rng(3)
+        data = rng.random((1000, 3))
+        path = Path(self.tmp) / "big.npy"
+        np.save(path, data)
+        mapped = load_mmap(path)
+        total = sum(float(chunk.sum()) for chunk in iter_chunks(mapped, chunk_rows=128))
+        self.assertAlmostEqual(total, float(data.sum()), places=6)
+
+    def test_rejects_unknown_codec(self):
+        from quantum.storage import save_compressed
+
+        with self.assertRaises(ValueError):
+            save_compressed(Path(self.tmp) / "x.qtz", {"a": np.zeros(4)}, codec="magic")
 
 
 class TestCLI(unittest.TestCase):

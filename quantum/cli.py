@@ -224,6 +224,48 @@ def cmd_benchmark(args) -> int:
     return 0
 
 
+def cmd_memory(args) -> int:
+    """Report what each part of the package costs in memory, and where it stops."""
+    from .statevector import estimate_memory
+    from .storage import compare_codecs
+
+    _rule("Statevector simulation")
+    print("Peak is the statevector plus one half-state scratch pair -- 2x the")
+    print("statevector, flat in circuit depth. Every qubit added doubles it.\n")
+    print(f"{'qubits':>8}{'complex128':>14}{'complex64':>14}   fits in 16 GB?")
+    print("-" * 56)
+    for n in (10, 16, 20, 24, 26, 28, 30, 32):
+        double = estimate_memory(n)["peak_mb"]
+        single = estimate_memory(n, np.complex64)["peak_mb"]
+        verdict = "yes" if single < 16_000 else "no"
+        print(f"{n:>8}{double:>12.1f}MB{single:>12.1f}MB   {verdict}")
+
+    _rule("QUBO energy landscape")
+    print("Built by recursive doubling: peak is 2x the result, not n x.\n")
+    print(f"{'variables':>10}{'landscape':>14}{'peak':>12}")
+    print("-" * 36)
+    for n in (12, 16, 20, 24, 26):
+        landscape = (2**n) * 8 / 1e6
+        print(f"{n:>10}{landscape:>12.1f}MB{2 * landscape:>10.1f}MB")
+    print("\nBeyond that, iter_energy_chunks() streams the landscape in fixed-size")
+    print("blocks, so an argmin stays possible at flat memory -- the work is still")
+    print("2**n, only the memory is bounded.")
+
+    _rule("Compression, measured on real price data")
+    market = synthetic_prices(n_assets=args.assets, n_days=args.days, seed=args.seed)
+    print(f"input: {market.prices.shape[0]} x {market.prices.shape[1]} float64 "
+          f"({market.prices.nbytes/1e6:.2f} MB)\n")
+    print(f"{'codec':<8}{'precision':<16}{'ratio':>9}{'stored':>11}{'rel error':>13}")
+    print("-" * 58)
+    for report in compare_codecs(market.prices)[: args.top]:
+        print(f"{report.codec:<8}{report.dtype:<16}{report.ratio:>8.2f}x"
+              f"{report.stored_bytes/1e6:>9.2f}MB{report.max_relative_error:>13.1e}")
+    print("\nCompression saves disk, not RAM -- a decompressed array is full size.")
+    print("For RAM use load_mmap() + iter_chunks(), which cannot be combined with")
+    print("compression: random access and compression are mutually exclusive.")
+    return 0
+
+
 def cmd_demo(args) -> int:
     print("Quantum methods for trading -- end-to-end demonstration")
     for fn, sub in (
@@ -294,6 +336,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vars", type=int, default=10)
     p.add_argument("--trials", type=int, default=10)
     p.set_defaults(func=cmd_benchmark)
+
+    p = sub.add_parser("memory", help="report memory limits and compression options")
+    p.add_argument("--assets", type=int, default=50)
+    p.add_argument("--days", type=int, default=5040)
+    p.add_argument("--top", type=int, default=8)
+    p.set_defaults(func=cmd_memory)
 
     p = sub.add_parser("demo", help="run every application end to end")
     p.set_defaults(func=cmd_demo)

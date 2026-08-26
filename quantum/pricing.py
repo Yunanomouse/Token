@@ -490,11 +490,15 @@ def price_basket_option(
     prepare_distribution(joint_probs, n_state, circuit=circuit, qubits=state_qubits)
 
     circuit.ry(math.pi / 2 - c_approx, objective)
-    for x, fhat in enumerate(normalised_payoff):
-        if fhat <= 0:
-            continue
-        bits = [(x >> (n_state - 1 - b)) & 1 for b in range(n_state)]
-        circuit.mcry(2.0 * c_approx * float(fhat), state_qubits, objective, control_values=bits)
+    # One rotation per joint basis state, carried as a single angle table rather
+    # than 2**n multi-controlled gates.  The gate *count* on hardware is
+    # unchanged -- resource_estimate() still reports it -- but the simulation
+    # holds one array instead of thousands of Operation objects.
+    circuit.multiplexed_ry(
+        2.0 * c_approx * np.clip(normalised_payoff, 0.0, None),
+        state_qubits,
+        objective,
+    )
 
     ae = estimate_amplitude(circuit, objective, method=method, **ae_kwargs)
     normalised = (ae.estimate - 0.5) / c_approx + 0.5
