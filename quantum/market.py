@@ -124,6 +124,23 @@ class MarketData:
             raise ValueError("ticker count does not match the price matrix")
         if self.prices.shape[0] < 3:
             raise ValueError("need at least three price observations")
+        # Reject bad data loudly. A NaN or a non-positive price propagates
+        # silently through log-returns into every covariance entry, and the
+        # optimiser then returns a portfolio built on NaN without raising --
+        # the worst failure mode there is. load_price_csv() drops such rows;
+        # a MarketData built directly must not accept them.
+        if not np.all(np.isfinite(self.prices)):
+            bad = int(np.count_nonzero(~np.isfinite(self.prices)))
+            raise ValueError(
+                f"price matrix contains {bad} non-finite value(s); "
+                "drop or impute them before constructing MarketData"
+            )
+        if np.any(self.prices <= 0):
+            bad = int(np.count_nonzero(self.prices <= 0))
+            raise ValueError(
+                f"price matrix contains {bad} non-positive price(s); "
+                "log returns are undefined there"
+            )
 
         self.returns = log_returns(self.prices)
         # Annualise: log returns add over time, covariance scales linearly.

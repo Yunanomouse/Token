@@ -363,6 +363,54 @@ class TestMarket(unittest.TestCase):
         self.assertGreater(intensity, 0.0)
         self.assertLess(np.linalg.cond(shrunk), np.linalg.cond(raw))
 
+    def test_rejects_non_finite_prices(self):
+        """A NaN must fail loudly, not poison the covariance silently."""
+        from quantum.market import MarketData
+
+        prices = np.tile([[100.0, 50.0]], (10, 1))
+        prices[3, 0] = np.nan
+        with self.assertRaises(ValueError):
+            MarketData(["A", "B"], prices)
+        prices[3, 0] = np.inf
+        with self.assertRaises(ValueError):
+            MarketData(["A", "B"], prices)
+
+    def test_rejects_non_positive_prices(self):
+        from quantum.market import MarketData
+
+        prices = np.tile([[100.0, 50.0]], (10, 1))
+        prices[5, 1] = 0.0
+        with self.assertRaises(ValueError):
+            MarketData(["A", "B"], prices)
+        prices[5, 1] = -3.0
+        with self.assertRaises(ValueError):
+            MarketData(["A", "B"], prices)
+
+    def test_load_price_csv_round_trip(self):
+        """The real-data entry point, which nothing had ever executed."""
+        import csv
+        import tempfile
+        from quantum.market import load_price_csv
+
+        directory = tempfile.mkdtemp()
+        path = Path(directory) / "prices.csv"
+        rng = np.random.default_rng(0)
+        values = 100 * np.exp(np.cumsum(rng.normal(0, 0.01, size=(40, 3)), axis=0))
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["date", "AAA", "BBB", "CCC"])
+            for i, row in enumerate(values):
+                writer.writerow([f"2026-01-{i+1:02d}", *row])
+            # Rows the loader must drop rather than propagate.
+            writer.writerow(["2026-02-01", "", "1.0", "2.0"])
+            writer.writerow(["2026-02-02", "0", "1.0", "2.0"])
+            writer.writerow(["2026-02-03", "nan", "1.0", "2.0"])
+
+        market = load_price_csv(path)
+        self.assertEqual(market.tickers, ["AAA", "BBB", "CCC"])
+        self.assertEqual(market.prices.shape, (40, 3))
+        self.assertTrue(np.all(np.isfinite(market.covariance)))
+
     def test_market_factor_creates_positive_correlation(self):
         market = synthetic_prices(n_assets=8, n_days=1000, seed=4)
         off_diagonal = market.correlation[~np.eye(8, dtype=bool)]
