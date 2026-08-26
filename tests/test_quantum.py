@@ -833,6 +833,194 @@ def ry_matrix_random(rng) -> np.ndarray:
     )
 
 
+class TestSubspace(unittest.TestCase):
+    """Constraint-preserving QAOA: same physics, a fraction of the state space."""
+
+    def test_enumeration_is_sorted_and_correct(self):
+        from quantum.subspace import HammingSubspace
+
+        for n, k in ((6, 2), (8, 3), (10, 4)):
+            subspace = HammingSubspace.build(n, k)
+            self.assertEqual(subspace.dimension, math.comb(n, k))
+            # Sortedness is load-bearing: partner lookup uses np.searchsorted,
+            # which would silently return wrong indices on unsorted input.
+            self.assertTrue(bool(np.all(np.diff(subspace.states) > 0)))
+            weights = {bin(int(v)).count("1") for v in subspace.states}
+            self.assertEqual(weights, {k})
+
+    def test_mixer_is_unitary(self):
+        from quantum.subspace import HammingSubspace
+
+        rng = np.random.default_rng(0)
+        subspace = HammingSubspace.build(10, 4)
+        state = rng.normal(size=subspace.dimension) + 1j * rng.normal(size=subspace.dimension)
+        state /= np.linalg.norm(state)
+        for beta in rng.normal(size=6):
+            subspace.apply_mixer(state, float(beta))
+        self.assertAlmostEqual(float(np.linalg.norm(state)), 1.0, places=12)
+
+    def test_matches_full_register_simulation(self):
+        """The whole point: identical evolution, exponentially less memory."""
+        from quantum.subspace import HammingSubspace, dicke_state
+
+        def full_xy_mixer(n, edges, beta):
+            matrix = np.eye(2**n, dtype=complex)
+            for i, j in edges:
+                layer = np.eye(2**n, dtype=complex)
+                for x in range(2**n):
+                    if ((x >> (n - 1 - i)) & 1) == 1 and ((x >> (n - 1 - j)) & 1) == 0:
+                        y = x - (1 << (n - 1 - i)) + (1 << (n - 1 - j))
+                        c, sn = math.cos(beta), -1j * math.sin(beta)
+                        layer[x, x] = layer[y, y] = c
+                        layer[x, y] = layer[y, x] = sn
+                matrix = layer @ matrix
+            return matrix
+
+        rng = np.random.default_rng(0)
+        for _ in range(6):
+            n = int(rng.integers(4, 8))
+            k = int(rng.integers(1, n))
+            subspace = HammingSubspace.build(n, k)
+            problem = QUBO(Q=rng.normal(size=(n, n)))
+            sub_costs = subspace.costs(problem)
+            full_costs = problem.energies_all()
+            np.testing.assert_allclose(sub_costs, full_costs[subspace.states], atol=1e-9)
+
+            gammas, betas = rng.normal(size=3), rng.normal(size=3)
+            state = dicke_state(subspace).astype(complex)
+            for g, b in zip(gammas, betas):
+                subspace.apply_cost(state, sub_costs, float(g))
+                subspace.apply_mixer(state, float(b))
+
+            full = np.zeros(2**n, dtype=complex)
+            full[subspace.states] = 1.0 / math.sqrt(subspace.dimension)
+            for g, b in zip(gammas, betas):
+                full = full * np.exp(-1j * g * full_costs)
+                full = full_xy_mixer(n, subspace.edges, float(b)) @ full
+
+            np.testing.assert_allclose(full[subspace.states], state, atol=1e-10)
+            # And nothing leaked outside the feasible subspace.
+            outside = np.delete(full, subspace.states)
+            if outside.size:
+                self.assertLess(float(np.abs(outside).max()), 1e-12)
+
+    def test_every_outcome_is_feasible(self):
+        """Cardinality holds structurally -- there is no penalty weight to get wrong."""
+        from quantum.subspace import subspace_qaoa
+
+        rng = np.random.default_rng(1)
+        for k in (2, 3, 4):
+            problem = QUBO(Q=rng.normal(size=(9, 9)))
+            for seed in range(5):
+                result = subspace_qaoa(
+                    problem, k, p=1, n_starts=1, max_iter=30,
+                    rng=np.random.default_rng(seed),
+                )
+                self.assertEqual(int(result.assignment.sum()), k)
+
+    def test_finds_the_constrained_optimum(self):
+        from quantum.market import synthetic_prices
+        from quantum.portfolio import (
+            PortfolioConstraints, PortfolioProblem, exhaustive_cardinality, solve_portfolio,
+        )
+
+        market = synthetic_prices(n_assets=12, n_days=756, seed=3)
+        cardinality = 4
+        problem = PortfolioProblem(
+            market.expected_returns, market.covariance, market.tickers,
+            risk_aversion=2.0,
+            constraints=PortfolioConstraints(cardinality=cardinality),
+        )
+        mask, _ = exhaustive_cardinality(
+            market.expected_returns, market.covariance, cardinality, 2.0
+        )
+        truth = set(np.nonzero(mask)[0].tolist())
+        result = solve_portfolio(
+            problem, solver="subspace_qaoa", p=2, n_starts=3, max_iter=100,
+            rng=np.random.default_rng(0),
+        )
+        self.assertEqual(set(np.nonzero(result.weights > 1e-9)[0].tolist()), truth)
+        self.assertEqual(len(result.holdings), cardinality)
+        self.assertTrue(result.feasible)
+
+    def test_compression_reported_correctly(self):
+        from quantum.subspace import HammingSubspace
+
+        subspace = HammingSubspace.build(20, 5)
+        self.assertEqual(subspace.dimension, math.comb(20, 5))
+        self.assertEqual(subspace.full_dimension, 2**20)
+        self.assertGreater(subspace.compression, 60)
+
+    def test_bare_qubo_drops_the_cardinality_penalty(self):
+        from quantum.market import synthetic_prices
+        from quantum.portfolio import PortfolioConstraints, PortfolioProblem
+
+        market = synthetic_prices(n_assets=8, n_days=400, seed=0)
+        problem = PortfolioProblem(
+            market.expected_returns, market.covariance, market.tickers,
+            constraints=PortfolioConstraints(cardinality=3),
+        )
+        self.assertIn("cardinality", problem.to_qubo().metadata["penalties"])
+        bare = problem.to_qubo(include_cardinality_penalty=False)
+        self.assertNotIn("cardinality", bare.metadata["penalties"])
+
+    def test_rejects_missing_cardinality(self):
+        from quantum.market import synthetic_prices
+        from quantum.portfolio import PortfolioProblem, solve_portfolio
+
+        market = synthetic_prices(n_assets=6, n_days=300, seed=0)
+        problem = PortfolioProblem(market.expected_returns, market.covariance, market.tickers)
+        with self.assertRaises(ValueError):
+            solve_portfolio(problem, solver="subspace_qaoa")
+
+    def test_refuses_oversized_subspace(self):
+        from quantum.subspace import HammingSubspace
+
+        with self.assertRaises(ValueError):
+            HammingSubspace.build(60, 30)
+
+
+class TestLocality(unittest.TestCase):
+    def test_dense_portfolio_gets_no_lightcone_benefit(self):
+        """The measured finding: covariance couples everything, so cones are useless."""
+        from quantum.locality import locality_report
+        from quantum.market import synthetic_prices
+        from quantum.portfolio import PortfolioConstraints, PortfolioProblem
+
+        market = synthetic_prices(n_assets=12, n_days=500, seed=1)
+        problem = PortfolioProblem(
+            market.expected_returns, market.covariance, market.tickers,
+            constraints=PortfolioConstraints(cardinality=4),
+        ).to_qubo()
+        report = locality_report(problem)
+        self.assertGreater(report.density, 0.8)
+        self.assertFalse(report.worthwhile)
+        self.assertEqual(report.speedup_at(1), 1.0)
+
+    def test_sparse_graph_does_get_a_benefit(self):
+        from quantum.locality import locality_report
+
+        n = 16
+        coupling = np.zeros((n, n))
+        for i in range(n):
+            coupling[i, (i + 1) % n] = 1.0
+        report = locality_report(QUBO(Q=coupling + coupling.T))
+        self.assertLess(report.density, 0.2)
+        self.assertTrue(report.worthwhile)
+        self.assertGreater(report.speedup_at(2), 100)
+
+    def test_cone_grows_monotonically_with_depth(self):
+        from quantum.locality import locality_report
+
+        n = 20
+        coupling = np.zeros((n, n))
+        for i in range(n):
+            coupling[i, (i + 1) % n] = 1.0
+        report = locality_report(QUBO(Q=coupling + coupling.T), depths=(1, 2, 3, 4))
+        sizes = [report.cone_sizes[p] for p in (1, 2, 3, 4)]
+        self.assertEqual(sizes, sorted(sizes))
+
+
 class TestStorage(unittest.TestCase):
     def setUp(self):
         import tempfile

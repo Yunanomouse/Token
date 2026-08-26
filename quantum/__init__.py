@@ -87,13 +87,16 @@ from .risk import (
     quantum_expected_shortfall,
     quantum_value_at_risk,
 )
+from .locality import LocalityReport, locality_report
 from .solvers import SOLVERS, available_solvers, get_solver
-from .statevector import Circuit, probabilities, sample, statevector
+from .storage import compare_codecs, load_compressed, save_compressed, shave_mantissa
+from .subspace import HammingSubspace, SubspaceQAOAResult, dicke_state, subspace_qaoa
+from .statevector import Circuit, estimate_memory, probabilities, sample, statevector
 
 __all__ = [
     "__version__",
     # physics layer
-    "Circuit", "statevector", "probabilities", "sample",
+    "Circuit", "statevector", "probabilities", "sample", "estimate_memory",
     "GridDistribution", "prepare_distribution", "lognormal_grid", "normal_grid",
     "grover_operator", "estimate_amplitude", "AmplitudeEstimationResult",
     "canonical_amplitude_estimation", "maximum_likelihood_amplitude_estimation",
@@ -110,4 +113,8 @@ __all__ = [
     "quantum_expected_shortfall", "classical_var_cvar", "parametric_var",
     "ArbitrageCycle", "find_arbitrage", "build_rate_matrix",
     "bellman_ford_negative_cycle",
+    # memory
+    "HammingSubspace", "SubspaceQAOAResult", "subspace_qaoa", "dicke_state",
+    "LocalityReport", "locality_report",
+    "save_compressed", "load_compressed", "compare_codecs", "shave_mantissa",
 ]

@@ -239,13 +239,137 @@ to reproduce in any from-scratch implementation:
 
 ---
 
+## Memory: the exponential wall and what actually moves it
+
+Simulating `n` qubits costs `2ⁿ` amplitudes. Nothing changes that — but a large
+constant factor sat on top of it, and most of it was avoidable. Everything below
+is measured before and after, with no change to any numerical result.
+
+### What was fixed
+
+| Hotspot | Before | After | Gain |
+|---|---|---|---|
+| `energies_all` (n=16) | 18.9 MB | 1.05 MB | **18×**, and 42× faster |
+| Statevector (n=20) | 3.1× theory | 2.0× theory | 1.6× |
+| …with `complex64` | 50 MB | 17 MB | **3×** total |
+| Distribution loading (n=12) | 4095 ops / 2.53 MB | 12 ops / 0.23 MB | **11×**, 30× faster |
+| QAOA loop (n=12) | 1.02 MB | 0.45 MB | 2.3× |
+
+**`energies_all` was the worst offender**, using 36× its own result: it built a
+`(2ⁿ, n)` bit matrix, a spin copy and einsum temporaries to produce a `2ⁿ`
+vector. Recursive doubling replaces it — appending variable `k` costs
+`E(x) + Q_kk + Σᵢ(Q_ik+Q_ki)xᵢ`, and that correction is itself linear in the
+bits, so it builds the same way. Peak is now exactly 2×: one result, one scratch.
+
+**Gate application** went from `tensordot` + `moveaxis` (a fresh `2ⁿ` array per
+gate) to in-place updates through views. A one-qubit unitary only mixes the two
+amplitude slices differing in the target bit, so those slices are taken as views
+and rewritten against a reusable scratch pair. Peak is flat in circuit depth.
+
+**Diagonal phase layers** were chunked. `state *= np.exp(1j * phases)`
+materialises a full `2ⁿ` complex temporary — an entire extra statevector, on
+every cost layer of every QAOA evaluation. Streaming it in 4 MB blocks caps the
+temporary regardless of `n`, and runs faster because the working set stays in
+cache.
+
+**State preparation** stopped emitting `2ⁿ` gate objects. Every node at one level
+of the loading tree shares controls and target and differs only in its angle, so
+a level is one *multiplexed* `Ry` holding an angle array, applied in a single
+broadcast pass. `resource_estimate()` still reports the true hardware gate count —
+the physics is unchanged, only the Python object overhead is gone.
+
+### A bug this surfaced
+
+Integer indexing that reduces a numpy view to rank 0 returns a **scalar, not a
+view**. In-place writes through it silently vanish — which broke 1-qubit circuits
+and fully-controlled gates, producing wrong answers rather than errors. All
+subspace selection now uses length-1 slices, which preserve rank. The old
+`tensordot` path had been hiding this.
+
+### Precision
+
+`complex64` halves memory for a measured `7×10⁻⁸` maximum amplitude error over
+200 gates — negligible against the shot noise of any sampled estimator here, but
+*not* negligible if you are comparing exact statevectors or reading an
+exponentially small overlap. Google's qsim defaults to single precision; Qiskit
+Aer exposes it as `precision="single"`. Use `complex128` for the final expectation
+reduction regardless — that is where precision loss would actually bite.
+
+### The technique that changes the asymptotics — and why it is not used here
+
+For a p-layer QAOA with a local mixer, `⟨Z_i Z_j⟩` depends only on qubits within
+graph distance `p` of edge `(i,j)`. The energy becomes a sum of independent
+`2^k` simulations where `k` is **independent of n** — around 1000× less memory on
+sparse MaxCut at n=24.
+
+It requires a *sparse* coupling graph, and finance does not supply one. The
+quadratic term of a portfolio problem is a covariance matrix: every asset
+correlates with every other, so the graph is complete and the radius-1 cone is
+already the whole problem. Measured on this package's own QUBOs:
+
+| Problem | density | cone at p=1 | benefit |
+|---|---|---|---|
+| portfolio, cardinality | 1.00 | all n | none |
+| portfolio, lots + sector caps | 0.92 | all n | none |
+| arbitrage cycle QUBO | 0.81 | all n | none |
+| ring graph (sparse contrast) | 0.13 | 6 of 16 | 1,024× |
+
+So `quantum/locality.py` ships the *measurement* rather than the machinery. Run
+`locality_report(problem)` before assuming either way.
+
+### What works instead: constraint-preserving subspaces
+
+The cardinality mandate — *hold exactly K names* — is normally a penalty term.
+That wastes the register (at n=20, K=5, 98.5% of basis states are portfolios the
+mandate forbids) and it is *soft*, so a mis-scaled penalty returns an infeasible
+portfolio that looks optimal.
+
+An **XY mixer** `½Σ(XᵢXⱼ + YᵢYⱼ)` swaps `|01⟩↔|10⟩` and annihilates `|00⟩` and
+`|11⟩`: it moves weight between assets without changing how many are held.
+Started from a Dicke state, the evolution never leaves the feasible subspace.
+This is the Quantum Alternating *Operator* Ansatz (Hadfield et al. 2019).
+
+| n | K | full 2ⁿ | C(n,K) | saving |
+|---|---|---|---|---|
+| 20 | 5 | 1,048,576 | 15,504 | 68× |
+| 24 | 6 | 16,777,216 | 134,596 | 125× |
+| 32 | 4 | 4,294,967,296 | 35,960 | **119,437×** |
+
+Verified exact against a full-register simulation to `1.3×10⁻¹⁵` with **zero
+leakage** outside the feasible set. And it is more accurate: on 25 seeds ×
+3 cardinalities, subspace QAOA found the proven optimum **25/25 every time**
+where penalty QAOA fell to 18/25 at K=5. The penalty-scaling trap documented
+above does not merely get easier here — it stops existing.
+
+### Files on disk
+
+`quantum/storage.py` handles the other meaning of "compress". Measured on
+50 assets × 5040 days of prices:
+
+| codec | precision | ratio | rel. error |
+|---|---|---|---|
+| lzma | float64, 12-bit mantissa | 5.64× | 1.2×10⁻⁴ |
+| zlib | float32, 12-bit mantissa | 3.26× | 1.2×10⁻⁴ |
+| zlib | float32, 20-bit mantissa | 2.30× | 4.8×10⁻⁷ |
+| zlib | float32 | 2.21× | 6.0×10⁻⁸ |
+
+Mantissa shaving is the lever: the low bits of a float are effectively random,
+and random bits are incompressible. Zeroing them leaves runs a codec can collapse.
+
+One distinction worth keeping straight: **compression saves disk, not RAM** — a
+decompressed array is full size. For RAM use `load_mmap()` + `iter_chunks()`, and
+those cannot be combined with compression, because random access and compression
+are mutually exclusive.
+
+`python3 -m quantum memory` prints all of the above for your own configuration.
+
 ## Validation
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-67 tests. The principle throughout: **every quantum routine is checked against
+98 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,
@@ -258,6 +382,10 @@ an exact classical reference**, never against itself.
   and the `c²` bias law verified against exact amplitudes.
 - Risk — VaR within one grid spacing of the exact quantile at 90/95/99%.
 - Arbitrage — no false positives on a consistent market; planted mispricings found.
+- Memory — the optimised paths must reproduce the naive ones exactly: recursive
+  doubling against the bit-matrix contraction, the in-place kernel against
+  `tensordot`, multiplexed `Ry` against explicit `mcry` gates, and subspace QAOA
+  against a full-register simulation.
 
 ---
 
@@ -284,3 +412,7 @@ simulated bifurcation right now.
 - Farhi, Goldstone & Gutmann (2014), *A Quantum Approximate Optimization Algorithm*
 - Grover & Rudolph (2002), *Creating superpositions that correspond to efficiently integrable probability distributions*
 - Ledoit & Wolf (2004), *A well-conditioned estimator for large-dimensional covariance matrices*
+- Hadfield et al. (2019), *From the QAOA to a Quantum Alternating Operator Ansatz*
+- Lykov et al. (2023), *Fast Simulation of High-Depth QAOA Circuits* (QOKit)
+- Lykov, Schutski & Alexeev (2020), *Tensor Network Quantum Simulator with Step-Dependent Parallelization* (QTensor)
+- Farhi, Gamarnik & Gutmann (2020), *The QAOA Needs to See the Whole Graph* (locality)

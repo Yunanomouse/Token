@@ -63,6 +63,12 @@ __all__ = [
 
 _SQRT1_2 = 1.0 / math.sqrt(2.0)
 
+_PHASE_CHUNK = 1 << 18
+"""Amplitudes per block when applying a diagonal operator.
+
+Bounds the exponential's temporary to a fixed 4 MB rather than letting it scale
+with the register, which is what keeps peak memory flat in ``n``.""" 
+
 H = np.array([[_SQRT1_2, _SQRT1_2], [_SQRT1_2, -_SQRT1_2]], dtype=np.complex128)
 X = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=np.complex128)
 Y = np.array([[0.0, -1.0j], [1.0j, 0.0]], dtype=np.complex128)
@@ -292,10 +298,21 @@ def _apply_diagonal(
     building a boolean mask over all ``2**n`` basis states: fixing the control
     bits is just an index into the tensor view, which costs nothing.
     """
-    phases = np.asarray(phases, dtype=np.float64)
+    phases = np.asarray(phases)
     if not controls:
-        factor = np.exp(1j * phases)
-        state *= factor.astype(state.dtype, copy=False)
+        # Chunked deliberately.  `state *= np.exp(1j * phases)` materialises a
+        # full 2**n complex temporary -- an entire extra statevector, on every
+        # cost layer of every QAOA evaluation.  Streaming it in blocks caps the
+        # temporary at CHUNK amplitudes regardless of n, and runs *faster*
+        # because the working set stays in cache.
+        size = state.size
+        if size <= _PHASE_CHUNK:
+            state *= np.exp(1j * phases).astype(state.dtype, copy=False)
+            return state
+        for start in range(0, size, _PHASE_CHUNK):
+            stop = min(start + _PHASE_CHUNK, size)
+            block = np.exp(1j * phases[start:stop])
+            state[start:stop] *= block.astype(state.dtype, copy=False)
         return state
 
     if not control_values:

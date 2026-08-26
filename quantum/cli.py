@@ -15,6 +15,7 @@ import numpy as np
 
 from .amplitude import classical_monte_carlo_error
 from .arbitrage import build_rate_matrix, cycle_profit, find_arbitrage
+from .locality import locality_report
 from .market import load_price_csv, synthetic_prices
 from .portfolio import (
     PortfolioConstraints,
@@ -250,6 +251,25 @@ def cmd_memory(args) -> int:
     print("\nBeyond that, iter_energy_chunks() streams the landscape in fixed-size")
     print("blocks, so an argmin stays possible at flat memory -- the work is still")
     print("2**n, only the memory is bounded.")
+
+    _rule("Constraint-preserving subspace (cardinality mandates)")
+    print("An XY mixer started from a Dicke state never leaves the feasible set,")
+    print("so the register only carries the C(n,K) portfolios that satisfy the")
+    print("mandate -- and no cardinality penalty is needed at all.\n")
+    print(f"{'n':>5}{'K':>5}{'full 2**n':>16}{'C(n,K)':>14}{'saving':>12}{'MB':>10}")
+    print("-" * 62)
+    for n, k in ((14, 4), (20, 5), (24, 6), (28, 4), (32, 4)):
+        feasible = math.comb(n, k)
+        print(f"{n:>5}{k:>5}{2**n:>16,}{feasible:>14,}"
+              f"{2**n / feasible:>11,.0f}x{feasible * 16 / 1e6:>10.2f}")
+
+    _rule("Light cones (why they are not used here)")
+    market = synthetic_prices(n_assets=12, n_days=500, seed=1)
+    dense = PortfolioProblem(
+        market.expected_returns, market.covariance, market.tickers,
+        constraints=PortfolioConstraints(cardinality=4),
+    ).to_qubo()
+    print(locality_report(dense).summary())
 
     _rule("Compression, measured on real price data")
     market = synthetic_prices(n_assets=args.assets, n_days=args.days, seed=args.seed)

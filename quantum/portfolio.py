@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -219,8 +220,14 @@ class PortfolioProblem:
         ]
 
     # -- compilation -------------------------------------------------------
-    def to_qubo(self) -> QUBO:
-        """Compile the problem, penalties and all, into a single QUBO."""
+    def to_qubo(self, include_cardinality_penalty: bool = True) -> QUBO:
+        """Compile the problem, penalties and all, into a single QUBO.
+
+        Set ``include_cardinality_penalty=False`` for a solver that enforces
+        cardinality structurally rather than by penalty -- see
+        :func:`quantum.subspace.subspace_qaoa`.  The penalty is constant across
+        the feasible set, so including it there would add only a fixed offset.
+        """
         n = self.n_assets
         A = self._weight_matrix()
         n_vars = A.shape[1]
@@ -270,7 +277,11 @@ class PortfolioProblem:
         penalties: dict[str, float] = {}
 
         # Cardinality: sum of selection bits == K.
-        if c.cardinality is not None and self.encoding == "select":
+        if (
+            c.cardinality is not None
+            and self.encoding == "select"
+            and include_cardinality_penalty
+        ):
             coeffs = np.ones(n_vars)
             penalties["cardinality"] = weight_for(coeffs)
             problem.add_equality_penalty(coeffs, float(c.cardinality), penalties["cardinality"])
@@ -417,10 +428,56 @@ def solve_portfolio(
     solver: str = "simulated_annealing",
     **solver_kwargs,
 ) -> PortfolioResult:
-    """Compile, solve, decode and check a constrained portfolio problem."""
+    """Compile, solve, decode and check a constrained portfolio problem.
+
+    ``solver="subspace_qaoa"`` takes the constraint-preserving route: the
+    cardinality penalty is dropped and the search runs inside the
+    ``C(n, K)``-dimensional feasible subspace instead.  Every candidate it can
+    produce holds exactly ``K`` names, so feasibility is structural rather than
+    something a penalty weight has to buy.
+    """
+    if solver in ("subspace_qaoa", "xy_qaoa"):
+        return _solve_portfolio_subspace(problem, **solver_kwargs)
+
     qubo = problem.to_qubo()
     result = get_solver(solver).solve(qubo, **solver_kwargs)
+    return _finalise_portfolio(problem, qubo, result)
 
+
+def _solve_portfolio_subspace(problem: PortfolioProblem, **kwargs) -> "PortfolioResult":
+    """Cardinality-constrained portfolio via Hamming-weight-preserving QAOA."""
+    from .solvers.base import SolverResult
+    from .subspace import subspace_qaoa
+
+    cardinality = problem.constraints.cardinality
+    if cardinality is None:
+        raise ValueError("subspace_qaoa requires a cardinality constraint")
+    if problem.encoding != "select":
+        raise ValueError("subspace_qaoa requires the 'select' encoding")
+
+    bare = problem.to_qubo(include_cardinality_penalty=False)
+    started = time.perf_counter()
+    outcome = subspace_qaoa(bare, cardinality, **kwargs)
+    elapsed = time.perf_counter() - started
+
+    result = SolverResult(
+        assignment=outcome.assignment,
+        energy=outcome.energy,
+        solver="subspace_qaoa",
+        runtime_seconds=elapsed,
+        samples_evaluated=outcome.subspace_dimension,
+        detail={
+            "compression": outcome.compression,
+            "expectation_value": outcome.expectation,
+            "ground_state_probability": outcome.ground_state_probability,
+            **outcome.detail,
+        },
+    )
+    return _finalise_portfolio(problem, bare, result)
+
+
+def _finalise_portfolio(problem, qubo, result):
+    """Decode a solver assignment and verify it against the stated constraints."""
     raw_weights = problem.decode(result.assignment)
     weights, raw_sum = problem.decode_normalised(result.assignment)
     expected_return = float(problem.expected_returns @ weights)
