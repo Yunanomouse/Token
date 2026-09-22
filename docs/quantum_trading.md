@@ -771,12 +771,15 @@ scale, and against an external answer.
 |---|---|---|---|---|
 | simulated annealing | default (2,000 sweeps × 8 restarts) | −7,983 | −110,541 | yes |
 | simulated annealing | 20,000 sweeps × 4 restarts | −19,299 | −110,541 | yes |
+| simulated annealing | 100,000 sweeps × 2 restarts (345 s) | −22,926 | −110,541 | yes |
 | simulated bifurcation | default | +1,100,001,085 | −110,541 | no |
 | simulated bifurcation | 5,000 steps | +1,050,005,322 | −110,541 | no |
+| simulated bifurcation | 20,000 steps, 64 trajectories, dt 0.1 or 0.02 | +1.1 × 10⁹ | −110,541 | no |
 
-Simulated annealing finds feasible portfolios and captures a sixth of the
-optimum's objective with ten times the default budget.  Simulated
-bifurcation never reaches feasibility.  The structural reason is the
+Simulated annealing finds feasible portfolios and captures a fifth of the
+optimum's objective with fifty times the default budget, and the curve is
+flattening.  Simulated bifurcation never reaches feasibility at any budget
+or step size tried.  The structural reason is the
 penalty wall: the QUBO encodes the two equality constraints with weight
 10⁷ against an objective of order 10⁵, so the landscape is a hundred times
 steeper in the constraint directions than in the ones that matter, and a
