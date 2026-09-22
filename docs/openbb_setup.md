@@ -93,4 +93,26 @@ want those.
   openbb`, then `python`).
 - **Empty results / download errors** — usually a network hiccup or an
   invalid ticker; try again or double-check the symbol on
-  https://finance.yahoo.com.
+  https://finance.yahoo.com. The quickstart script now prints a summary of
+  which tickers failed and why, and tells you whether the cause looks like a
+  network problem or a bad symbol.
+- **Every ticker fails with a connection, proxy, or tunnel error** — the
+  requests aren't reaching Yahoo at all. Corporate networks, VPNs, school
+  Wi-Fi, and locked-down cloud sandboxes often block `finance.yahoo.com`.
+  Try the same script on a home connection or off the VPN; if it has to run
+  on the restricted network, the network's egress rules need to allow
+  `finance.yahoo.com` and `query1.finance.yahoo.com`, or you'll need a
+  provider that is reachable (most alternatives require a free API key).
+- **`pip install openbb` fails with "Cannot uninstall <package>, RECORD file
+  not found"** — your Python is managed by the operating system (common on
+  Linux and on Macs using Homebrew Python), and pip isn't allowed to replace
+  a system package. Install into a virtual environment instead:
+
+  ```
+  python3 -m venv ~/openbb-env
+  source ~/openbb-env/bin/activate      # Windows: %USERPROFILE%\openbb-env\Scripts\activate
+  pip install openbb
+  ```
+
+  Then run the script with that environment active. Re-run the `activate`
+  line each time you open a new terminal.
