@@ -1635,3 +1635,275 @@ class TestCLI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# ==========================================================================
+# Hardware export: compilation and OpenQASM round trip
+# ==========================================================================
+
+
+class TestExport(unittest.TestCase):
+    """The compiler is checked against the simulator, never against itself."""
+
+    def _random_unitary(self, rng):
+        a = rng.normal(size=(2, 2)) + 1j * rng.normal(size=(2, 2))
+        q, _ = np.linalg.qr(a)
+        return q
+
+    def test_zyz_reconstructs_any_unitary(self):
+        from quantum.export import u3_matrix, zyz_angles
+        from quantum.statevector import H, S, T, X, Y, Z
+
+        rng = np.random.default_rng(0)
+        for m in [X, Y, Z, H, S, T] + [self._random_unitary(rng) for _ in range(20)]:
+            theta, phi, lam, alpha = zyz_angles(m)
+            self.assertTrue(np.allclose(m, np.exp(1j * alpha) * u3_matrix(theta, phi, lam)))
+
+    def test_multiplexed_ry_decomposition_is_exact(self):
+        from quantum.export import decompose
+        from quantum.statevector import Circuit
+
+        rng = np.random.default_rng(1)
+        for k in range(4):
+            n = k + 1
+            c = Circuit(n)
+            for q in range(n):
+                c.h(q)
+            c.multiplexed_ry(rng.uniform(-3, 3, 2**k), list(range(k)), k)
+            d = decompose(c)
+            self.assertEqual(len(d.ops), n + (2 * 2**k if k else 1))
+            self.assertLess(np.linalg.norm(c.run() - d.run()), 1e-10)
+
+    def test_quadratic_diagonal_compiles_to_quadratic_gadgets(self):
+        """A QAOA cost layer must not cost 2**n gates once compiled."""
+        from quantum.export import decompose
+        from quantum.statevector import Circuit
+
+        rng = np.random.default_rng(2)
+        n = 7
+        Q = rng.normal(size=(n, n))
+        Q = (Q + Q.T) / 2
+        bits = np.array([[(i >> (n - 1 - q)) & 1 for q in range(n)] for i in range(2**n)], float)
+        energies = np.einsum("ij,jk,ik->i", bits, Q, bits)
+        c = Circuit(n).diagonal_phase(0.37 * energies)
+        d = decompose(c)
+        # n singles + n(n-1)/2 pairs, each pair = 2 CX + 1 Rz, plus a global phase.
+        self.assertLessEqual(len(d.ops), n + 3 * n * (n - 1) // 2 + 1)
+        uniform = np.full(2**n, 2 ** (-n / 2))
+        self.assertLess(np.linalg.norm(c.run(uniform) - d.run(uniform)), 1e-10)
+
+    def test_qasm_round_trip_on_full_pricing_circuit(self):
+        from quantum.amplitude import grover_operator
+        from quantum.export import elementary_gate_count, from_qasm, to_qasm
+        from quantum.pricing import OptionSpec, build_european_payoff_circuit
+        from quantum.statevector import Circuit
+
+        spec = OptionSpec(100.0, 100.0, 0.05, 0.2, 1.0)
+        prep, objective, *_ = build_european_payoff_circuit(spec, 4)
+        full = Circuit(prep.n_qubits).compose(prep).compose(grover_operator(prep, objective))
+        text = to_qasm(full)
+        self.assertTrue(text.startswith("OPENQASM 3.0;"))
+        self.assertIn("ctrl(", text)
+        parsed = from_qasm(text)
+        self.assertLess(np.linalg.norm(full.run() - parsed.run()), 1e-9)
+        counts = elementary_gate_count(full)
+        self.assertGreater(counts["two_qubit"], counts["one_qubit"])
+
+    def test_qasm_round_trip_with_negative_controls_and_phases(self):
+        from quantum.export import from_qasm, to_qasm
+        from quantum.statevector import Circuit, Operation, X
+
+        rng = np.random.default_rng(3)
+        c = Circuit(4).h(0).h(1).cp(0.4, 0, 3).global_phase(1.1).t(2).rz(-0.3, 3).rx(0.9, 0)
+        c.append(Operation("mcx", X, (3,), (1, 2), (0, 1)))
+        c.append(Operation("u", self._random_unitary(rng), (2,), (0,), (1,)))
+        c.multiplexed_ry(rng.uniform(-1, 1, 4), [0, 1], 3)
+        c.diagonal_phase(rng.uniform(-1, 1, 16))
+        parsed = from_qasm(to_qasm(c))
+        self.assertLess(np.linalg.norm(c.run() - parsed.run()), 1e-9)
+
+    def test_controlled_multiplexed_ry_matches_explicit_gates(self):
+        """Regression: Circuit.control() used to leave the angle table undoubled,
+        which crashed canonical amplitude estimation on any loaded distribution."""
+        from quantum.statevector import Circuit
+
+        rng = np.random.default_rng(4)
+        k, n = 3, 5
+        angles = rng.uniform(-2, 2, 2**k)
+        mux = Circuit(n).multiplexed_ry(angles, [0, 1, 2], 3).control(4)
+        explicit = Circuit(n)
+        for j in range(2**k):
+            bits = [(j >> (k - 1 - i)) & 1 for i in range(k)]
+            explicit.mcry(angles[j], [0, 1, 2, 4], 3, bits + [1])
+        start = Circuit(n).barrier_all_h().run()
+        self.assertLess(np.linalg.norm(mux.run(start) - explicit.run(start)), 1e-12)
+
+    def test_canonical_qae_runs_on_loaded_distribution(self):
+        from quantum.amplitude import build_canonical_qae_circuit, canonical_amplitude_estimation
+        from quantum.export import from_qasm, to_qasm
+        from quantum.pricing import OptionSpec, build_european_payoff_circuit
+        from quantum.statevector import probability_of_one
+
+        spec = OptionSpec(100.0, 100.0, 0.05, 0.2, 1.0)
+        prep, objective, *_ = build_european_payoff_circuit(spec, 3)
+        truth = probability_of_one(prep.run(), prep.n_qubits, objective)
+        result = canonical_amplitude_estimation(prep, objective, n_eval_qubits=5)
+        self.assertLess(abs(result.estimate - truth), result.detail["grid_resolution"])
+        circuit = build_canonical_qae_circuit(prep, objective, 3)
+        parsed = from_qasm(to_qasm(circuit))
+        self.assertLess(np.linalg.norm(circuit.run() - parsed.run()), 1e-9)
+
+
+# ==========================================================================
+# Noise
+# ==========================================================================
+
+
+class TestNoise(unittest.TestCase):
+    def _prep(self, n=3):
+        from quantum.pricing import OptionSpec, build_european_payoff_circuit
+        from quantum.statevector import probability_of_one
+
+        spec = OptionSpec(100.0, 100.0, 0.05, 0.2, 1.0)
+        prep, objective, *_ = build_european_payoff_circuit(spec, n)
+        return prep, objective, probability_of_one(prep.run(), prep.n_qubits, objective)
+
+    def test_noiseless_model_reproduces_exact_probability(self):
+        from quantum.noise import NoiseModel, noisy_probability_of_one
+
+        prep, objective, truth = self._prep()
+        p = noisy_probability_of_one(prep, objective, NoiseModel.uniform(0.0))
+        self.assertAlmostEqual(p, truth, places=12)
+
+    def test_survival_probability_is_gate_count_power(self):
+        from quantum.export import elementary_gate_count
+        from quantum.noise import survival_probability
+
+        prep, _, _ = self._prep()
+        gates = elementary_gate_count(prep)["total"]
+        self.assertAlmostEqual(survival_probability(prep, 1e-3), (1 - 1e-3) ** gates)
+        self.assertEqual(survival_probability(prep, 0.0), 1.0)
+
+    def test_heavy_depolarising_noise_drives_toward_one_half(self):
+        from quantum.noise import NoiseModel, noisy_probability_of_one
+
+        prep, objective, truth = self._prep()
+        p = noisy_probability_of_one(
+            prep, objective, NoiseModel.uniform(0.5), trajectories=200,
+            rng=np.random.default_rng(0),
+        )
+        self.assertLess(abs(p - 0.5), abs(truth - 0.5))
+        self.assertLess(abs(p - 0.5), 0.08)
+
+    def test_readout_error_biases_analytically(self):
+        from quantum.noise import NoiseModel, noisy_probability_of_one
+
+        prep, objective, truth = self._prep()
+        r = 0.05
+        p = noisy_probability_of_one(prep, objective, NoiseModel(0.0, 0.0, readout=r))
+        self.assertAlmostEqual(p, truth * (1 - r) + (1 - truth) * r, places=12)
+
+    def test_trajectory_state_stays_normalised(self):
+        from quantum.noise import NoiseModel, run_trajectory
+
+        prep, _, _ = self._prep()
+        state = run_trajectory(prep, NoiseModel.uniform(0.05), np.random.default_rng(1))
+        self.assertAlmostEqual(float(np.vdot(state, state).real), 1.0, places=12)
+
+    def test_threshold_sweep_degrades_monotonically_in_the_large(self):
+        from quantum.noise import noise_threshold_sweep
+
+        prep, objective, truth = self._prep()
+        sweep = noise_threshold_sweep(
+            prep, objective, truth, epsilons=(0.0, 1e-3, 1e-1),
+            n_powers=3, shots_per_power=128, trajectories=8, trials=2,
+            rng=np.random.default_rng(0),
+        )
+        self.assertLess(sweep.errors[0], sweep.classical_error)
+        self.assertLess(sweep.errors[0], sweep.errors[2])
+        self.assertEqual(sweep.threshold, 0.0)
+        self.assertIn("beats classical", sweep.report())
+
+    def test_invalid_rates_rejected(self):
+        from quantum.noise import NoiseModel
+
+        with self.assertRaises(ValueError):
+            NoiseModel(one_qubit=1.5)
+        with self.assertRaises(ValueError):
+            NoiseModel(readout=-0.1)
+
+
+# ==========================================================================
+# Out-of-sample validation
+# ==========================================================================
+
+
+class TestBacktest(unittest.TestCase):
+    def test_equal_weight_return_is_mean_asset_return(self):
+        from quantum.backtest import equal_weight, walk_forward
+
+        market = synthetic_prices(n_assets=4, n_days=120, seed=0)
+        result = walk_forward(
+            market.prices, market.tickers, {"equal_weight": equal_weight}, window=60, horizon=20
+        )
+        perf = result.strategies["equal_weight"]
+        self.assertEqual(perf.n_periods, 3)
+        hold = market.prices[59:80]
+        expected = np.mean(hold[-1] / hold[0] - 1.0)
+        self.assertAlmostEqual(perf.period_returns[0], expected, places=12)
+        self.assertEqual(perf.turnover, 0.0)
+
+    def test_weights_are_long_only_and_sum_to_one(self):
+        from quantum.backtest import cardinality_strategy, markowitz_long_only, walk_forward
+
+        market = synthetic_prices(n_assets=5, n_days=200, seed=1)
+        result = walk_forward(
+            market.prices, market.tickers,
+            {"mv": markowitz_long_only(2.0), "card": cardinality_strategy(2, 2.0, "exhaustive")},
+            window=100, horizon=50,
+        )
+        for perf in result.strategies.values():
+            self.assertTrue(np.all(perf.weights >= 0))
+            self.assertTrue(np.allclose(perf.weights.sum(axis=1), 1.0))
+        card = result.strategies["card"].weights
+        self.assertTrue(np.all((card > 0).sum(axis=1) == 2))
+
+    def test_heuristic_solver_matches_exhaustive_out_of_sample(self):
+        """The backtest scores the optimum; the solver only has to reach it."""
+        from quantum.backtest import cardinality_strategy, walk_forward
+
+        market = synthetic_prices(n_assets=6, n_days=160, seed=2)
+        result = walk_forward(
+            market.prices, market.tickers,
+            {
+                "sa": cardinality_strategy(3, 2.0, "simulated_annealing", seed=0),
+                "ex": cardinality_strategy(3, 2.0, "exhaustive"),
+            },
+            window=100, horizon=30,
+        )
+        np.testing.assert_allclose(
+            result.strategies["sa"].period_returns, result.strategies["ex"].period_returns
+        )
+
+    def test_statistics_and_report(self):
+        from quantum.backtest import BacktestResult, equal_weight, max_drawdown, walk_forward
+
+        self.assertAlmostEqual(max_drawdown(np.array([0.1, -0.5, 0.2])), 0.5)
+        self.assertEqual(max_drawdown(np.array([])), 0.0)
+        market = synthetic_prices(n_assets=3, n_days=150, seed=3)
+        result = walk_forward(
+            market.prices, market.tickers, {"equal_weight": equal_weight}, window=50, horizon=10
+        )
+        self.assertIsInstance(result, BacktestResult)
+        text = result.report()
+        self.assertIn("equal_weight", text)
+        self.assertIn("IS sharpe", text)
+        mean, t = result.excess_over_benchmark("equal_weight")
+        self.assertEqual(mean, 0.0)
+
+    def test_insufficient_history_rejected(self):
+        from quantum.backtest import equal_weight, walk_forward
+
+        market = synthetic_prices(n_assets=3, n_days=50, seed=4)
+        with self.assertRaises(ValueError):
+            walk_forward(market.prices, market.tickers, {"e": equal_weight}, window=40, horizon=20)

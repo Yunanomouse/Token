@@ -52,7 +52,19 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
 - **Arbitrage** — no false positives on an arbitrage-free market; planted
   mispricings recovered; opportunities correctly vanish once fees are applied.
 
-139 tests: `python3 -m unittest discover -s tests -v`
+- **Out of sample** — walk-forward on eight assets over six years: the
+  cardinality optimiser's in-sample Sharpe of 0.91 realises 0.19, and nothing
+  beats equal weight with |t| > 2. The solver reaches the true optimum at every
+  rebalance; the optimum is what does not hold up.
+- **Under noise** — the amplitude-estimation speedup survives depolarising
+  error up to ε ≈ 1e-4 per gate on the smallest pricing circuit, then falls off
+  a cliff to an estimate of ½. Current hardware sits an order of magnitude above
+  that.
+- **On hardware** — every circuit exports to OpenQASM 3 and round-trips through
+  the simulator at 1e-15; the 4-qubit call with two Grover powers is 1,036
+  gates, 928 of them two-qubit.
+
+161 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
 
 ## Memory
 
@@ -110,7 +122,15 @@ Three findings from building it that are easy to get wrong:
   (335× improvement at `c=0.25`).
 
 Full write-up, including the two solver bugs found by testing against proven
-optima: **[docs/quantum_trading.md](docs/quantum_trading.md)**.
+optima and the out-of-sample, noise and export results:
+**[docs/quantum_trading.md](docs/quantum_trading.md)**.
+
+```bash
+pip install -e ".[test]"
+python3 -m quantum backtest --assets 8 --days 1512   # walk-forward vs equal weight
+python3 -m quantum noise --trials 6                  # gate-error threshold sweep
+python3 -m quantum export --qubits 4 --powers 2 -o call.qasm
+```
 Worked walkthrough: `python3 examples/quantum_trading_demo.py`.
 
 ---

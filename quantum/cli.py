@@ -33,6 +33,11 @@ from .risk import (
     quantum_value_at_risk,
 )
 from .solvers import available_solvers, get_solver
+from .backtest import cardinality_strategy, equal_weight, markowitz_long_only, walk_forward
+from .export import elementary_gate_count, to_qasm
+from .noise import noise_threshold_sweep, survival_probability
+from .pricing import build_european_payoff_circuit
+from .statevector import probability_of_one
 
 DEMO_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CHF"]
 DEMO_RATES = {
@@ -286,6 +291,78 @@ def cmd_memory(args) -> int:
     return 0
 
 
+def cmd_backtest(args) -> int:
+    """Walk-forward validation of the optimiser against equal weight."""
+    _rule("Out-of-sample walk-forward")
+    market = _load_market(args)
+    strategies = {
+        "equal_weight": equal_weight,
+        "markowitz_long_only": markowitz_long_only(args.risk_aversion),
+        f"cardinality{args.cardinality}_{args.solver}": cardinality_strategy(
+            args.cardinality, args.risk_aversion, args.solver, seed=args.seed
+        ),
+    }
+    if math.comb(market.n_assets, args.cardinality) <= 50_000:
+        strategies[f"cardinality{args.cardinality}_exhaustive"] = cardinality_strategy(
+            args.cardinality, args.risk_aversion, "exhaustive"
+        )
+    result = walk_forward(
+        market.prices, market.tickers, strategies, window=args.window, horizon=args.horizon
+    )
+    print(result.report())
+    if args.csv is None:
+        print("\nSynthetic prices have a constant, real drift -- the friendliest possible")
+        print("world for mean-variance. Expect worse on live data, not better.")
+    return 0
+
+
+def cmd_noise(args) -> int:
+    """How much gate error the amplitude-estimation speedup survives."""
+    _rule("Noise threshold for amplitude estimation (option pricing circuit)")
+    spec = OptionSpec(args.spot, args.strike, args.rate, args.volatility, args.maturity)
+    circuit, objective, _grid, _scale, _k = build_european_payoff_circuit(spec, args.qubits)
+    true_value = probability_of_one(circuit.run(), circuit.n_qubits, objective)
+    counts = elementary_gate_count(circuit)
+    print(f"state preparation: {counts['qubits']} qubits, {counts['one_qubit']} one-qubit "
+          f"and {counts['two_qubit']} two-qubit gates after compilation")
+    print(f"survival of one preparation at eps=1e-3: {survival_probability(circuit, 1e-3):.3f}\n")
+    epsilons = [float(e) for e in args.epsilons.split(",")]
+    result = noise_threshold_sweep(
+        circuit, objective, true_value, epsilons=epsilons,
+        n_powers=args.powers, shots_per_power=args.shots,
+        trajectories=args.trajectories, trials=args.trials, readout=args.readout,
+        rng=np.random.default_rng(args.seed),
+    )
+    print(result.report())
+    print("\nDepolarising noise only. Coherent and correlated errors are worse for")
+    print("phase estimation, so this is an upper bound on tolerable error.")
+    return 0
+
+
+def cmd_export(args) -> int:
+    """Emit an OpenQASM 3 program for a pricing circuit (state prep + Q^k)."""
+    from .amplitude import grover_operator
+    from .statevector import Circuit
+
+    spec = OptionSpec(args.spot, args.strike, args.rate, args.volatility, args.maturity)
+    prep, objective, _grid, _scale, _k = build_european_payoff_circuit(spec, args.qubits)
+    circuit = Circuit(prep.n_qubits, name=f"european_{spec.option}_Q{args.powers}")
+    circuit.compose(prep)
+    grover = grover_operator(prep, objective)
+    for _ in range(args.powers):
+        circuit.compose(grover)
+    text = to_qasm(circuit)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        counts = elementary_gate_count(circuit)
+        print(f"wrote {args.output}: {counts['qubits']} qubits, {counts['total']} gates "
+              f"({counts['two_qubit']} two-qubit); objective qubit q[{objective}]")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
 def cmd_demo(args) -> int:
     print("Quantum methods for trading -- end-to-end demonstration")
     for fn, sub in (
@@ -362,6 +439,40 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--days", type=int, default=5040)
     p.add_argument("--top", type=int, default=8)
     p.set_defaults(func=cmd_memory)
+
+    p = sub.add_parser("backtest", help="walk-forward validation against equal weight")
+    add_market_args(p)
+    p.add_argument("--cardinality", type=int, default=4)
+    p.add_argument("--risk-aversion", type=float, default=2.0, dest="risk_aversion")
+    p.add_argument("--solver", default="simulated_annealing", choices=available_solvers())
+    p.add_argument("--window", type=int, default=252, help="fitting window in trading days")
+    p.add_argument("--horizon", type=int, default=21, help="holding period in trading days")
+    p.set_defaults(func=cmd_backtest)
+
+    def add_option_args(p):
+        p.add_argument("--spot", type=float, default=100.0)
+        p.add_argument("--strike", type=float, default=100.0)
+        p.add_argument("--rate", type=float, default=0.05)
+        p.add_argument("--volatility", type=float, default=0.20)
+        p.add_argument("--maturity", type=float, default=1.0)
+        p.add_argument("--qubits", type=int, default=3)
+
+    p = sub.add_parser("noise", help="gate-error threshold for the amplitude-estimation speedup")
+    add_option_args(p)
+    p.add_argument("--epsilons", default="0,1e-5,3e-5,1e-4,3e-4,1e-3,1e-2",
+                   help="comma-separated per-gate depolarising rates")
+    p.add_argument("--readout", type=float, default=0.0, help="symmetric readout flip rate")
+    p.add_argument("--powers", type=int, default=5)
+    p.add_argument("--shots", type=int, default=256)
+    p.add_argument("--trajectories", type=int, default=32)
+    p.add_argument("--trials", type=int, default=3)
+    p.set_defaults(func=cmd_noise)
+
+    p = sub.add_parser("export", help="write a pricing circuit as OpenQASM 3")
+    add_option_args(p)
+    p.add_argument("--powers", type=int, default=1, help="Grover powers to append")
+    p.add_argument("--output", "-o", help="file to write (default: stdout)")
+    p.set_defaults(func=cmd_export)
 
     p = sub.add_parser("demo", help="run every application end to end")
     p.set_defaults(func=cmd_demo)

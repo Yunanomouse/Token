@@ -497,6 +497,29 @@ class Circuit:
         for op in self.ops:
             if control_qubit in op.targets:
                 raise ValueError("control qubit overlaps an operation target")
+            if op.angles is not None:
+                # A multiplexed Ry treats *every* control as a multiplexing
+                # index, so adding one means doubling the angle table: the
+                # old angles where the new control reads 1, zero rotation
+                # where it reads 0.  Controls stay sorted with controls[0]
+                # as the most significant bit of the table index.
+                old = list(op.controls)
+                if control_qubit in old:
+                    raise ValueError("control qubit already multiplexes this rotation")
+                ctrls = sorted(old + [control_qubit])
+                pos = ctrls.index(control_qubit)
+                table = np.asarray(op.angles, dtype=np.float64).reshape([2] * len(old))
+                table = np.stack([np.zeros_like(table), table], axis=pos)
+                out.append(
+                    Operation(
+                        name="c-" + op.name,
+                        matrix=None,
+                        targets=op.targets,
+                        controls=tuple(ctrls),
+                        angles=table.reshape(-1),
+                    )
+                )
+                continue
             out.append(
                 Operation(
                     name="c-" + op.name,

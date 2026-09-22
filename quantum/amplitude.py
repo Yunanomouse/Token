@@ -135,17 +135,16 @@ def _grover_power_state(state_prep: Circuit, grover: Circuit, power: int) -> np.
 # --------------------------------------------------------------------------
 
 
-def canonical_amplitude_estimation(
+def build_canonical_qae_circuit(
     state_prep: Circuit,
     objective_qubit: int,
     n_eval_qubits: int = 5,
-) -> AmplitudeEstimationResult:
-    """Textbook QAE: phase estimation on the Grover operator.
+) -> Circuit:
+    """The full phase-estimation circuit, exportable via :mod:`quantum.export`.
 
-    Uses ``n_eval_qubits`` ancillas, giving a discrete grid of ``2**m``
-    resolvable amplitudes.  The returned estimate is the grid point with the
-    highest measurement probability, which is why the error floor is the grid
-    spacing rather than shot noise.
+    Evaluation register on qubits ``0..m-1``, state register after it.
+    Returned separately from the estimator so its gate count can be inspected
+    and the circuit shipped to hardware as OpenQASM.
     """
     n_state = state_prep.n_qubits
     m = int(n_eval_qubits)
@@ -153,7 +152,6 @@ def canonical_amplitude_estimation(
         raise ValueError("need at least one evaluation qubit")
 
     total = m + n_state
-    # Evaluation register occupies qubits 0..m-1, state register follows.
     state_qubits = list(range(m, total))
 
     circuit = Circuit(total, name="canonical_qae")
@@ -173,6 +171,24 @@ def canonical_amplitude_estimation(
             circuit.ops.extend(controlled.ops)
 
     circuit.qft(list(range(m)), inverse=True)
+    return circuit
+
+
+def canonical_amplitude_estimation(
+    state_prep: Circuit,
+    objective_qubit: int,
+    n_eval_qubits: int = 5,
+) -> AmplitudeEstimationResult:
+    """Textbook QAE: phase estimation on the Grover operator.
+
+    Uses ``n_eval_qubits`` ancillas, giving a discrete grid of ``2**m``
+    resolvable amplitudes.  The returned estimate is the grid point with the
+    highest measurement probability, which is why the error floor is the grid
+    spacing rather than shot noise.
+    """
+    m = int(n_eval_qubits)
+    circuit = build_canonical_qae_circuit(state_prep, objective_qubit, m)
+    total = circuit.n_qubits
 
     state = circuit.run()
     probs = marginal(state, total, list(range(m)))

@@ -571,13 +571,157 @@ theorem says they cannot be.
 This is a sharper claim than "correlation isn't entanglement", and it is the one
 that survives measurement.
 
+## Out of sample, under noise, and on hardware
+
+The first version of this package answered "is the physics right?" and "does
+the finance match a classical reference?".  It left three questions open, and
+its own PR said so: does the optimiser's portfolio survive out of sample, how
+much gate error does the speedup survive, and can any of it leave the
+simulator.  All three are now measured.
+
+### Walk-forward validation — the optimiser does not beat 1/N
+
+`quantum/backtest.py` fits each strategy on a trailing window, holds the
+portfolio for the next period, rolls forward, and reports what it actually
+earned.  Everything is scored against equal weight, which needs no forecast
+and which DeMiguel, Garlappi and Uppal (2009) showed is very hard to beat.
+
+Eight synthetic assets, six years, 252-day window, 21-day hold, 60 out-of-sample
+periods (`python3 -m quantum backtest --assets 8 --days 1512`):
+
+| strategy | ann. return | ann. vol | Sharpe | *in-sample* Sharpe | max DD | turnover | t vs 1/N |
+|---|---|---|---|---|---|---|---|
+| equal weight | 5.11% | 14.77% | 0.35 | −0.16 | 32.6% | 0.0% | — |
+| Markowitz long-only | 9.07% | 18.31% | 0.50 | 1.30 | 32.5% | 21.7% | +0.88 |
+| cardinality 4, simulated annealing | 3.06% | 16.22% | 0.19 | 0.91 | 31.8% | 17.4% | −0.44 |
+| cardinality 4, exhaustive | 3.06% | 16.22% | 0.19 | 0.91 | 31.8% | 17.4% | −0.44 |
+
+Three things to read off that table:
+
+1. **The overfit is the story.** The cardinality optimiser *believed* a Sharpe
+   of 0.91 on every fitting window and realised 0.19.  Mean-variance
+   optimisation is a machine for finding the noise in a return estimate and
+   betting on it; the in-sample column is that noise.
+2. **Nothing beats equal weight with any confidence.**  The paired t-statistics
+   are +0.88 and −0.44.  Anything inside ±2 is indistinguishable from luck on
+   this history.
+3. **The solver is not the problem.**  Simulated annealing and exhaustive
+   search produce identical portfolios at every one of the 60 rebalances, so
+   the backtest is scoring the true optimum of the stated problem.  A quantum
+   solver that reached the same optimum faster would earn exactly the same
+   0.19.
+
+And this is the *friendly* case: synthetic prices have a constant, real drift,
+so a long enough window recovers it.  Real equity drift is neither constant nor
+real in that sense.  Whatever the optimiser does on live data, it will be worse
+than this, not better.
+
+The backtest charges no transaction costs; the turnover column is there so you
+can.  At 17% one-way turnover per month and 10 bp per trade, the cardinality
+strategy gives back another ~0.4% a year.
+
+### Noise threshold — where the amplitude-estimation speedup dies
+
+`quantum/noise.py` injects depolarising errors by Monte Carlo trajectories:
+after every elementary gate of the *compiled* circuit, each qubit it touches
+takes a random Pauli with probability ε.  Averaging Born probabilities over
+trajectories is an unbiased estimate of what a device would return.  Readout
+error is a symmetric bit flip applied analytically.  Multi-controlled gates are
+charged at their compiled two-qubit count — an `mcx` with five controls is 64
+CNOTs of exposure, not one gate.
+
+Maximum-likelihood amplitude estimation on the 3-qubit option-pricing circuit,
+five Grover powers, 256 shots each, 32 trajectories, six trials per rate
+(`python3 -m quantum noise --trials 6`):
+
+| ε per gate | estimate | abs error | survival of deepest circuit | beats classical MC? |
+|---|---|---|---|---|
+| 0 | 0.39592 | 0.00104 | 1.00 | yes |
+| 1e-5 | 0.39639 | 0.00095 | 0.98 | yes |
+| 3e-5 | 0.39655 | 0.00260 | 0.94 | yes |
+| 1e-4 | 0.39459 | 0.00172 | 0.81 | yes |
+| 3e-4 | 0.49510 | 0.09963 | 0.53 | no |
+| 1e-3 | 0.49563 | 0.10015 | 0.12 | no |
+| 1e-2 | 0.49936 | 0.10388 | 6e-10 | no |
+
+True amplitude 0.39547; classical Monte Carlo at the same 8,960 oracle calls:
+0.00517.  Deepest circuit: 2,112 elementary gates.
+
+Two findings, one of them not obvious:
+
+- **The threshold sits at ε ≈ 1e-4** for this circuit.  2025 superconducting
+  hardware reports two-qubit error rates of a few times 1e-3; trapped ions
+  reach 1e-3 with a handful of qubits.  The gap is about an order of magnitude
+  for the *smallest* useful pricing circuit; the 6-qubit one in `price` is
+  ten times deeper and needs a threshold ten times lower.
+- **It is a cliff, not a slope.**  Between 1e-4 and 3e-4 the error jumps from
+  0.002 to 0.100 — the estimate lands on 0.5 and stays there.  Once the deep
+  Grover powers are depolarised their measured probability sits near ½, and a
+  likelihood fit built on the noiseless `sin²((2k+1)θ)` model reads that as
+  θ = π/4.  A user without a noise characterisation would fit exactly that
+  model, so the reported error includes the model mismatch, as it should.
+  Error-aware likelihoods (fitting a per-power damping factor) push the cliff
+  out but do not remove it.
+
+Depolarising noise is the *kind* case.  Coherent over-rotation and correlated
+errors are worse for a phase-sensitive algorithm, so these thresholds are an
+upper bound on what hardware can tolerate.
+
+### Hardware export — OpenQASM 3, verified by round trip
+
+`quantum/export.py` rewrites the two simulator-native operations into gates
+that exist on a device and serialises the result as OpenQASM 3, which Qiskit,
+Braket, Cirq and tket all import:
+
+- **Multiplexed `Ry`** → `2ᵏ` rotations and `2ᵏ` CNOTs in Gray-code order,
+  angles given by the Walsh–Hadamard transform of the angle table (Möttönen
+  et al., 2004).  Exact, and the ancilla-free optimum.
+- **Diagonal unitaries** → phase gadgets: expand the phase function in the
+  Walsh basis and realise each term as a CNOT ladder around one `Rz`.  A
+  general diagonal has `2ⁿ` terms, but an Ising cost has at most
+  `n(n+1)/2 + 1`, and the compiler keeps only the non-zero ones.  The 7-variable
+  QAOA cost layer that `resource_estimate` charges at 128 gates compiles to
+  71.  "QAOA is exponential to compile" was an artefact of storing the operator
+  densely.
+- **Arbitrary one-qubit unitaries** → `U(θ, φ, λ)` by ZYZ decomposition, with
+  the global phase carried as a `p` gate on the controls when the gate is
+  controlled — the case canonical amplitude estimation's controlled Grover
+  powers hit.
+
+Multi-controlled gates are left as `ctrl @` modifiers: every vendor transpiler
+lowers those to its own topology better than a generic pass would.  The gate
+accounting still charges them at `16(c−1)` two-qubit gates, so the counts the
+noise model sees are the counts hardware would see.
+
+Verification is by round trip: export, parse back with the module's own reader
+for the dialect it emits, simulate, compare statevectors.  Every circuit family
+in the package — distribution loading, comparator, payoff rotation, Grover
+operator, the full canonical phase-estimation circuit — round-trips at ~1e-15.
+
+The 4-qubit European call with two Grover powers is 6 qubits and 1,036 gates,
+928 of them two-qubit.  That number is the point of the export: it is what the
+noise section's ε multiplies.
+
+### A simulator bug this surfaced
+
+Building the canonical phase-estimation circuit on a real state preparation
+crashed.  `Circuit.control()` appended the new control to a multiplexed `Ry`
+without doubling its angle table, so the operation claimed `k+1` controls and
+held `2ᵏ` angles.  The existing canonical-QAE test used a trivial one-qubit
+preparation and never hit it.  Fixed by doubling the table (the old angles
+where the new control reads 1, zero rotation where it reads 0), checked against
+the equivalent `2ᵏ` explicit multi-controlled rotations to 1e-12, and the test
+now runs canonical QAE on a loaded lognormal.
+
+---
+
 ## Validation
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m pytest tests -q        # or: python3 -m unittest discover -s tests -v
 ```
 
-139 tests. The principle throughout: **every quantum routine is checked against
+161 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,
@@ -594,6 +738,15 @@ an exact classical reference**, never against itself.
   doubling against the bit-matrix contraction, the in-place kernel against
   `tensordot`, multiplexed `Ry` against explicit `mcry` gates, and subspace QAOA
   against a full-register simulation.
+- Export — ZYZ reconstructs random unitaries; every decomposition reproduces the
+  simulator's statevector; QASM round-trips on the full pricing and canonical
+  QAE circuits; a quadratic cost compiles to at most `n + 3·n(n−1)/2 + 1` gates.
+- Noise — the noiseless model reproduces the exact Born probability; readout
+  bias is exact; heavy depolarising drives the objective to ½; trajectories
+  stay normalised.
+- Backtest — the 1/N period return equals the mean asset return; every weight
+  vector is long-only and sums to one; simulated annealing and exhaustive search
+  produce identical out-of-sample returns.
 
 ---
 
@@ -622,6 +775,8 @@ simulated bifurcation right now.
 - Bell (1964), *On the Einstein Podolsky Rosen Paradox*
 - Clauser, Horne, Shimony & Holt (1969), *Proposed Experiment to Test Local Hidden-Variable Theories*
 - Chen (2004), *Quantum Theory for the Binomial Model in Finance Theory*, arXiv:quant-ph/0112156
+- DeMiguel, Garlappi & Uppal (2009), *Optimal Versus Naive Diversification: How Inefficient is the 1/N Portfolio Strategy?*
+- Möttönen, Vartiainen, Bergholm & Salomaa (2004), *Transformation of quantum states using uniformly controlled rotations*
 - Grover & Rudolph (2002), *Creating superpositions that correspond to efficiently integrable probability distributions*
 - Dürr & Høyer (1996), *A Quantum Algorithm for Finding the Minimum*
 - Gilliam, Woerner & Gonciulea (2021), *Grover Adaptive Search for Constrained Polynomial Binary Optimization*

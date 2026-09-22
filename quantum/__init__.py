@@ -43,7 +43,7 @@ Quick start
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .amplitude import (
     AmplitudeEstimationResult,
@@ -102,6 +102,22 @@ from .risk import (
     quantum_value_at_risk,
 )
 from .locality import LocalityReport, locality_report
+from .backtest import (
+    BacktestResult,
+    StrategyPerformance,
+    cardinality_strategy,
+    equal_weight,
+    markowitz_long_only,
+    walk_forward,
+)
+from .export import decompose, elementary_gate_count, from_qasm, to_qasm
+from .noise import (
+    NoiseModel,
+    NoisySweepResult,
+    noise_threshold_sweep,
+    noisy_amplitude_estimation,
+    survival_probability,
+)
 from .search import GroverSearchResult, amplify, grover_adaptive_search
 from .solvers import SOLVERS, available_solvers, get_solver
 from .storage import compare_codecs, load_compressed, save_compressed, shave_mantissa
@@ -137,4 +153,10 @@ __all__ = [
     "chsh_value", "max_classical_chsh",
     "GroverSearchResult", "grover_adaptive_search", "amplify",
     "save_compressed", "load_compressed", "compare_codecs", "shave_mantissa",
+    # validation and hardware
+    "BacktestResult", "StrategyPerformance", "walk_forward", "equal_weight",
+    "markowitz_long_only", "cardinality_strategy",
+    "NoiseModel", "NoisySweepResult", "noise_threshold_sweep",
+    "noisy_amplitude_estimation", "survival_probability",
+    "decompose", "elementary_gate_count", "to_qasm", "from_qasm",
 ]
