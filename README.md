@@ -17,6 +17,7 @@ Machine-readable dataset of Canada's tax system for the **2026 tax year**: perso
 | `examples/openbb_quickstart.py` | Fetches a year of daily prices per ticker via OpenBB and saves them as CSVs |
 | `examples/openbb_launcher.py` | Opens the OpenBB Workspace web UI in a browser: window, borderless, or fullscreen |
 | `examples/openbb_desktop.py` | Tkinter price viewer with windowed / borderless / fullscreen display modes |
+| `scripts/openbb_local.py` | Self-contained local OpenBB install that verifies and rolls back its own updates |
 | `docs/openbb_setup.md` | Installing OpenBB locally, plus the display-mode options above |
 | `docs/trader_taxation.md` | How Canada taxes active ("scalp") trading and the legitimate levers to reduce it |
 | `docs/incorporation_checklist.md` | Step-by-step checklist for moving personal trading into a corporate brokerage account |

@@ -65,7 +65,57 @@ python examples/openbb_quickstart.py
 
 Edit the `TICKERS` list at the top of the script to track your own symbols.
 
-## 5. Display modes: window, borderless, fullscreen
+## 5. Run it as a self-contained local install
+
+Sections 1-2 install OpenBB into whatever Python you happen to be using, which
+is fine until an OS-managed package blocks pip or another project upgrades
+something underneath it. For an install that stands entirely on its own and
+keeps itself current, use `scripts/openbb_local.py`:
+
+```
+python3 scripts/openbb_local.py install     # one-time setup
+python3 scripts/openbb_local.py status      # installed version vs. latest
+python3 scripts/openbb_local.py update      # upgrade, verify, roll back if broken
+python3 scripts/openbb_local.py run examples/openbb_quickstart.py
+python3 scripts/openbb_local.py schedule    # how to run `update` automatically
+```
+
+Everything lives in one directory — `~/.openbb-local` by default, or set
+`OPENBB_LOCAL_HOME` / pass `--home` — containing its own Python virtual
+environment. Nothing touches your system Python, so an OS package can never
+block the install and an OpenBB upgrade can never disturb anything else.
+Deleting that one directory removes it completely.
+
+`run` executes any script against that environment, so you do not have to
+activate anything:
+
+```
+python3 scripts/openbb_local.py run examples/openbb_desktop.py AAPL --days 90
+```
+
+### Keeping it current by itself
+
+`update` is built to run unattended. It upgrades, then imports OpenBB to prove
+the new version actually works, and **reinstalls the previous version if it does
+not** — so a bad release leaves you on the last working one rather than a broken
+install. Every run appends a line to `~/.openbb-local/update.log`.
+
+`schedule` prints the exact scheduler entry for your operating system (cron on
+Linux, launchd on macOS, `schtasks` on Windows). It prints rather than installs:
+your scheduler is your own system configuration. A weekly check is plenty.
+
+Use `update --check-only` to see whether a release is available without changing
+anything, and `install --pin 4.7.2` to hold a specific version.
+
+### What this does and does not change
+
+OpenBB is open-source software that has always run on your own machine; this
+just gives it a private, durable home. Its own license and the data providers'
+terms are unchanged — in particular the free Yahoo Finance provider is an
+unofficial endpoint, not a licensed feed, so treat it accordingly for anything
+you rely on.
+
+## 6. Display modes: window, borderless, fullscreen
 
 OpenBB itself is a Python library plus a terminal CLI, so it has no window of
 its own. Display modes therefore belong to whatever *hosts* OpenBB. This repo
@@ -139,7 +189,7 @@ source for a frame-by-frame video render locked to 1280x720, so the control
 deliberately does not appear at exactly that size — the rendered video is
 unaffected by it.
 
-## 6. Optional: the interactive OpenBB terminal
+## 7. Optional: the interactive OpenBB terminal
 
 If you'd rather type commands in a menu-driven terminal instead of Python:
 
