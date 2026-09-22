@@ -31,10 +31,21 @@
     "basic_exemption": 3500,
     "employee_rate": 0.063,
     "employer_rate": 0.063,
+    "self_employed_rate": 0.126,
     "max_employee_contribution": 4479.3,
-    "qpp2_rate": 0.04,
-    "qpp2_earnings_band": { "from": 74600, "to": 85000 },
-    "note": "Quebec reduced the QPP first-tier rate to 6.30% for 2026 (it was 6.40% in 2025). QPP2 mirrors CPP2 at 4% on the YMPE-YAMPE band."
+    "max_self_employed_contribution": 8958.6,
+    "note": "Quebec reduced the QPP first-tier rate to 6.30% for 2026 (it was 6.40% in 2025). Self-employed Quebec workers pay both halves (12.60%). QPP2 is a separate object in this file, mirroring the cpp2 shape."
+  },
+  "qpp2": {
+    "name": "QPP second additional contribution (QPP2)",
+    "yampe": 85000,
+    "earnings_band": { "from": 74600, "to": 85000 },
+    "employee_rate": 0.04,
+    "employer_rate": 0.04,
+    "self_employed_rate": 0.08,
+    "max_employee_contribution": 416.0,
+    "max_self_employed_contribution": 832.0,
+    "note": "QPP2 mirrors CPP2: 4% employee (8% self-employed) on pensionable earnings between the YMPE and the YAMPE."
   },
   "ei": {
     "name": "Employment Insurance",

@@ -60,7 +60,7 @@ and saves them to CSV files you can open in Excel. Run it from the repo
 folder with:
 
 ```
-python examples/openbb_quickstart.py
+python3 examples/openbb_quickstart.py
 ```
 
 Edit the `TICKERS` list at the top of the script to track your own symbols.
