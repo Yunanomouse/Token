@@ -65,7 +65,81 @@ python examples/openbb_quickstart.py
 
 Edit the `TICKERS` list at the top of the script to track your own symbols.
 
-## 5. Optional: the interactive OpenBB terminal
+## 5. Display modes: window, borderless, fullscreen
+
+OpenBB itself is a Python library plus a terminal CLI, so it has no window of
+its own. Display modes therefore belong to whatever *hosts* OpenBB. This repo
+gives you three hosts, each supporting **window**, **borderless window**, and
+**fullscreen**.
+
+### The web UI, in a browser window you control
+
+`examples/openbb_launcher.py` opens OpenBB Workspace in a Chromium-family
+browser (Chrome, Chromium, Edge, or Brave — it finds them automatically):
+
+```
+python examples/openbb_launcher.py --mode window
+python examples/openbb_launcher.py --mode borderless --width 1400 --height 900
+python examples/openbb_launcher.py --mode fullscreen
+python examples/openbb_launcher.py --mode fullscreen --kiosk
+```
+
+| Mode | What you get |
+|---|---|
+| `window` | A normal browser window, with tabs and address bar. |
+| `borderless` | Chromium's app mode: no tab strip, no omnibox, still movable and resizable. Good for a dedicated monitor. |
+| `fullscreen` | Fills the screen. Add `--kiosk` to lock it down so F11 and Ctrl+W will not leave it. |
+
+Useful extras: `--url` to point at a local OpenBB server instead of
+`https://pro.openbb.co`, `--profile` to give the launched browser its own
+profile directory, `--position X,Y` to place the window, and `--dry-run` to
+print the exact browser command without launching anything.
+
+If no Chromium-family browser is installed, `window` mode falls back to your
+default browser and says so; `borderless` and `fullscreen` stop with an error,
+because both depend on Chromium command-line flags that other browsers do not
+have.
+
+### A native desktop chart
+
+`examples/openbb_desktop.py` is a small Tkinter window that fetches prices
+through OpenBB and draws them itself, with no plotting dependencies:
+
+```
+python examples/openbb_desktop.py AAPL
+python examples/openbb_desktop.py SHOP.TO --days 90 --mode fullscreen
+python examples/openbb_desktop.py --demo          # synthetic data, no network
+python examples/openbb_desktop.py AAPL --csv examples/market_data/AAPL.csv
+```
+
+Switch modes with the buttons in the header, or with the keyboard:
+
+| Key | Action |
+|---|---|
+| `W` | Windowed — ordinary title bar and borders |
+| `B` | Borderless — no window decorations; drag the header strip to move it |
+| `F` / `F11` | Fullscreen |
+| `Escape` | Back to windowed from either mode |
+| `Ctrl+Q` | Quit |
+
+Borderless mode removes the OS title bar, so the app supplies its own drag
+strip and close button. If the fetch fails — no network, no `openbb`
+installed, a bad ticker — the window still opens and shows the reason, and
+the display modes keep working; `--demo` gives you deterministic synthetic
+prices to try it with.
+
+Tkinter ships with the python.org installers. On Debian/Ubuntu you may need
+`sudo apt install python3-tk`; the script tells you so rather than crashing.
+
+### The trailer page
+
+`src/openbb.html` has the same three modes, offered as a small control in the
+bottom-right corner (keys `W`, `B`, `F`, and `Escape`). The page is also the
+source for a frame-by-frame video render locked to 1280x720, so the control
+deliberately does not appear at exactly that size — the rendered video is
+unaffected by it.
+
+## 6. Optional: the interactive OpenBB terminal
 
 If you'd rather type commands in a menu-driven terminal instead of Python:
 
