@@ -22,5 +22,6 @@ jobs:
         run: python -m pytest tests -q
       - name: Smoke-test the CLI
         run: |
-          python -m quantum memory --qubits 20
-          python -m quantum export --qubits 3 --powers 1 | head -5
+          python -m quantum memory --assets 10 --days 500
+          python -m quantum export --qubits 3 --powers 1 -o call.qasm
+          python -m quantum backtest --assets 4 --days 300 --cardinality 2 --window 120 --horizon 60

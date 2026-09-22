@@ -106,7 +106,7 @@ class QUBO:
         This version adds one variable at a time instead.  Appending variable
         ``k`` to a table already covering ``2**t`` assignments costs
 
-        .. math:: E(x, x_k{=}1) = E(x) + Q_{kk} + \sum_{i} (Q_{ik} + Q_{ki}) x_i
+        .. math:: E(x, x_k{=}1) = E(x) + Q_{kk} + \\sum_{i} (Q_{ik} + Q_{ki}) x_i
 
         and that correction is itself linear in the bits, so it is built by the
         same doubling.  Variables are processed from last to first so each new
