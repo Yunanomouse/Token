@@ -50,7 +50,12 @@ def bpa_csv():
     rows = [["CA", data["federal"]["name"], fed["max"], fed["min"]]]
     for code, jur in data["provinces"].items():
         bpa = jur["basic_personal_amount"]
-        rows.append([code, jur["name"], bpa if bpa is not None else "", ""])
+        if bpa is None:                       # PEI: 2026 figure not published
+            rows.append([code, jur["name"], "", ""])
+        elif isinstance(bpa, dict):           # Yukon: phased like the federal BPA
+            rows.append([code, jur["name"], bpa["max"], bpa["min"]])
+        else:
+            rows.append([code, jur["name"], bpa, ""])
     write_csv(
         "basic_personal_amounts_2026.csv",
         ["jurisdiction_code", "jurisdiction", "bpa_max", "bpa_min_if_phased"],
@@ -97,9 +102,13 @@ def payroll_csv():
         ["CPP2", "employee", d["cpp2"]["employee_rate"], d["cpp2"]["yampe"], d["cpp2"]["earnings_band"]["from"], d["cpp2"]["max_employee_contribution"]],
         ["CPP2", "self_employed", d["cpp2"]["self_employed_rate"], d["cpp2"]["yampe"], d["cpp2"]["earnings_band"]["from"], d["cpp2"]["max_self_employed_contribution"]],
         ["QPP", "employee", d["qpp"]["employee_rate"], d["qpp"]["ympe"], d["qpp"]["basic_exemption"], d["qpp"]["max_employee_contribution"]],
+        ["QPP", "self_employed", d["qpp"]["self_employed_rate"], d["qpp"]["ympe"], d["qpp"]["basic_exemption"], d["qpp"]["max_self_employed_contribution"]],
+        ["QPP2", "employee", d["qpp2"]["employee_rate"], d["qpp2"]["yampe"], d["qpp2"]["earnings_band"]["from"], d["qpp2"]["max_employee_contribution"]],
+        ["QPP2", "self_employed", d["qpp2"]["self_employed_rate"], d["qpp2"]["yampe"], d["qpp2"]["earnings_band"]["from"], d["qpp2"]["max_self_employed_contribution"]],
         ["EI", "employee", d["ei"]["employee_rate"], d["ei"]["maximum_insurable_earnings"], 0, d["ei"]["max_employee_premium"]],
         ["EI", "employer", d["ei"]["employer_rate"], d["ei"]["maximum_insurable_earnings"], 0, d["ei"]["max_employer_premium_per_employee"]],
         ["EI_QC", "employee", d["ei"]["quebec"]["employee_rate"], d["ei"]["maximum_insurable_earnings"], 0, d["ei"]["quebec"]["max_employee_premium"]],
+        ["EI_QC", "employer", d["ei"]["quebec"]["employer_rate"], d["ei"]["maximum_insurable_earnings"], 0, ""],
         ["QPIP", "employee", d["qpip"]["employee_rate"], d["qpip"]["maximum_insurable_earnings"], 0, d["qpip"]["max_employee_premium"]],
         ["QPIP", "employer", d["qpip"]["employer_rate"], d["qpip"]["maximum_insurable_earnings"], 0, d["qpip"]["max_employer_premium_per_employee"]],
     ]

@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+.venv/
+venv/
+
+# Output of examples/openbb_quickstart.py
+examples/market_data/

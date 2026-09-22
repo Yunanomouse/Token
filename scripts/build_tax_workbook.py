@@ -4,6 +4,7 @@
 side. Inputs (wage, trading profit, rent) are editable; everything else is
 formulas fed by the 2026 dataset in data/json/."""
 import json
+import os
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -11,7 +12,8 @@ from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "examples" / "personal_tax_outline_2026.xlsx"
+OUT = Path(os.environ.get("TAX_WORKBOOK_OUT",
+                         ROOT / "examples" / "personal_tax_outline_2026.xlsx"))
 
 with open(ROOT / "data/json/personal_income_tax_2026.json", encoding="utf-8") as f:
     TAX = json.load(f)
@@ -339,14 +341,28 @@ fed_bpa = TAX["federal"]["basic_personal_amount"]
 wa.cell(r, 1, "Canada (federal)").font = F_B
 wa.cell(r, 2, fed_bpa["max"]).number_format = MONEY
 wa.cell(r, 2).font = F_B
-wa.cell(r, 3, f"Phases down to ${fed_bpa['min']:,} for income above $181,440").font = F_NOTE
+_phase_start = TAX["federal"]["brackets"][2]["up_to"]
+_phase_end = TAX["federal"]["brackets"][3]["up_to"]
+_phase_note = (f"Phases down to ${fed_bpa['min']:,} between ${_phase_start:,} "
+               f"and ${_phase_end:,} of net income")
+wa.cell(r, 3, _phase_note).font = F_NOTE
 r += 1
 for code, jur in TAX["provinces"].items():
     wa.cell(r, 1, jur["name"]).font = F_B
     bpa = jur["basic_personal_amount"]
-    c = wa.cell(r, 2, bpa if bpa is not None else "n/a")
+    note = ""
+    if bpa is None:                       # PEI: no published 2026 figure
+        value = "n/a"
+    elif isinstance(bpa, dict):           # Yukon: phased like the federal BPA
+        value = bpa["max"]
+        note = _phase_note
+    else:
+        value = bpa
+    c = wa.cell(r, 2, value)
     c.number_format = MONEY
     c.font = F_B
+    if note:
+        wa.cell(r, 3, note).font = F_NOTE
     r += 1
 
 # --- sales tax
@@ -376,7 +392,7 @@ wp.column_dimensions["A"].width = 40
 wp.column_dimensions["B"].width = 16
 wp.column_dimensions["C"].width = 70
 r = 4
-for prog_key in ("cpp", "cpp2", "qpp", "ei", "qpip"):
+for prog_key in ("cpp", "cpp2", "qpp", "qpp2", "ei", "qpip"):
     prog = PAY[prog_key]
     wp.cell(r, 1, prog["name"]).font = F_H
     wp.cell(r, 1).fill = FILL_SUB
@@ -469,4 +485,8 @@ wl.cell(r, 1, "Trading note: for an active/scalp trader, profits are business in
 wl.cell(r, 1).alignment = WRAP
 
 wb.save(OUT)
-print(f"wrote {OUT.relative_to(ROOT)}")
+try:
+    _shown = OUT.relative_to(ROOT)
+except ValueError:          # the output was redirected outside the repo
+    _shown = OUT
+print(f"wrote {_shown}")

@@ -100,18 +100,14 @@
       },
       "health_premium": {
         "description": "Ontario Health Premium, payable on taxable income over $20,000, maximum $900. Table is set in legislation and not indexed.",
-        "schedule": [
-          { "income_up_to": 20000, "premium": 0 },
-          { "income_up_to": 25000, "premium": "6% of income over 20000" },
-          { "income_up_to": 36000, "premium": 300 },
-          { "income_up_to": 38500, "premium": "300 + 6% of income over 36000" },
-          { "income_up_to": 48000, "premium": 450 },
-          { "income_up_to": 48600, "premium": "450 + 25% of income over 48000" },
-          { "income_up_to": 72000, "premium": 600 },
-          { "income_up_to": 72600, "premium": "600 + 25% of income over 72000" },
-          { "income_up_to": 200000, "premium": 750 },
-          { "income_up_to": 200600, "premium": "750 + 25% of income over 200000" },
-          { "income_up_to": null, "premium": 900 }
+        "formula": "For the band whose income_over < taxable income <= income_up_to: premium = min(cap, base + rate x (income - income_over)).",
+        "bands": [
+          { "income_over": 0, "income_up_to": 20000, "base": 0, "rate": 0.0, "cap": 0 },
+          { "income_over": 20000, "income_up_to": 36000, "base": 0, "rate": 0.06, "cap": 300 },
+          { "income_over": 36000, "income_up_to": 48000, "base": 300, "rate": 0.06, "cap": 450 },
+          { "income_over": 48000, "income_up_to": 72000, "base": 450, "rate": 0.25, "cap": 600 },
+          { "income_over": 72000, "income_up_to": 200000, "base": 600, "rate": 0.25, "cap": 750 },
+          { "income_over": 200000, "income_up_to": null, "base": 750, "rate": 0.25, "cap": 900 }
         ]
       },
       "notes": [
@@ -207,9 +203,10 @@
     "YT": {
       "name": "Yukon",
       "indexation_factor": 1.02,
-      "basic_personal_amount": 16452,
+      "basic_personal_amount": { "max": 16452, "min": 14829 },
       "notes": [
-        "Yukon mirrors the federal bracket thresholds (except its own $500,000 top bracket) and the federal enhanced BPA."
+        "Yukon mirrors the federal bracket thresholds (except its own $500,000 top bracket) and the federal enhanced BPA.",
+        "Because Yukon adopts the federal enhanced BPA, its amount is phased down over the same income range as the federal one, so it is stored as a {max, min} object rather than a single figure."
       ],
       "brackets": [
         { "up_to": 58523, "rate": 0.064 },
