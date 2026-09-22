@@ -65,7 +65,131 @@ python examples/openbb_quickstart.py
 
 Edit the `TICKERS` list at the top of the script to track your own symbols.
 
-## 5. Optional: the interactive OpenBB terminal
+## 5. Run it as a self-contained local install
+
+Sections 1-2 install OpenBB into whatever Python you happen to be using, which
+is fine until an OS-managed package blocks pip or another project upgrades
+something underneath it. For an install that stands entirely on its own and
+keeps itself current, use `scripts/openbb_local.py`:
+
+```
+python3 scripts/openbb_local.py install     # one-time setup
+python3 scripts/openbb_local.py status      # installed version vs. latest
+python3 scripts/openbb_local.py update      # upgrade, verify, roll back if broken
+python3 scripts/openbb_local.py run examples/openbb_quickstart.py
+python3 scripts/openbb_local.py schedule    # how to run `update` automatically
+```
+
+Everything lives in one directory — `~/.openbb-local` by default, or set
+`OPENBB_LOCAL_HOME` / pass `--home` — containing its own Python virtual
+environment. Nothing touches your system Python, so an OS package can never
+block the install and an OpenBB upgrade can never disturb anything else.
+Deleting that one directory removes it completely.
+
+`run` executes any script against that environment, so you do not have to
+activate anything:
+
+```
+python3 scripts/openbb_local.py run examples/openbb_desktop.py AAPL --days 90
+```
+
+### Keeping it current by itself
+
+`update` is built to run unattended. It upgrades, then imports OpenBB to prove
+the new version actually works, and **reinstalls the previous version if it does
+not** — so a bad release leaves you on the last working one rather than a broken
+install. Every run appends a line to `~/.openbb-local/update.log`.
+
+`schedule` prints the exact scheduler entry for your operating system (cron on
+Linux, launchd on macOS, `schtasks` on Windows). It prints rather than installs:
+your scheduler is your own system configuration. A weekly check is plenty.
+
+Use `update --check-only` to see whether a release is available without changing
+anything, and `install --pin 4.7.2` to hold a specific version.
+
+### What this does and does not change
+
+OpenBB is open-source software that has always run on your own machine; this
+just gives it a private, durable home. Its own license and the data providers'
+terms are unchanged — in particular the free Yahoo Finance provider is an
+unofficial endpoint, not a licensed feed, so treat it accordingly for anything
+you rely on.
+
+## 6. Display modes: window, borderless, fullscreen
+
+OpenBB itself is a Python library plus a terminal CLI, so it has no window of
+its own. Display modes therefore belong to whatever *hosts* OpenBB. This repo
+gives you three hosts, each supporting **window**, **borderless window**, and
+**fullscreen**.
+
+### The web UI, in a browser window you control
+
+`examples/openbb_launcher.py` opens OpenBB Workspace in a Chromium-family
+browser (Chrome, Chromium, Edge, or Brave — it finds them automatically):
+
+```
+python examples/openbb_launcher.py --mode window
+python examples/openbb_launcher.py --mode borderless --width 1400 --height 900
+python examples/openbb_launcher.py --mode fullscreen
+python examples/openbb_launcher.py --mode fullscreen --kiosk
+```
+
+| Mode | What you get |
+|---|---|
+| `window` | A normal browser window, with tabs and address bar. |
+| `borderless` | Chromium's app mode: no tab strip, no omnibox, still movable and resizable. Good for a dedicated monitor. |
+| `fullscreen` | Fills the screen. Add `--kiosk` to lock it down so F11 and Ctrl+W will not leave it. |
+
+Useful extras: `--url` to point at a local OpenBB server instead of
+`https://pro.openbb.co`, `--profile` to give the launched browser its own
+profile directory, `--position X,Y` to place the window, and `--dry-run` to
+print the exact browser command without launching anything.
+
+If no Chromium-family browser is installed, `window` mode falls back to your
+default browser and says so; `borderless` and `fullscreen` stop with an error,
+because both depend on Chromium command-line flags that other browsers do not
+have.
+
+### A native desktop chart
+
+`examples/openbb_desktop.py` is a small Tkinter window that fetches prices
+through OpenBB and draws them itself, with no plotting dependencies:
+
+```
+python examples/openbb_desktop.py AAPL
+python examples/openbb_desktop.py SHOP.TO --days 90 --mode fullscreen
+python examples/openbb_desktop.py --demo          # synthetic data, no network
+python examples/openbb_desktop.py AAPL --csv examples/market_data/AAPL.csv
+```
+
+Switch modes with the buttons in the header, or with the keyboard:
+
+| Key | Action |
+|---|---|
+| `W` | Windowed — ordinary title bar and borders |
+| `B` | Borderless — no window decorations; drag the header strip to move it |
+| `F` / `F11` | Fullscreen |
+| `Escape` | Back to windowed from either mode |
+| `Ctrl+Q` | Quit |
+
+Borderless mode removes the OS title bar, so the app supplies its own drag
+strip and close button. If the fetch fails — no network, no `openbb`
+installed, a bad ticker — the window still opens and shows the reason, and
+the display modes keep working; `--demo` gives you deterministic synthetic
+prices to try it with.
+
+Tkinter ships with the python.org installers. On Debian/Ubuntu you may need
+`sudo apt install python3-tk`; the script tells you so rather than crashing.
+
+### The trailer page
+
+`src/openbb.html` has the same three modes, offered as a small control in the
+bottom-right corner (keys `W`, `B`, `F`, and `Escape`). The page is also the
+source for a frame-by-frame video render locked to 1280x720, so the control
+deliberately does not appear at exactly that size — the rendered video is
+unaffected by it.
+
+## 7. Optional: the interactive OpenBB terminal
 
 If you'd rather type commands in a menu-driven terminal instead of Python:
 
@@ -93,4 +217,26 @@ want those.
   openbb`, then `python`).
 - **Empty results / download errors** — usually a network hiccup or an
   invalid ticker; try again or double-check the symbol on
-  https://finance.yahoo.com.
+  https://finance.yahoo.com. The quickstart script now prints a summary of
+  which tickers failed and why, and tells you whether the cause looks like a
+  network problem or a bad symbol.
+- **Every ticker fails with a connection, proxy, or tunnel error** — the
+  requests aren't reaching Yahoo at all. Corporate networks, VPNs, school
+  Wi-Fi, and locked-down cloud sandboxes often block `finance.yahoo.com`.
+  Try the same script on a home connection or off the VPN; if it has to run
+  on the restricted network, the network's egress rules need to allow
+  `finance.yahoo.com` and `query1.finance.yahoo.com`, or you'll need a
+  provider that is reachable (most alternatives require a free API key).
+- **`pip install openbb` fails with "Cannot uninstall <package>, RECORD file
+  not found"** — your Python is managed by the operating system (common on
+  Linux and on Macs using Homebrew Python), and pip isn't allowed to replace
+  a system package. Install into a virtual environment instead:
+
+  ```
+  python3 -m venv ~/openbb-env
+  source ~/openbb-env/bin/activate      # Windows: %USERPROFILE%\openbb-env\Scripts\activate
+  pip install openbb
+  ```
+
+  Then run the script with that environment active. Re-run the `activate`
+  line each time you open a new terminal.
