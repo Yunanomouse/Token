@@ -23,6 +23,8 @@ Machine-readable dataset of Canada's tax system for the **2026 tax year**: perso
 | `docs/incorporation_checklist.md` | Step-by-step checklist for moving personal trading into a corporate brokerage account |
 | `docs/openbb_setup.md` | Plain-language guide to running OpenBB (free market data) on your own computer |
 | `docs/openrouter_setup.md` | Plain-language guide to setting up OpenRouter (one API key for many AI models) |
+| `docs/codex_setup.md` | Plain-language guide to running OpenAI's Codex agent against this repo |
+| `AGENTS.md` | House rules coding agents read automatically: source-of-truth files, what is generated, how to run the tests |
 
 ## Quick start
 
