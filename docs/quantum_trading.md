@@ -713,6 +713,141 @@ where the new control reads 1, zero rotation where it reads 0), checked against
 the equivalent `2ᵏ` explicit multi-controlled rotations to 1e-12, and the test
 now runs canonical QAE on a loaded lognormal.
 
+## Data from outside this repository
+
+Everything above was measured on synthetic prices and synthetic error rates.
+This section replaces each with a released, citable external source and
+reports what changed.  The datasets are bundled under `data/` with their
+licences and provenance in [`data/README.md`](../data/README.md).
+
+### Real prices — the optimiser beats 1/N on this history, with a caveat
+
+Twenty US tickers of adjusted daily closes from 1989 to 2018, MIT-licensed,
+taken from PyPortfolioOpt's test resources (Yahoo Finance originally).
+Seventeen have complete coverage from 2006-05-25, which gives 2,990 trading
+days through the 2008 crash, the 2011 and 2015 corrections and the 2018
+volatility spike.  Same walk as before: 252-day fit, 21-day hold, 130
+out-of-sample periods:
+
+| strategy | ann. return | ann. vol | Sharpe | *in-sample* Sharpe | max DD | turnover | t vs 1/N |
+|---|---|---|---|---|---|---|---|
+| equal weight | 11.13% | 19.97% | 0.56 | 0.57 | 49.9% | 0.0% | — |
+| Markowitz long-only | 17.43% | 18.73% | 0.93 | 2.06 | 36.5% | 20.8% | +1.73 |
+| cardinality 4, simulated annealing | 23.32% | 22.11% | 1.06 | 2.05 | 42.4% | 19.8% | +2.14 |
+| cardinality 4, exhaustive | 23.32% | 22.11% | 1.06 | 2.05 | 42.4% | 19.8% | +2.14 |
+
+Different from the synthetic result in one respect: the cardinality
+optimiser beat equal weight, and the paired t-statistic of +2.14 clears the
+conventional threshold.  Unchanged in the other two: the in-sample Sharpe of
+2.05 realised 1.06 (the overfit halved it), and simulated annealing matched
+exhaustive search at all 130 rebalances, so once again what is being scored
+is the optimum, not the solver.
+
+The caveat is the universe.  These twenty names were picked in 2018 by
+someone writing a portfolio library, and they include Apple, Amazon, Google
+and Mastercard over the decade those four compounded fastest.  A momentum-
+tilted optimiser holding four names out of seventeen is well placed to ride
+that; it also held Sears to near zero.  The excess return is real on this
+history and would not survive a universe chosen in 2006.  To run it on a
+universe of your own: `python3 -m quantum backtest --csv prices.csv`, with
+any wide CSV of a date column plus one adjusted-close column per ticker.
+
+### QOBLIB — the first certified benchmark, and the solvers do not pass it
+
+The Quantum Optimization Benchmarking Library (Koch et al., *Nature
+Computational Science*, 2026) is the community's answer to unverifiable
+quantum-optimisation claims: ten problem classes, instances with real data,
+QUBO files ready to load, and answers proven optimal by Gurobi where the
+instance is small enough.  Problem class 06 is a multi-period portfolio model
+with transaction costs, short selling, borrowing costs and per-period capital
+and cardinality limits, on real S&P 500 prices.  Its smallest instance —
+ten names, ten periods, budget four — is 710 binary variables.
+
+Every solver in this package had been validated against exhaustive
+enumeration, which stops at about 22 variables.  This is the first test at
+scale, and against an external answer.
+
+| solver | budget | objective | proven optimum | feasible |
+|---|---|---|---|---|
+| simulated annealing | default (2,000 sweeps × 8 restarts) | −7,983 | −110,541 | yes |
+| simulated annealing | 20,000 sweeps × 4 restarts | −19,299 | −110,541 | yes |
+| simulated bifurcation | default | +1,100,001,085 | −110,541 | no |
+| simulated bifurcation | 5,000 steps | +1,050,005,322 | −110,541 | no |
+
+Simulated annealing finds feasible portfolios and captures a sixth of the
+optimum's objective with ten times the default budget.  Simulated
+bifurcation never reaches feasibility.  The structural reason is the
+penalty wall: the QUBO encodes the two equality constraints with weight
+10⁷ against an objective of order 10⁵, so the landscape is a hundred times
+steeper in the constraint directions than in the ones that matter, and a
+solver tuned to the objective's scale — which is what the Frobenius-norm
+normalisation in simulated bifurcation does — cannot resolve the objective
+at all.  This is the same lesson as the `1/c_min²` penalty finding earlier
+in this document, seen from the other side: a penalty large enough to hold
+the constraints is large enough to flatten the objective.
+
+What this says about the package: the solver comparison in the section
+above, where all four solvers tie on random 10-variable instances, was
+never going to transfer.  A benchmark with a certified answer at 710
+variables is a different test, and on it the honest answer today is that
+the heuristics are far from competitive with a MIP solver.  QOBLIB's own
+baseline submissions reach the optimum with Gurobi in seconds.
+
+Three file-format facts were needed to score against the certified
+optimum, none documented in the library beyond its converter script, and
+all three are pinned by a test that requires the certified solution to be a
+strict local minimum with every single-bit flip costing at least the
+penalty weight: off-diagonal entries in the `.qs` file are symmetric (each
+pair counts twice), the slack registers are ordered bit-outer and
+period-inner, and the file omits the constant 10⁷ × (C² + B²) × T =
+1.16 × 10¹⁰.  Under the natural upper-triangular reading the certified
+solution is not a local minimum in either direction.
+
+Reproduce: `python3 -m quantum qoblib --risk-weight l0` (proven optimal
+instances: `l0`, `l1e-5`, `l1e-6`).
+
+### Published hardware — one machine, on paper, on the smallest circuit
+
+The noise sweep gave a threshold near ε ≈ 10⁻⁴ per gate.  Here it is run
+against the error rates the vendors publish, as gathered from the sources
+named in `quantum.noise.HARDWARE_PROFILES` (the primary documents were not
+reachable from the environment this was written in; the figures are as
+reported by the search summaries and should be checked against the data
+sheets before being quoted further):
+
+| profile | two-qubit | one-qubit | readout | abs error | classical | survival | beats classical |
+|---|---|---|---|---|---|---|---|
+| Quantinuum Helios (98 qubits, Nature 2026) | 7.9e-4 | 2.5e-5 | 3.3e-4 | 0.1005 | 0.0052 | 0.19 | no |
+| IonQ two-qubit record (Oct 2025) | 1.0e-4 | 2.5e-5 | 3.3e-4 | 0.0041 | 0.0052 | 0.81 | yes |
+| IBM Nighthawk (120 qubits, Jan 2026) | 2.2e-3 | 2.5e-4 | 1.0e-2 | 0.1030 | 0.0052 | 0.01 | no |
+
+Same 3-qubit pricing circuit, five Grover powers, deepest circuit 2,112
+gates.  The two commercial systems lose to classical Monte Carlo outright —
+both sit past the cliff, at an estimate of ½.  The one profile that wins is
+IonQ's 99.99% two-qubit demonstration, and it wins by 20% on a circuit that
+needs five qubits when the demonstration used two.  So the position as of
+2026: the best *published gate* clears the bar for the *smallest useful
+circuit*; no *system* does; and the 6-qubit circuit the `price` command
+runs by default is ten times deeper again.  `python3 -m quantum noise
+--hardware` reruns it.
+
+### Where else to look
+
+Searched but not used, with the reason:
+
+- **Qiskit Finance** — unsupported by IBM since November 2023; its
+  amplitude-estimation pricing is the same construction as
+  `quantum/pricing.py`.
+- **IBM calibration snapshots on Zenodo** (records 18045662, 20768087) —
+  real T1/T2/gate/readout histories per qubit, which would let the noise
+  model use a device's actual worst pairs rather than a median; the host
+  was not reachable from here.
+- **QOBLIB's instance generator** ships raw daily OHLCV for ~500 S&P 500
+  names over January–May 2024 — five months, too short to fit a 252-day
+  window.
+- **QuFinBench** — a README describing a benchmark, with no data and no
+  results.
+
 ---
 
 ## Validation
@@ -721,7 +856,7 @@ now runs canonical QAE on a loaded lognormal.
 python3 -m pytest tests -q        # or: python3 -m unittest discover -s tests -v
 ```
 
-161 tests. The principle throughout: **every quantum routine is checked against
+169 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,
@@ -747,6 +882,11 @@ an exact classical reference**, never against itself.
 - Backtest — the 1/N period return equals the mean asset return; every weight
   vector is long-only and sums to one; simulated annealing and exhaustive search
   produce identical out-of-sample returns.
+- External data — the QOBLIB certified optimum decodes as feasible and is a
+  strict local minimum of the loaded QUBO with every flip costing ≥ 10⁶; the
+  omitted constant equals 1.16 × 10¹⁰ on two instances; a solver result never
+  beats the proven optimum; the real price file loads with a date window and
+  drops rows with missing cells rather than filling them.
 
 ---
 
@@ -776,6 +916,8 @@ simulated bifurcation right now.
 - Clauser, Horne, Shimony & Holt (1969), *Proposed Experiment to Test Local Hidden-Variable Theories*
 - Chen (2004), *Quantum Theory for the Binomial Model in Finance Theory*, arXiv:quant-ph/0112156
 - DeMiguel, Garlappi & Uppal (2009), *Optimal Versus Naive Diversification: How Inefficient is the 1/N Portfolio Strategy?*
+- Koch, Bernal Neira, Chen et al. (2026), *The Quantum Optimization Benchmarking Library*, Nature Computational Science 6, 653–671
+- Martin (2021), *PyPortfolioOpt: portfolio optimization in Python*, JOSS 6(61), 3066
 - Möttönen, Vartiainen, Bergholm & Salomaa (2004), *Transformation of quantum states using uniformly controlled rotations*
 - Grover & Rudolph (2002), *Creating superpositions that correspond to efficiently integrable probability distributions*
 - Dürr & Høyer (1996), *A Quantum Algorithm for Finding the Minimum*

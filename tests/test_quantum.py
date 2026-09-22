@@ -1907,3 +1907,119 @@ class TestBacktest(unittest.TestCase):
         market = synthetic_prices(n_assets=3, n_days=50, seed=4)
         with self.assertRaises(ValueError):
             walk_forward(market.prices, market.tickers, {"e": equal_weight}, window=40, horizon=20)
+
+
+# ==========================================================================
+# External data: QOBLIB benchmark, real prices, hardware profiles
+# ==========================================================================
+
+
+class TestQoblib(unittest.TestCase):
+    ROOT = "data/qoblib/po_a010_t10_orig"
+
+    def _load(self, tag="l0"):
+        from pathlib import Path
+        from quantum.qoblib import load_instance, load_qs, load_solution
+
+        root = Path(self.ROOT)
+        instance = load_instance(root / "instance")
+        qubo = load_qs(next((root / "qubo").glob(f"*_{tag}.qs.xz")))
+        solution = load_solution(next((root / "solutions").glob(f"*_{tag}.*.sol")))
+        return instance, qubo, solution
+
+    def test_instance_layout(self):
+        instance, qubo, solution = self._load()
+        self.assertEqual(instance.n_assets, 10)
+        self.assertEqual(instance.n_periods, 10)
+        self.assertEqual(instance.n_variables, 710)
+        self.assertEqual(qubo.Q.shape, (710, 710))
+        self.assertTrue(np.allclose(qubo.Q, qubo.Q.T))
+        self.assertTrue(solution.proven_optimal)
+        self.assertEqual(solution.objective, -110541.0)
+
+    def test_certified_optimum_is_feasible_and_a_strict_local_minimum(self):
+        """The reading of the file format is pinned by the certified solution:
+        every single-bit flip must cost at least the penalty weight."""
+        from quantum.qoblib import decode_bits, solution_bits
+
+        instance, qubo, solution = self._load()
+        bits = solution_bits(instance, solution)
+        check = decode_bits(instance, bits, solution.budget)
+        self.assertTrue(check["feasible"])
+        self.assertEqual(check["positions"], solution.positions)
+        base = qubo.energy(bits)
+        deltas = []
+        for i in range(bits.size):
+            flipped = bits.copy()
+            flipped[i] ^= 1
+            deltas.append(qubo.energy(flipped) - base)
+        self.assertGreater(min(deltas), 1e6)
+
+    def test_omitted_constant_is_the_penalty_constant(self):
+        """penalty 1e7 x (C^2 + B^2) x T = 1e7 x (100 + 16) x 10."""
+        from quantum.qoblib import qubo_offset
+
+        instance, qubo, solution = self._load()
+        self.assertAlmostEqual(qubo_offset(qubo, instance, solution), 1.16e10, places=3)
+        instance, qubo, solution = self._load("l1e-5")
+        self.assertAlmostEqual(qubo_offset(qubo, instance, solution), 1.16e10, places=3)
+
+    def test_solver_output_is_scored_in_objective_units(self):
+        from quantum.qoblib import decode_bits, qubo_offset
+        from quantum.solvers import get_solver
+
+        instance, qubo, solution = self._load()
+        offset = qubo_offset(qubo, instance, solution)
+        result = get_solver("simulated_annealing").solve(
+            qubo, n_sweeps=200, n_restarts=1, rng=np.random.default_rng(0)
+        )
+        objective = result.energy + offset
+        check = decode_bits(instance, result.assignment, solution.budget)
+        # Whatever it found, it cannot beat a proven optimum.
+        if check["feasible"]:
+            self.assertGreaterEqual(objective, solution.objective - 1e-6)
+        self.assertEqual(len(check["capital_residual"]), instance.n_periods)
+
+
+class TestExternalData(unittest.TestCase):
+    def test_real_price_file_loads_with_date_window(self):
+        from quantum.market import load_price_csv
+
+        market = load_price_csv(
+            "data/prices/us_equities_1989_2018.csv",
+            tickers=["AAPL", "XOM", "JPM"], start="2010-01-01", end="2010-12-31",
+        )
+        self.assertEqual(market.n_assets, 3)
+        self.assertEqual(market.prices.shape[0], 252)
+        self.assertTrue(np.all(np.isfinite(market.covariance)))
+
+    def test_missing_cells_drop_rows_rather_than_fabricate(self):
+        from quantum.market import load_price_csv
+
+        with_fb = load_price_csv("data/prices/us_equities_1989_2018.csv", tickers=["AAPL", "FB"])
+        without = load_price_csv("data/prices/us_equities_1989_2018.csv", tickers=["AAPL"])
+        self.assertLess(with_fb.prices.shape[0], without.prices.shape[0])
+
+    def test_hardware_profiles_build_models(self):
+        from quantum.noise import HARDWARE_PROFILES, NoiseModel
+
+        for name in HARDWARE_PROFILES:
+            model = NoiseModel.from_hardware(name)
+            self.assertGreater(model.two_qubit, model.one_qubit)
+        with self.assertRaises(ValueError):
+            NoiseModel.from_hardware("no_such_machine")
+
+    def test_hardware_survey_rows(self):
+        from quantum.noise import hardware_survey
+        from quantum.pricing import OptionSpec, build_european_payoff_circuit
+        from quantum.statevector import probability_of_one
+
+        prep, objective, *_ = build_european_payoff_circuit(OptionSpec(100.0, 100.0, 0.05, 0.2, 1.0), 3)
+        truth = probability_of_one(prep.run(), prep.n_qubits, objective)
+        rows = hardware_survey(
+            prep, objective, truth, profiles=["ibm_nighthawk"], n_powers=3,
+            shots_per_power=64, trajectories=4, trials=1, rng=np.random.default_rng(0),
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertIn("source", rows[0])
+        self.assertGreaterEqual(rows[0]["abs_error"], 0.0)

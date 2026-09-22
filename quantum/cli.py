@@ -35,7 +35,7 @@ from .risk import (
 from .solvers import available_solvers, get_solver
 from .backtest import cardinality_strategy, equal_weight, markowitz_long_only, walk_forward
 from .export import elementary_gate_count, to_qasm
-from .noise import noise_threshold_sweep, survival_probability
+from .noise import HARDWARE_PROFILES, hardware_survey, noise_threshold_sweep, survival_probability
 from .pricing import build_european_payoff_circuit
 from .statevector import probability_of_one
 
@@ -334,8 +334,66 @@ def cmd_noise(args) -> int:
         rng=np.random.default_rng(args.seed),
     )
     print(result.report())
+    if args.hardware:
+        print()
+        _rule("Published hardware profiles")
+        rows = hardware_survey(
+            circuit, objective, true_value, n_powers=args.powers,
+            shots_per_power=args.shots, trajectories=args.trajectories,
+            trials=args.trials, rng=np.random.default_rng(args.seed),
+        )
+        print(f"{'profile':<20}{'2q err':>9}{'1q err':>9}{'readout':>9}{'abs err':>10}"
+              f"{'classical':>11}{'survival':>10}  beats classical")
+        print("-" * 92)
+        for r in rows:
+            print(f"{r['profile']:<20}{r['two_qubit_error']:>9.1e}{r['one_qubit_error']:>9.1e}"
+                  f"{r['readout_error']:>9.1e}{r['abs_error']:>10.4f}{r['classical_error']:>11.4f}"
+                  f"{r['survival_deepest']:>10.1e}  {'yes' if r['beats_classical'] else 'no'}")
+        print()
+        for r in rows:
+            print(f"  {r['profile']}: {r['source']}")
     print("\nDepolarising noise only. Coherent and correlated errors are worse for")
     print("phase estimation, so this is an upper bound on tolerable error.")
+    return 0
+
+
+def cmd_qoblib(args) -> int:
+    """Score the package's solvers against a certified QOBLIB optimum."""
+    from pathlib import Path
+    from .qoblib import decode_bits, load_instance, load_qs, load_solution, qubo_offset
+
+    _rule("QOBLIB 06-portfolio: solvers vs certified optimum")
+    root = Path(args.root)
+    instance = load_instance(root / "instance")
+    instance.name = root.name
+    lam = args.risk_weight
+    qs = next(iter((root / "qubo").glob(f"uqo_*_{lam}.qs*")), None)
+    sol = next(iter((root / "solutions").glob(f"*_{lam}.*.sol")), None)
+    if qs is None or sol is None:
+        print(f"no QUBO or solution for risk weight {lam!r} under {root}")
+        return 1
+    qubo = load_qs(qs)
+    reference = load_solution(sol)
+    offset = qubo_offset(qubo, instance, reference)
+    kind = "proven optimal" if reference.proven_optimal else "best known"
+    print(f"instance {instance.name}: {instance.n_assets} assets x {instance.n_periods} periods, "
+          f"{instance.n_variables} binary variables, budget {reference.budget}, lambda {lam}")
+    print(f"reference objective: {reference.objective:.0f} ({kind}); QUBO constant omitted by "
+          f"the file: {offset:.4g}\n")
+    print(f"{'solver':<24}{'objective':>12}{'gap':>12}{'feasible':>10}{'time':>9}")
+    print("-" * 67)
+    for name in args.solvers.split(","):
+        kwargs = {"rng": np.random.default_rng(args.seed)}
+        if name == "simulated_annealing":
+            kwargs.update(n_sweeps=args.sweeps, n_restarts=args.restarts)
+        result = get_solver(name).solve(qubo, **kwargs)
+        objective = result.energy + offset
+        check = decode_bits(instance, result.assignment, reference.budget)
+        print(f"{name:<24}{objective:>12.0f}{objective - reference.objective:>12.0f}"
+              f"{str(check['feasible']):>10}{result.runtime_seconds:>8.1f}s")
+    print("\nThe gap is in the library's objective units (cash units of 100,000). A")
+    print("feasible solution with a positive gap is a worse portfolio than the optimum;")
+    print("an infeasible one violates a per-period capital or cardinality limit.")
     return 0
 
 
@@ -466,7 +524,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--shots", type=int, default=256)
     p.add_argument("--trajectories", type=int, default=32)
     p.add_argument("--trials", type=int, default=3)
+    p.add_argument("--hardware", action="store_true",
+                   help="also run under the published hardware profiles")
     p.set_defaults(func=cmd_noise)
+
+    p = sub.add_parser("qoblib", help="score the solvers on a certified QOBLIB portfolio instance")
+    p.add_argument("--root", default="data/qoblib/po_a010_t10_orig",
+                   help="instance directory holding instance/, qubo/, solutions/")
+    p.add_argument("--risk-weight", default="l0", dest="risk_weight",
+                   help="lambda tag in the file names: l0, l1e-6, l1e-5, ... (l0, l1e-5, l1e-6 are proven optimal)")
+    p.add_argument("--solvers", default="simulated_annealing,simulated_bifurcation")
+    p.add_argument("--sweeps", type=int, default=2000)
+    p.add_argument("--restarts", type=int, default=8)
+    p.set_defaults(func=cmd_qoblib)
 
     p = sub.add_parser("export", help="write a pricing circuit as OpenQASM 3")
     add_option_args(p)

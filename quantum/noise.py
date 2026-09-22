@@ -63,8 +63,38 @@ from .statevector import Circuit, Operation, X, Y, Z, probability_of_one
 
 _PAULIS = (X, Y, Z)
 
+HARDWARE_PROFILES: dict[str, dict] = {
+    # Per-gate error rates as the vendors publish them, with the source and
+    # date, so the sweep can be re-run against a real machine's numbers.
+    # These are *typical* or *median* figures for the best operating points;
+    # a full-register circuit sees the worst pairs too.  Not re-verified
+    # against the primary documents from this environment -- see the docs.
+    "quantinuum_helios": {
+        "one_qubit": 2.5e-5, "two_qubit": 7.9e-4, "readout": 3.3e-4,
+        "qubits": 98, "modality": "trapped ion",
+        "source": "Quantinuum Helios paper, Nature 2026 (average infidelities: "
+                  "1q 2.5e-5, 2q 7.9e-4, SPAM 3.3e-4); data sheet v1.2, June 2026",
+    },
+    "ionq_record_2025": {
+        "one_qubit": 2.5e-5, "two_qubit": 1.0e-4, "readout": 3.3e-4,
+        "qubits": 2, "modality": "trapped ion (Oxford Ionics electronic control)",
+        "source": "IonQ press release, October 2025: 99.99% two-qubit fidelity "
+                  "demonstration; 1q and readout taken from the Helios figures "
+                  "as no IonQ system-level numbers accompany it",
+    },
+    "ibm_nighthawk": {
+        "one_qubit": 2.5e-4, "two_qubit": 2.15e-3, "readout": 1.0e-2,
+        "qubits": 120, "modality": "superconducting",
+        "source": "IBM Nighthawk availability announcement, January 2026: "
+                  "two-qubit error ~2.15e-3 across 100 qubits; readout on Heron-class "
+                  "processors reported 2-7x the two-qubit error",
+    },
+}
+
 __all__ = [
+    "HARDWARE_PROFILES",
     "NoiseModel",
+    "hardware_survey",
     "NoisySweepResult",
     "noisy_amplitude_estimation",
     "noisy_probability_of_one",
@@ -92,6 +122,15 @@ class NoiseModel:
     def uniform(cls, epsilon: float, readout: float = 0.0) -> "NoiseModel":
         """Same rate for one- and two-qubit gates -- the sweep's convention."""
         return cls(one_qubit=epsilon, two_qubit=epsilon, readout=readout)
+
+    @classmethod
+    def from_hardware(cls, name: str) -> "NoiseModel":
+        """A profile from :data:`HARDWARE_PROFILES` (vendor-published figures)."""
+        try:
+            spec = HARDWARE_PROFILES[name]
+        except KeyError:
+            raise ValueError(f"unknown hardware profile {name!r}; choose from {sorted(HARDWARE_PROFILES)}") from None
+        return cls(one_qubit=spec["one_qubit"], two_qubit=spec["two_qubit"], readout=spec["readout"])
 
     @property
     def noiseless(self) -> bool:
@@ -349,3 +388,55 @@ def noise_threshold_sweep(
         deepest_circuit_gates=deepest,
         trials=trials,
     )
+
+
+def hardware_survey(
+    state_prep: Circuit,
+    objective_qubit: int,
+    true_value: float,
+    profiles: Sequence[str] | None = None,
+    n_powers: int = 5,
+    shots_per_power: int = 256,
+    trajectories: int = 32,
+    trials: int = 3,
+    rng: np.random.Generator | None = None,
+) -> list[dict]:
+    """Run the noisy estimator under each published hardware profile.
+
+    Returns one row per profile with the mean absolute error, the classical
+    Monte Carlo error at equal oracle budget, and whether the quantum
+    estimate still wins.  This is the question the whole package comes down
+    to, asked of machines that exist.
+    """
+    rng = rng or np.random.default_rng()
+    names = list(profiles) if profiles else list(HARDWARE_PROFILES)
+    rows: list[dict] = []
+    for name in names:
+        model = NoiseModel.from_hardware(name)
+        errs = []
+        calls = 0
+        deepest = 0
+        for _ in range(trials):
+            r = noisy_amplitude_estimation(
+                state_prep, objective_qubit, model,
+                n_powers=n_powers, shots_per_power=shots_per_power,
+                trajectories=trajectories, rng=rng,
+            )
+            errs.append(abs(r.estimate - true_value))
+            calls = r.oracle_calls
+            deepest = max(deepest, int(r.detail["deepest_circuit_gates"]))
+        classical = classical_monte_carlo_error(true_value, calls)
+        err = float(np.mean(errs))
+        rows.append({
+            "profile": name,
+            "two_qubit_error": model.two_qubit,
+            "one_qubit_error": model.one_qubit,
+            "readout_error": model.readout,
+            "abs_error": err,
+            "classical_error": float(classical),
+            "beats_classical": err <= classical,
+            "survival_deepest": float((1.0 - model.two_qubit) ** deepest),
+            "deepest_circuit_gates": deepest,
+            "source": HARDWARE_PROFILES[name]["source"],
+        })
+    return rows

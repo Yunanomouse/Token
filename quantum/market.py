@@ -186,11 +186,15 @@ def load_price_csv(
     path: str | Path,
     date_column: str | None = None,
     tickers: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
 ) -> MarketData:
     """Load a wide CSV -- one date column, one price column per ticker.
 
     Rows with any missing or non-positive price are dropped, since log returns
     are undefined there and silently forward-filling would fabricate data.
+    ``start`` and ``end`` (inclusive, ISO ``YYYY-MM-DD``) restrict the date
+    range; they compare as strings, so the file's dates must be ISO too.
     """
     path = Path(path)
     with path.open(newline="", encoding="utf-8") as fh:
@@ -210,6 +214,10 @@ def load_price_csv(
 
     values: list[list[float]] = []
     for row in rows:
+        if date_column is not None and (start or end):
+            day = (row.get(date_column) or "")[:10]
+            if (start and day < start) or (end and day > end):
+                continue
         try:
             parsed = [float(row[c]) for c in cols]
         except (TypeError, ValueError):

@@ -64,7 +64,19 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   the simulator at 1e-15; the 4-qubit call with two Grover powers is 1,036
   gates, 928 of them two-qubit.
 
-161 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
+- **On real prices** — 17 US names, 2006–2018: the cardinality optimiser
+  returned 23.3% a year against 11.1% for equal weight (t = +2.14), with the
+  in-sample Sharpe of 2.05 realising 1.06. The universe was picked in 2018,
+  so treat the excess as an upper bound.
+- **On a certified benchmark** — QOBLIB's smallest portfolio instance (710
+  variables, Gurobi-proven optimum): simulated annealing reaches a sixth of the
+  optimum, simulated bifurcation never reaches feasibility. The first test at
+  scale, and the heuristics do not pass it.
+- **Against published hardware** — Quantinuum Helios and IBM Nighthawk both
+  lose to classical Monte Carlo on the smallest pricing circuit; only IonQ's
+  two-qubit 99.99% demonstration clears the bar, by 20%.
+
+169 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
 
 ## Memory
 
@@ -130,7 +142,12 @@ pip install -e ".[test]"
 python3 -m quantum backtest --assets 8 --days 1512   # walk-forward vs equal weight
 python3 -m quantum noise --trials 6                  # gate-error threshold sweep
 python3 -m quantum export --qubits 4 --powers 2 -o call.qasm
+python3 -m quantum backtest --csv data/prices/us_equities_1989_2018.csv   # real prices
+python3 -m quantum qoblib --risk-weight l0                                 # certified benchmark
+python3 -m quantum noise --hardware                                        # published error rates
 ```
+
+Datasets and their licences: [data/README.md](data/README.md).
 Worked walkthrough: `python3 examples/quantum_trading_demo.py`.
 
 ---
