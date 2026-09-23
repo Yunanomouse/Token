@@ -1,7 +1,16 @@
 QUANTUM TRADING - standalone app (paper trading)
 ================================================
 
-Nothing to install: Python and numpy are inside this folder.
+Nothing else to install: Python and numpy are included.
+
+On Windows the easiest way is "Quantum Trading Setup.exe" from the same
+download page: double-click it, click Next, and it adds Quantum Trading to
+the Start menu (and the desktop if you like), with an uninstaller under
+Settings > Apps. If Windows says "Windows protected your PC", click
+"More info", then "Run anyway" (the program is not code-signed).
+Once installed, open it from the Start menu and skip to step 3.
+
+Without installing, from the zip:
 
 1. Unzip the download. Keep the whole folder together and put it somewhere
    you can write to (Documents, Desktop). Do not run it from inside the zip.

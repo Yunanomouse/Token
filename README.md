@@ -35,7 +35,8 @@ unzip it, and double-click:
 
 | System | Zip | Double-click |
 |---|---|---|
-| Windows | `quantum-trading-windows-x64.zip` | `Quantum Trading.exe` |
+| Windows (installer) | `Quantum Trading Setup.exe` | the installer, once; then Quantum Trading in the Start menu |
+| Windows (no install) | `quantum-trading-windows-x64.zip` | `Quantum Trading.exe` |
 | Mac (Apple Silicon) | `quantum-trading-macos-arm64.zip` | `Open Quantum Trading.command` (right-click > Open the first time) |
 | Mac (Intel) | `quantum-trading-macos-x64.zip` | same |
 | Linux | `quantum-trading-linux-x64.zip` | `Quantum Trading` |
