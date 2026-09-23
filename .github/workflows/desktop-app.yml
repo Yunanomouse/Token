@@ -84,7 +84,7 @@ jobs:
           MENU="$(cygpath -u "$APPDATA")/Microsoft/Windows/Start Menu/Programs/Quantum Trading"
           ls "$APPDIR" "$MENU"
           ls "$(cygpath -u "$USERPROFILE")/Desktop/Quantum Trading.lnk" || ls "$(cygpath -u "$PUBLIC")/Desktop/Quantum Trading.lnk"
-          (cd "$APPDIR" && ./"Quantum Trading.exe" live --replay data/prices/us_equities_1989_2018.csv --tickers AAPL,XOM \
+          (cd "$APPDIR" && ./"Quantum Trading.exe" live --replay data/prices/us_equities_1989_2018.csv --tickers AAPL,XOM,JPM,WMT \
             --start 2013-01-01 --end 2013-06-30 --window 60 --state ci_state.json | grep "gains/losses" && rm -f ci_state.json)
           # The uninstaller hands off to a temporary copy and returns at once: wait for it.
           "$APPDIR/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
