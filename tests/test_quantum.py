@@ -2467,6 +2467,32 @@ class TestLiveBot(unittest.TestCase):
             self.assertEqual(out.read_text().splitlines()[0], "date,AAA,BBB")
             self.assertEqual(len(out.read_text().splitlines()), 3)
 
+    def test_fetch_skips_a_source_that_is_unreachable(self):
+        import importlib.util
+        import urllib.error
+        from unittest import mock
+
+        spec = importlib.util.spec_from_file_location("fetch_prices", "scripts/fetch_prices.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        good = {"2026-09-22": 11.0}
+        with mock.patch.object(mod.time, "sleep"), \
+             mock.patch.object(mod, "stooq", side_effect=ConnectionResetError("reset")) as st, \
+             mock.patch.object(mod, "yahoo", return_value=good):
+            self.assertEqual(mod.fetch("AAA", 10), (good, "yahoo"))
+            self.assertEqual(mod.fetch("BBB", 10), (good, "yahoo"))
+            self.assertEqual(st.call_count, 3)  # retried for the first ticker only
+        mod.UNREACHABLE.clear()
+        # An HTTP error or bad data is about one ticker: the source stays in use.
+        http = urllib.error.HTTPError("u", 404, "Not Found", {}, None)
+        with mock.patch.object(mod.time, "sleep"), \
+             mock.patch.object(mod, "stooq", side_effect=[http, http, http, good]) as st, \
+             mock.patch.object(mod, "yahoo", return_value=good):
+            self.assertEqual(mod.fetch("AAA", 10), (good, "yahoo"))
+            self.assertEqual(mod.fetch("BBB", 10), (good, "stooq"))
+            self.assertEqual(st.call_count, 4)
+        self.assertEqual(mod.UNREACHABLE, set())
+
     def test_bot_config_is_valid_and_paper(self):
         from quantum.live import load_config
 

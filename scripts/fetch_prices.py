@@ -20,6 +20,7 @@ import io
 import json
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -67,15 +68,34 @@ def yahoo(ticker: str, days: int) -> dict[str, float]:
     return out
 
 
+# Sources that could not be reached at all this run.  A host that resets or
+# times out on every attempt for one ticker will do the same for the next, so
+# the rest of the run skips it instead of paying the retries per ticker.
+UNREACHABLE: set[str] = set()
+
+
+def _unreachable(exc: Exception) -> bool:
+    """True for connection-level failures; an HTTP status or bad data is per-ticker."""
+    return isinstance(exc, OSError) and not isinstance(exc, urllib.error.HTTPError)
+
+
 def fetch(ticker: str, days: int) -> tuple[dict[str, float], str]:
     errors = []
     for name, fn in (("stooq", lambda: stooq(ticker)), ("yahoo", lambda: yahoo(ticker, days))):
+        if name in UNREACHABLE:
+            errors.append(f"{name}: skipped, unreachable earlier this run")
+            continue
+        down = True
         for attempt in range(3):
             try:
                 return fn(), name
             except Exception as exc:  # network, parse, or empty: try again, then fall back
                 errors.append(f"{name}#{attempt + 1}: {exc}")
+                down = down and _unreachable(exc)
                 time.sleep(2 * (attempt + 1))
+        if down:
+            UNREACHABLE.add(name)
+            print(f"{name} unreachable; skipping it for the rest of this run", file=sys.stderr)
     raise RuntimeError(f"could not fetch {ticker}: " + " | ".join(errors))
 
 
