@@ -298,11 +298,11 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
           <div class="field"><label for="maxWeightPct">Max in one stock (%)</label><input type="number" id="maxWeightPct" min="1" max="100" value="40"></div>
           <div class="field"><label for="maxTurnoverPct">Max traded per rebalance (%)</label><input type="number" id="maxTurnoverPct" min="1" max="100" value="50"></div>
         </div>
-        <div class="field">
-          <label for="maxDrawdownPct">Kill switch: stop after a fall of (%)</label>
-          <input type="number" id="maxDrawdownPct" min="1" max="100" value="25">
+        <div class="pair">
+          <div class="field"><label for="maxDrawdownPct">Kill switch: stop after a fall of (%)</label><input type="number" id="maxDrawdownPct" min="1" max="100" value="25"></div>
+          <div class="field"><label for="rearmAfter">Then wait (trading days, 0 = until you allow it)</label><input type="number" id="rearmAfter" min="0" max="2520" value="63"></div>
         </div>
-        <p class="hint">If the account falls this far from its peak, everything is sold and trading stops until you allow it again.</p>
+        <p class="hint">If the account falls this far from its peak, everything is sold. It stays in cash for the waiting period, then starts again measuring falls from where it is.</p>
       </div>
 
       <div class="panel">
@@ -319,7 +319,7 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
     <main>
       <div class="banner" id="banner"></div>
       <div class="banner halt" id="haltBanner" hidden>
-        <span><b>Kill switch tripped.</b> <span id="haltReason"></span>. Everything was sold and trading stopped.</span>
+        <span><b>Kill switch tripped.</b> <span id="haltReason"></span>. Everything was sold; trading resumes after the waiting period, or when you allow it.</span>
         <span class="grow"></span>
         <button id="btnResume">Allow trading again</button>
       </div>
@@ -614,7 +614,7 @@ const QT = (function () {
       this.strategy = strategyFor(cfg);
       this.dates = []; this.prices = [];
       this.equity = []; this.peak = 0; this.lastRebalance = -1;
-      this.targets = {}; this.halted = false; this.haltReason = "";
+      this.targets = {}; this.halted = false; this.haltReason = ""; this.haltIndex = -1;
       this.fills = []; this.log = [];
     }
     value(bar) {
@@ -635,13 +635,19 @@ const QT = (function () {
       const eq = this.value(bar);
       this.equity.push(eq);
       this.peak = Math.max(this.peak, eq);
-      const dd = this.peak > 0 ? 1 - eq / this.peak : 0;
+      let dd = this.peak > 0 ? 1 - eq / this.peak : 0;
       const L = this.cfg.limits, n = this.dates.length;
-      let action = "hold", fills = [], note = "";
+      let action = "hold", fills = [], note = "", rearmed = "";
+      // Cooling-off over (limits.rearmAfter bars in cash): reset the peak and refit now.
+      if (this.halted && L.rearmAfter > 0 && this.haltIndex >= 0 && n - this.haltIndex >= L.rearmAfter) {
+        rearmed = `re-armed after ${n - this.haltIndex} bars in cash`;
+        this.halted = false; this.haltReason = ""; this.peak = eq; dd = 0; this.lastRebalance = -1;
+        action = "rearm";
+      }
       if (this.halted) action = "halted";
       else if (dd >= L.maxDrawdown && Object.keys(this.broker.positions()).length) {
         fills = this.broker.submit(Object.entries(this.broker.positions()).map(([t, q]) => ({ ticker: t, quantity: -q })), bar);
-        this.halted = true; this.targets = {};
+        this.halted = true; this.haltIndex = n; this.targets = {};
         this.haltReason = `drawdown ${(dd * 100).toFixed(1)}% >= limit ${(L.maxDrawdown * 100).toFixed(1)}% on ${bar.date}`;
         action = "kill_switch";
       } else if (this.cfg.tradeFrom && bar.date < this.cfg.tradeFrom) {
@@ -652,6 +658,7 @@ const QT = (function () {
         this.lastRebalance = n;
         action = "rebalance";
       }
+      if (rearmed) note = rearmed + (note ? `; ${note}` : "");
       this.fills.push(...fills);
       const line = `${bar.date} equity=${eq.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} dd=${(dd * 100).toFixed(1)}% ${action}` +
         (fills.length ? ` fills=${fills.length}` : "") + (note ? ` note=${note}` : "");
@@ -707,7 +714,7 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
   "use strict";
   const $ = id => document.getElementById(id);
   const DEFAULT_TICKERS = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"];
-  const FIELDS = ["cardinality", "riskAversion", "window", "rebalanceEvery", "initialCash", "feePct", "maxWeightPct", "maxTurnoverPct", "maxDrawdownPct", "strategy", "speed", "start", "end"];
+  const FIELDS = ["cardinality", "riskAversion", "window", "rebalanceEvery", "initialCash", "feePct", "maxWeightPct", "maxTurnoverPct", "maxDrawdownPct", "rearmAfter", "strategy", "speed", "start", "end"];
   const money = v => v == null ? "–" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   const money2 = v => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pct = (v, d = 1) => v == null || !isFinite(v) ? "–" : (v * 100).toFixed(d) + "%";
@@ -771,7 +778,7 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
       riskAversion: num("riskAversion"), window: Math.round(num("window")), rebalanceEvery: Math.round(num("rebalanceEvery")),
       initialCash: num("initialCash"), feeRate: num("feePct") / 100,
       limits: { maxWeight: num("maxWeightPct") / 100, maxTurnover: num("maxTurnoverPct") / 100,
-                maxDrawdown: num("maxDrawdownPct") / 100, minHistory: Math.round(num("window")) },
+                maxDrawdown: num("maxDrawdownPct") / 100, minHistory: Math.round(num("window")), rearmAfter: Math.max(0, Math.round(num("rearmAfter"))) },
     };
     if (!tickers.length) throw new Error("Pick at least one stock.");
     if (cfg.strategy === "cardinality" && (cfg.cardinality < 1 || cfg.cardinality > tickers.length))
@@ -812,7 +819,8 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
       const bar = r.bars[r.i];
       const ev = r.engine.onBar(bar);
       r.bench.onBar(bar);
-      if (ev.action === "kill_switch") { r.i++; r.status = "halted"; return; }
+      // With no waiting period the halt is for you to clear, so stop and ask.
+      if (ev.action === "kill_switch" && !(r.cfg.limits.rearmAfter > 0)) { r.i++; r.status = "halted"; return; }
     }
     if (r.i >= r.bars.length) r.status = "done";
   }
@@ -1073,7 +1081,7 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
   function engineCfg(c, strategy) {
     return { tickers: c.tickers, strategy: strategy || c.strategy, cardinality: c.cardinality, riskAversion: c.risk_aversion,
       window: c.window, rebalanceEvery: c.rebalance_every, initialCash: c.initial_cash, feeRate: c.fee_rate, tradeFrom: c.trade_from || null,
-      limits: { maxWeight: c.limits.max_weight, maxTurnover: c.limits.max_turnover, maxDrawdown: c.limits.max_drawdown, minHistory: c.limits.min_history } };
+      limits: { maxWeight: c.limits.max_weight, maxTurnover: c.limits.max_turnover, maxDrawdown: c.limits.max_drawdown, minHistory: c.limits.min_history, rearmAfter: c.limits.rearm_after || 0 } };
   }
   // Re-run the bot on its own prices, in this browser.  Also runs equal
   // weight from the same first trading day, as the benchmark line.
@@ -1173,7 +1181,7 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
     const kv = $("lConfig"); kv.textContent = "";
     const stratName = { cardinality: `Best ${c.cardinality} stocks (QUBO)`, markowitz: "Markowitz", equal_weight: "Equal weight" }[c.strategy] || c.strategy;
     [["Stocks", c.tickers.join(", ")], ["Strategy", stratName], ["Look back", c.window + " days"], ["Rebalance", "every " + c.rebalance_every + " days"],
-     ["Max in one stock", pct(c.limits.max_weight, 0)], ["Kill switch", pct(c.limits.max_drawdown, 0) + " fall"], ["Fee per trade", pct(c.fee_rate, 2)]]
+     ["Max in one stock", pct(c.limits.max_weight, 0)], ["Kill switch", pct(c.limits.max_drawdown, 0) + " fall" + (c.limits.rearm_after ? `, back in after ${c.limits.rearm_after} days` : ", then waits for you")], ["Fee per trade", pct(c.fee_rate, 2)]]
       .forEach(([k, v]) => { const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; kv.append(dt, dd); });
 
     const ck = live.check, box = $("lCheck"), mark = $("lCheckMark"), txt = $("lCheckText");

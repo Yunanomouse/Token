@@ -379,6 +379,10 @@ class RiskLimits:
     """Bars required before the first fit; no trading until then."""
     min_cash_fraction: float = 0.0
     """Cash kept aside, as a fraction of equity."""
+    rearm_after: int = 0
+    """Bars to sit in cash after the kill switch trips; then the peak resets
+    to current equity and trading resumes.  0 keeps the halt until a person
+    clears it."""
 
 
 @dataclass
@@ -444,6 +448,8 @@ class EngineState:
     target_weights: dict[str, float] = field(default_factory=dict)
     halted: bool = False
     halt_reason: str = ""
+    halt_index: int = -1
+    """``n_bars`` when the kill switch last tripped; the re-arm counts from it."""
     fills: list[dict] = field(default_factory=list)
     log: list[str] = field(default_factory=list)
 
@@ -525,11 +531,21 @@ class Engine:
         drawdown = 1.0 - eq / st.peak_equity if st.peak_equity > 0 else 0.0
         event = {"date": bar.date, "equity": eq, "drawdown": drawdown, "action": "hold", "fills": []}
 
+        rearmed = ""
+        if (st.halted and self.limits.rearm_after > 0 and st.halt_index >= 0
+                and st.n_bars - st.halt_index >= self.limits.rearm_after):
+            # Cooling-off over: measure drawdown from here, and refit now.
+            rearmed = f"re-armed after {st.n_bars - st.halt_index} bars in cash"
+            st.halted, st.halt_reason, st.peak_equity = False, "", eq
+            drawdown, event["drawdown"] = 0.0, 0.0
+            st.last_rebalance_index = -1
+            event["action"] = "rearm"
         if st.halted:
             event["action"] = "halted"
         elif drawdown >= self.limits.max_drawdown and self.broker.positions():
             fills = self._liquidate(bar, "kill_switch")
             st.halted = True
+            st.halt_index = st.n_bars
             st.target_weights = {}
             st.halt_reason = f"drawdown {drawdown:.1%} >= limit {self.limits.max_drawdown:.1%} on {bar.date}"
             event.update(action="kill_switch", fills=fills)
@@ -542,6 +558,8 @@ class Engine:
             st.last_rebalance_index = st.n_bars
             st.target_weights = targets
             event.update(action="rebalance", fills=fills, targets=targets, note=note)
+        if rearmed:
+            event["note"] = rearmed + (f"; {event['note']}" if event.get("note") else "")
 
         st.cash = self.broker.cash()
         st.positions = self.broker.positions()

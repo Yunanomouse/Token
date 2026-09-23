@@ -19,6 +19,10 @@ off its proceeds, so locked-in plus open always equals the account's change
 since the start.
 
 The bot is **paper only**: fills at the close, no broker, no real money.
+If the account falls 25% from its peak (`max_drawdown`) the bot sells
+everything, waits 63 trading days in cash (`rearm_after`), then starts again
+with the fall measured from where it is.
+
 `trade_from` is the first day it may trade; the year of prices before it is
 warm-up for the estimates, so the book starts in cash on that day rather
 than back-filling trades it never made.

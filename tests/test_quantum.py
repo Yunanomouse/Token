@@ -2186,6 +2186,29 @@ class TestLiveEngine(unittest.TestCase):
             halt_index = next(i for i, line in enumerate(st.log) if "kill_switch" in line)
             self.assertTrue(all("halted" in line for line in st.log[halt_index + 1:]))
 
+    def test_kill_switch_rearms_after_the_cooling_off(self):
+        import tempfile
+        from pathlib import Path
+        from quantum.live import ReplayFeed, RiskLimits, run
+
+        with tempfile.TemporaryDirectory() as d:
+            config = self._config(Path(d), limits=RiskLimits(min_history=60, max_drawdown=0.10, rearm_after=40))
+            engine = run(config, ReplayFeed(self.PRICES, self.TICKERS, start="2007-06-01", end="2009-12-31"), resume=False)
+            st = engine.state
+            kills = [i for i, line in enumerate(st.log) if "kill_switch" in line]
+            rearms = [i for i, line in enumerate(st.log) if "re-armed after 40 bars" in line]
+            self.assertTrue(kills and rearms)
+            first_kill = kills[0]
+            first_rearm = next(i for i in rearms if i > first_kill)
+            # In cash, doing nothing, for exactly the cooling-off period.
+            self.assertEqual(first_rearm - first_kill, 40)
+            self.assertTrue(all(line.split()[3] == "halted" for line in st.log[first_kill + 1:first_rearm]))
+            # The re-arm refits and trades on the same bar, with drawdown measured afresh.
+            self.assertIn("rebalance", st.log[first_rearm])
+            self.assertIn("dd=0.0%", st.log[first_rearm])
+            rearm_date = st.log[first_rearm].split()[0]
+            self.assertTrue(any(f["date"] == rearm_date and f["quantity"] > 0 for f in st.fills))
+
     def test_risk_caps_hold(self):
         """Per-name cap and turnover cap are enforced on the cardinality strategy."""
         import tempfile
@@ -2500,13 +2523,14 @@ class TestWebEngineParity(unittest.TestCase):
         rows = list(_csv.DictReader(open("data/prices/us_equities_1989_2018.csv")))
         tick = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
         rows = [r for r in rows if "2007-01-01" <= r["date"] <= "2012-12-31" and all(r[t] for t in tick)]
-        cases = [("equal_weight", 0.9, None), ("markowitz", 0.9, None), ("cardinality", 0.9, None),
-                 ("cardinality", 0.12, None), ("cardinality", 0.9, "2010-03-01")]
+        cases = [("equal_weight", 0.9, None, 0), ("markowitz", 0.9, None, 0), ("cardinality", 0.9, None, 0),
+                 ("cardinality", 0.12, None, 0), ("cardinality", 0.9, "2010-03-01", 0), ("cardinality", 0.12, None, 63)]
         expected = []
-        for strat, ks, tf in cases:
+        for strat, ks, tf, rearm in cases:
             e = Engine(EngineConfig(tickers=tick, strategy=strat, cardinality=4, solver="exhaustive",
                                     window=252, rebalance_every=21, initial_cash=100000, fee_rate=0.0005,
-                                    limits=RiskLimits(max_weight=0.4, max_turnover=0.5, max_drawdown=ks, min_history=252),
+                                    limits=RiskLimits(max_weight=0.4, max_turnover=0.5, max_drawdown=ks, min_history=252,
+                                                      rearm_after=rearm),
                                     state_path="unused.json", trade_from=tf))
             for r in rows:
                 e.on_bar(Bar(r["date"], {t: float(r[t]) for t in tick}))
@@ -2519,10 +2543,10 @@ class TestWebEngineParity(unittest.TestCase):
             (Path(d) / "in.json").write_text(json.dumps(payload))
             script = Path(d) / "run.js"
             script.write_text(
-                "const QT=require(%s);const p=require(%s);const out=p.cases.map(([s,ks,tf])=>{"
+                "const QT=require(%s);const p=require(%s);const out=p.cases.map(([s,ks,tf,ra])=>{"
                 "const e=new QT.Engine({tickers:p.tick,strategy:s,cardinality:4,riskAversion:2,window:252,"
                 "rebalanceEvery:21,initialCash:100000,feeRate:0.0005,limits:{maxWeight:0.4,maxTurnover:0.5,"
-                "maxDrawdown:ks,minHistory:252},tradeFrom:tf});p.rows.forEach(r=>{const q={};p.tick.forEach((t,i)=>q[t]=r[i+1]);"
+                "maxDrawdown:ks,minHistory:252,rearmAfter:ra},tradeFrom:tf});p.rows.forEach(r=>{const q={};p.tick.forEach((t,i)=>q[t]=r[i+1]);"
                 "e.onBar({date:r[0],prices:q});});const last=p.rows[p.rows.length-1],lp={};p.tick.forEach((t,i)=>lp[t]=last[i+1]);"
                 "const L=QT.ledger(e.fills,lp);return [e.equity[e.equity.length-1],e.fills.length,e.halted,"
                 "L.realized_pnl,L.unrealized_pnl,L.n_round_trips,L.n_wins];});"
@@ -2691,3 +2715,4 @@ class TestLiveBot(unittest.TestCase):
         self.assertEqual(cfg.state_path, "live/state.json")
         self.assertTrue(cfg.trade_from)
         self.assertEqual(cfg.solver, "exhaustive")
+        self.assertGreater(cfg.limits.rearm_after, 0)  # a halt must not park the unattended bot in cash for good

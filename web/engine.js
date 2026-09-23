@@ -236,7 +236,7 @@ const QT = (function () {
       this.strategy = strategyFor(cfg);
       this.dates = []; this.prices = [];
       this.equity = []; this.peak = 0; this.lastRebalance = -1;
-      this.targets = {}; this.halted = false; this.haltReason = "";
+      this.targets = {}; this.halted = false; this.haltReason = ""; this.haltIndex = -1;
       this.fills = []; this.log = [];
     }
     value(bar) {
@@ -257,13 +257,19 @@ const QT = (function () {
       const eq = this.value(bar);
       this.equity.push(eq);
       this.peak = Math.max(this.peak, eq);
-      const dd = this.peak > 0 ? 1 - eq / this.peak : 0;
+      let dd = this.peak > 0 ? 1 - eq / this.peak : 0;
       const L = this.cfg.limits, n = this.dates.length;
-      let action = "hold", fills = [], note = "";
+      let action = "hold", fills = [], note = "", rearmed = "";
+      // Cooling-off over (limits.rearmAfter bars in cash): reset the peak and refit now.
+      if (this.halted && L.rearmAfter > 0 && this.haltIndex >= 0 && n - this.haltIndex >= L.rearmAfter) {
+        rearmed = `re-armed after ${n - this.haltIndex} bars in cash`;
+        this.halted = false; this.haltReason = ""; this.peak = eq; dd = 0; this.lastRebalance = -1;
+        action = "rearm";
+      }
       if (this.halted) action = "halted";
       else if (dd >= L.maxDrawdown && Object.keys(this.broker.positions()).length) {
         fills = this.broker.submit(Object.entries(this.broker.positions()).map(([t, q]) => ({ ticker: t, quantity: -q })), bar);
-        this.halted = true; this.targets = {};
+        this.halted = true; this.haltIndex = n; this.targets = {};
         this.haltReason = `drawdown ${(dd * 100).toFixed(1)}% >= limit ${(L.maxDrawdown * 100).toFixed(1)}% on ${bar.date}`;
         action = "kill_switch";
       } else if (this.cfg.tradeFrom && bar.date < this.cfg.tradeFrom) {
@@ -274,6 +280,7 @@ const QT = (function () {
         this.lastRebalance = n;
         action = "rebalance";
       }
+      if (rearmed) note = rearmed + (note ? `; ${note}` : "");
       this.fills.push(...fills);
       const line = `${bar.date} equity=${eq.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} dd=${(dd * 100).toFixed(1)}% ${action}` +
         (fills.length ? ` fills=${fills.length}` : "") + (note ? ` note=${note}` : "");

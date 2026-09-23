@@ -124,6 +124,7 @@ class Controller:
             max_weight=float(form.get("max_weight", 0.40)),
             max_turnover=float(form.get("max_turnover", 0.50)),
             max_drawdown=float(form.get("max_drawdown", 0.25)),
+            rearm_after=int(form.get("rearm_after", 0)),
             min_history=int(form.get("window", 252)),
         )
         return EngineConfig(
@@ -554,9 +555,11 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
         <div><label>Max weight per name</label><input id="max_weight" type="number" value="0.40" step="0.05" min="0.01" max="1"></div>
         <div><label>Max turnover per rebalance</label><input id="max_turnover" type="number" value="0.50" step="0.05" min="0" max="1"></div>
       </div>
-      <label>Kill switch: max drawdown (fraction)</label>
-      <input id="max_drawdown" type="number" value="0.25" step="0.01" min="0.01" max="1">
-      <div class="note">On breach the engine liquidates and halts until you clear it.</div>
+      <div class="row">
+        <div><label>Kill switch: max drawdown (fraction)</label><input id="max_drawdown" type="number" value="0.25" step="0.01" min="0.01" max="1"></div>
+        <div><label>Re-arm after (bars in cash, 0 = never)</label><input id="rearm_after" type="number" value="63" step="1" min="0"></div>
+      </div>
+      <div class="note">On breach the engine liquidates and sits in cash; it resumes after the re-arm period, or with 0 only when you clear it.</div>
     </div>
   </aside>
 
@@ -620,7 +623,7 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
       window: Number($('window').value), rebalance_every: Number($('rebalance_every').value),
       initial_cash: Number($('initial_cash').value), fee_rate: Number($('fee_rate').value),
       max_weight: Number($('max_weight').value), max_turnover: Number($('max_turnover').value),
-      max_drawdown: Number($('max_drawdown').value), state_path: 'live_state.json',
+      max_drawdown: Number($('max_drawdown').value), rearm_after: Number($('rearm_after').value), state_path: 'live_state.json',
     };
   }
   async function post(path, body) {

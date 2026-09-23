@@ -928,12 +928,36 @@ rebalances on real prices.
 | `max_turnover` | 50% | one-way turnover per rebalance, max(buys, sells) / equity with cash counted, so the first trade from all cash deploys at most this much; the move is shrunk toward the target |
 | `min_history` | 252 | bars before the first fit |
 | `max_drawdown` | 25% | **kill switch**: liquidate and halt |
+| `rearm_after` | 0 (bot: 63) | bars in cash after the kill switch, then the peak resets and trading resumes; 0 halts until a person clears it |
 
 The kill switch is not advisory.  Once tripped the engine liquidates, writes
 `halted: true` with the reason, and processes every later bar as `halted`
 until a person edits the state file.  Through 2007–2009 with a 15% limit
 it fired on 2008-09-15 (the Lehman Monday), holding the loss to 10.6% where
 equal weight went on to lose more than twice that.
+
+Left halted, though, a 25% switch on a four-name book is a one-way door.
+Over the bundled history it tripped in every universe and period tried, and
+the book then sat in cash for good: the live bot's eight names made 4.6% a
+year over 1997–2018 against 21.0% with no switch.  `rearm_after` turns the
+halt into a cooling-off: after that many bars in cash the peak resets to
+the current equity, the strategy refits and trading resumes (the turnover
+cap still paces the way back in).  Across 19 universe-period cells:
+
+| after the switch trips | median CAGR | median Sharpe | median max DD | beats staying halted |
+|---|---|---|---|---|
+| stay halted | 9.7% | 0.74 | 26% | — |
+| back in after 21 bars | 22.8% | 1.00 | 45% | 19 / 19 |
+| back in after 63 bars | 22.2% | 1.00 | 43% | 19 / 19 |
+| back in after 126 bars | 21.5% | 0.99 | 42% | 19 / 19 |
+| back in after 252 bars | 20.0% | 1.00 | 39% | 19 / 19 |
+| no kill switch | 22.4% | 0.93 | 48% | 19 / 19 |
+
+The length hardly matters; 63 bars (three months) was chosen before these
+runs and the bot uses it.  Note what the switch no longer promises: each
+halt caps one fall at the limit, but falls are measured from the reset
+peak, so the worst peak-to-trough over the whole history (43% median) is
+well past 25%.
 
 ### State and restarts
 
