@@ -2184,3 +2184,135 @@ class TestLiveEngine(unittest.TestCase):
         self.assertEqual(len(fills), 1)
         self.assertAlmostEqual(fills[0].quantity, 20.0)
         self.assertAlmostEqual(broker.cash(), 0.0)
+
+
+# ==========================================================================
+# Desktop dashboard (controller + HTTP API; no browser needed)
+# ==========================================================================
+
+
+class TestDesktop(unittest.TestCase):
+    def _server(self, tmp):
+        import shutil
+        from pathlib import Path
+        from quantum.desktop import serve
+
+        work = Path(tmp)
+        (work / "data" / "prices").mkdir(parents=True)
+        shutil.copy("data/prices/us_equities_1989_2018.csv", work / "data" / "prices" / "us_equities_1989_2018.csv")
+        return serve(port=0, open_browser=False, workdir=work, block=False)
+
+    def _api(self, port):
+        import json
+        import urllib.request
+
+        base = f"http://127.0.0.1:{port}"
+
+        def get(p):
+            return json.loads(urllib.request.urlopen(base + p, timeout=10).read())
+
+        def post(p, body):
+            req = urllib.request.Request(base + p, data=json.dumps(body).encode(),
+                                         headers={"Content-Type": "application/json"}, method="POST")
+            return json.loads(urllib.request.urlopen(req, timeout=10).read())
+
+        return get, post
+
+    def test_page_and_state_endpoints(self):
+        import tempfile
+        import urllib.request
+
+        with tempfile.TemporaryDirectory() as d:
+            srv = self._server(d)
+            try:
+                port = srv.server_address[1]
+                html = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=10).read().decode()
+                self.assertIn("<title>Quantum Trading</title>", html)
+                self.assertIn("PAPER", html)
+                get, _ = self._api(port)
+                st = get("/api/state")
+                self.assertFalse(st["running"])
+                self.assertEqual(st["bars"], 0)
+                self.assertTrue(st["paper"])
+                self.assertIn("data/prices/us_equities_1989_2018.csv", st["files"])
+                self.assertEqual(st["default_file"], "data/prices/us_equities_1989_2018.csv")
+            finally:
+                srv.shutdown()
+
+    def test_start_stop_reset_and_kill_switch_through_the_api(self):
+        import tempfile
+        import time
+
+        with tempfile.TemporaryDirectory() as d:
+            srv = self._server(d)
+            try:
+                get, post = self._api(srv.server_address[1])
+                form = {"mode": "replay", "csv": "data/prices/us_equities_1989_2018.csv",
+                        "tickers": "AAPL,XOM,JPM,WMT,PFE,BAC", "start": "2007-01-01", "end": "2009-06-30",
+                        "bars_per_second": 0, "fresh": True, "window": 120, "max_drawdown": 0.12,
+                        "strategy": "equal_weight"}
+                self.assertTrue(post("/api/start", form)["ok"])
+                self.assertFalse(post("/api/start", form)["ok"])  # already running
+                for _ in range(120):
+                    time.sleep(0.5)
+                    st = get("/api/state")
+                    if not st["running"]:
+                        break
+                self.assertFalse(st["running"])
+                self.assertTrue(st["halted"])
+                self.assertIn("2008", st["halt_reason"])
+                self.assertEqual(st["positions"], {})
+                self.assertGreater(st["bars"], 200)
+                self.assertGreater(st["n_fills"], 0)
+                self.assertEqual(len(st["curve"]), len(st["dates"]))
+                self.assertTrue(post("/api/resume", {})["ok"])
+                self.assertFalse(get("/api/state")["halted"])
+                self.assertTrue(post("/api/reset", {})["ok"])
+                self.assertEqual(get("/api/state")["bars"], 0)
+            finally:
+                srv.shutdown()
+
+    def test_stop_interrupts_a_throttled_replay(self):
+        import tempfile
+        import time
+
+        with tempfile.TemporaryDirectory() as d:
+            srv = self._server(d)
+            try:
+                get, post = self._api(srv.server_address[1])
+                form = {"mode": "replay", "csv": "data/prices/us_equities_1989_2018.csv",
+                        "tickers": "AAPL,XOM", "start": "2012-01-01", "bars_per_second": 20,
+                        "fresh": True, "window": 10, "strategy": "equal_weight"}
+                self.assertTrue(post("/api/start", form)["ok"])
+                time.sleep(1.5)
+                self.assertTrue(get("/api/state")["running"])
+                self.assertTrue(post("/api/stop", {})["ok"])
+                st = get("/api/state")
+                self.assertFalse(st["running"])
+                self.assertGreater(st["bars"], 5)
+                self.assertLess(st["bars"], 200)
+                # Restarting without 'fresh' resumes from the saved state.
+                form["fresh"] = False
+                self.assertTrue(post("/api/start", form)["ok"])
+                time.sleep(1.0)
+                post("/api/stop", {})
+                self.assertGreater(get("/api/state")["bars"], st["bars"])
+            finally:
+                srv.shutdown()
+
+    def test_bad_requests_are_refused_not_crashed(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            srv = self._server(d)
+            try:
+                get, post = self._api(srv.server_address[1])
+                r = post("/api/start", {"mode": "replay", "csv": "nope.csv"})
+                self.assertFalse(r["ok"])
+                r = post("/api/start", {"mode": "replay", "csv": "data/prices/us_equities_1989_2018.csv",
+                                        "tickers": "AAPL", "cardinality": 4})
+                self.assertFalse(r["ok"])
+                self.assertIn("cardinality", r["error"])
+                self.assertIn("start refused", get("/api/state")["messages"][-1])
+            finally:
+                srv.shutdown()

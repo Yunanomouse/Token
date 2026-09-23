@@ -81,7 +81,13 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   per-name and turnover caps, and a drawdown kill switch. `--live` refuses to
   run until you supply a broker adapter in code.
 
-176 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
+- **On the desktop** — double-click `Quantum Trading.bat` / `quantum_trading.command`
+  / `quantum-trading.desktop` (or `python3 -m quantum desktop`) for a local
+  point-and-click dashboard: watch the engine trade through history at any
+  speed, tail a CSV live, set every risk limit, stop, reset, and clear the
+  kill switch. Paper only, loopback only.
+
+181 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
 
 ## Memory
 
@@ -153,6 +159,7 @@ python3 -m quantum noise --hardware                                        # pub
 python3 -m quantum live --replay data/prices/us_equities_1989_2018.csv \
     --tickers AAPL,XOM,JPM,WMT,PFE --start 2010-01-01                      # paper engine on history
 python3 -m quantum live --config live.json --feed prices.csv               # tail a CSV, live
+python3 -m quantum desktop                                                 # the clickable dashboard
 ```
 
 Datasets and their licences: [data/README.md](data/README.md).

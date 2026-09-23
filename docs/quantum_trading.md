@@ -934,6 +934,44 @@ section: it beat equal weight on one real decade with a t-statistic of 2.1,
 and lost on synthetic data.  A live engine changes the execution, not the
 arithmetic.
 
+## The desktop dashboard — the program you click on
+
+`python3 -m quantum desktop`, or a double-click on `Quantum Trading.bat`
+(Windows), `quantum_trading.command` (macOS) or `quantum-trading.desktop`
+(Linux), starts a local server on `127.0.0.1` and opens the dashboard in the
+default browser.  It is the standard library plus the package: no web
+framework, no JavaScript build, nothing to install beyond `numpy`.
+
+The page drives the engine in `quantum/live.py`.  From it you can:
+
+- pick a price file, tickers, date range and replay speed, and **watch the
+  engine trade** through history bar by bar, or at full speed;
+- switch to **live mode**, where the engine tails a CSV that some other
+  process appends to and acts on each new row;
+- set the strategy (cardinality QUBO, Markowitz, equal weight), solver, fit
+  window and rebalance interval, starting cash, fee, per-name and turnover
+  caps, and the drawdown kill switch;
+- **stop** at any bar (state is saved), **reset** the paper book, and
+  **clear the kill switch** after it trips — the one deliberate manual
+  override, which also resets the drawdown peak to current equity.
+
+It shows equity and drawdown curves with a crosshair tooltip, the five
+headline figures, current positions with weights, the last 25 fills, the
+engine log and the dashboard's own messages, refreshed once a second, in
+light or dark mode following the OS.  The header says **PAPER** on every
+screen because that is all it can do: the same rule as the command line —
+a real venue needs a `Broker` written in code.
+
+The server has no authentication and binds to loopback only.  Anything on
+the same machine can drive it; do not expose it.
+
+Verified in a headless Chromium: the page loads with no script errors,
+Start replays history and the tiles, charts and tables fill in, Stop
+interrupts a paced replay and a restart resumes from the saved bar, a 12%
+kill switch through 2007–2008 trips on 2008-01-18, liquidates, shows the
+HALTED badge and the clear-kill-switch panel, and clearing it allows trading
+again.  The API behind the page is covered by tests without a browser.
+
 ---
 
 ## Validation
@@ -942,7 +980,7 @@ arithmetic.
 python3 -m pytest tests -q        # or: python3 -m unittest discover -s tests -v
 ```
 
-176 tests. The principle throughout: **every quantum routine is checked against
+181 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,
@@ -968,6 +1006,9 @@ an exact classical reference**, never against itself.
 - Backtest — the 1/N period return equals the mean asset return; every weight
   vector is long-only and sums to one; simulated annealing and exhaustive search
   produce identical out-of-sample returns.
+- Dashboard — page and state endpoints; start, stop, reset and kill-switch
+  clearing through the API; a throttled replay is interrupted and resumed
+  from its saved bar; bad requests are refused with a message, never a crash.
 - Live engine — cash plus positions equals the equity curve at every bar; a
   restart resumes without reprocessing; the kill switch liquidates and halts
   with no later trades; per-name and turnover caps hold; the file feed

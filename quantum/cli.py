@@ -458,6 +458,14 @@ def cmd_live(args) -> int:
     return 0
 
 
+def cmd_desktop(args) -> int:
+    """Open the dashboard in the browser and serve it until stopped."""
+    from .desktop import serve
+
+    serve(port=args.port, open_browser=not args.no_browser, workdir=args.workdir)
+    return 0
+
+
 def cmd_export(args) -> int:
     """Emit an OpenQASM 3 program for a pricing circuit (state prep + Q^k)."""
     from .amplitude import grover_operator
@@ -613,6 +621,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--write-config", dest="write_config", help="also write the effective config JSON here")
     p.add_argument("--verbose", "-v", action="store_true", help="log every bar")
     p.set_defaults(func=cmd_live)
+
+    p = sub.add_parser("desktop", help="open the point-and-click dashboard (paper trading)")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-browser", action="store_true", dest="no_browser", help="do not open a browser window")
+    p.add_argument("--workdir", default=None, help="folder holding data/ and the state file (default: current)")
+    p.set_defaults(func=cmd_desktop)
 
     p = sub.add_parser("qoblib", help="score the solvers on a certified QOBLIB portfolio instance")
     p.add_argument("--root", default="data/qoblib/po_a010_t10_orig",
