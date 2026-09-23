@@ -76,7 +76,12 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   lose to classical Monte Carlo on the smallest pricing circuit; only IonQ's
   two-qubit 99.99% demonstration clears the bar, by 20%.
 
-169 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
+- **As a program** — `python3 -m quantum live` runs the optimiser as a
+  restart-safe loop over a replayed or tailed price CSV with a paper broker,
+  per-name and turnover caps, and a drawdown kill switch. `--live` refuses to
+  run until you supply a broker adapter in code.
+
+176 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
 
 ## Memory
 
@@ -145,6 +150,9 @@ python3 -m quantum export --qubits 4 --powers 2 -o call.qasm
 python3 -m quantum backtest --csv data/prices/us_equities_1989_2018.csv   # real prices
 python3 -m quantum qoblib --risk-weight l0                                 # certified benchmark
 python3 -m quantum noise --hardware                                        # published error rates
+python3 -m quantum live --replay data/prices/us_equities_1989_2018.csv \
+    --tickers AAPL,XOM,JPM,WMT,PFE --start 2010-01-01                      # paper engine on history
+python3 -m quantum live --config live.json --feed prices.csv               # tail a CSV, live
 ```
 
 Datasets and their licences: [data/README.md](data/README.md).

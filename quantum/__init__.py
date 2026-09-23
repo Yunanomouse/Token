@@ -111,6 +111,7 @@ from .backtest import (
     walk_forward,
 )
 from .export import decompose, elementary_gate_count, from_qasm, to_qasm
+from .live import Engine, EngineConfig, EngineState, FileFeed, PaperBroker, ReplayFeed, RiskLimits
 from .noise import (
     NoiseModel,
     NoisySweepResult,
@@ -159,4 +160,5 @@ __all__ = [
     "NoiseModel", "NoisySweepResult", "noise_threshold_sweep",
     "noisy_amplitude_estimation", "survival_probability",
     "decompose", "elementary_gate_count", "to_qasm", "from_qasm",
+    "Engine", "EngineConfig", "EngineState", "ReplayFeed", "FileFeed", "PaperBroker", "RiskLimits",
 ]

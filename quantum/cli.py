@@ -397,6 +397,59 @@ def cmd_qoblib(args) -> int:
     return 0
 
 
+def cmd_live(args) -> int:
+    """Run the trading engine: paper by default, over a replay or a tailed CSV."""
+    import json
+    from .live import EngineConfig, FileFeed, ReplayFeed, RiskLimits, load_config, run
+
+    if args.live:
+        print("--live needs a Broker implementation for your venue; none is bundled and")
+        print("none will be guessed. Subclass quantum.live.Broker and pass it to run().")
+        return 2
+    if args.config:
+        config = load_config(args.config)
+    else:
+        if not args.tickers:
+            print("give --config, or --tickers with --replay/--feed")
+            return 2
+        config = EngineConfig(
+            tickers=[t.strip() for t in args.tickers.split(",") if t.strip()],
+            strategy=args.strategy, cardinality=args.cardinality,
+            risk_aversion=args.risk_aversion, solver=args.solver,
+            window=args.window, rebalance_every=args.rebalance_every,
+            initial_cash=args.cash, fee_rate=args.fee, state_path=args.state,
+            limits=RiskLimits(max_drawdown=args.max_drawdown, max_weight=args.max_weight,
+                              min_history=args.window),
+            seed=args.seed,
+        )
+    if args.replay:
+        feed = ReplayFeed(args.replay, config.tickers, start=args.start, end=args.end)
+        print(f"replaying {len(feed)} bars from {args.replay} (paper broker)")
+    elif args.feed:
+        feed = FileFeed(args.feed, config.tickers, poll_seconds=args.poll,
+                        max_polls=1 if args.once else None)
+        print(f"tailing {args.feed} every {args.poll:.0f}s (paper broker); Ctrl-C to stop")
+    else:
+        print("give --replay <csv> or --feed <csv>")
+        return 2
+    if args.write_config:
+        with open(args.write_config, "w", encoding="utf-8") as fh:
+            json.dump(config.to_dict(), fh, indent=1)
+        print(f"wrote {args.write_config}")
+
+    _rule(f"live engine: {config.strategy} on {', '.join(config.tickers)}")
+    try:
+        engine = run(config, feed, once=args.once, resume=not args.fresh,
+                     log=(print if args.verbose else None))
+    except KeyboardInterrupt:
+        print("stopped; state is on disk and the next start resumes from it")
+        return 0
+    print(engine.summary())
+    print(f"\nstate: {config.state_path}")
+    print("Paper fills at the close with no slippage: an upper bound on a real venue.")
+    return 0
+
+
 def cmd_export(args) -> int:
     """Emit an OpenQASM 3 program for a pricing circuit (state prep + Q^k)."""
     from .amplitude import grover_operator
@@ -527,6 +580,31 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--hardware", action="store_true",
                    help="also run under the published hardware profiles")
     p.set_defaults(func=cmd_noise)
+
+    p = sub.add_parser("live", help="run the trading engine (paper) over a replay or a tailed CSV")
+    p.add_argument("--config", help="JSON EngineConfig; overrides the flags below")
+    p.add_argument("--replay", help="wide price CSV to replay bar by bar")
+    p.add_argument("--feed", help="wide price CSV another process appends to; tailed live")
+    p.add_argument("--tickers", help="comma-separated tickers (when no --config)")
+    p.add_argument("--start"), p.add_argument("--end")
+    p.add_argument("--strategy", default="cardinality", choices=["cardinality", "markowitz", "equal_weight"])
+    p.add_argument("--cardinality", type=int, default=4)
+    p.add_argument("--risk-aversion", type=float, default=2.0, dest="risk_aversion")
+    p.add_argument("--solver", default="simulated_annealing")
+    p.add_argument("--window", type=int, default=252)
+    p.add_argument("--rebalance-every", type=int, default=21, dest="rebalance_every")
+    p.add_argument("--cash", type=float, default=100_000.0)
+    p.add_argument("--fee", type=float, default=0.0005, help="proportional fee per fill")
+    p.add_argument("--max-drawdown", type=float, default=0.25, dest="max_drawdown")
+    p.add_argument("--max-weight", type=float, default=0.40, dest="max_weight")
+    p.add_argument("--state", default="live_state.json", help="state file (resumed on restart)")
+    p.add_argument("--poll", type=float, default=60.0, help="seconds between feed polls")
+    p.add_argument("--once", action="store_true", help="process one bar and exit (cron mode)")
+    p.add_argument("--fresh", action="store_true", help="ignore an existing state file")
+    p.add_argument("--live", action="store_true", help="refused unless a Broker is supplied in code")
+    p.add_argument("--write-config", dest="write_config", help="also write the effective config JSON here")
+    p.add_argument("--verbose", "-v", action="store_true", help="log every bar")
+    p.set_defaults(func=cmd_live)
 
     p = sub.add_parser("qoblib", help="score the solvers on a certified QOBLIB portfolio instance")
     p.add_argument("--root", default="data/qoblib/po_a010_t10_orig",

@@ -851,6 +851,89 @@ Searched but not used, with the reason:
 - **QuFinBench** — a README describing a benchmark, with no data and no
   results.
 
+## The standalone engine — running the optimiser live
+
+`quantum/live.py` is the program the rest of the package runs inside.  It is
+a loop: take a bar of prices, refit the optimiser on a trailing window every
+`rebalance_every` bars, turn target weights into orders, check the orders
+against risk limits, send them to a broker, write the whole state to disk.
+It ran end to end on the bundled history before anything else was written
+about it:
+
+```bash
+python3 -m quantum live --replay data/prices/us_equities_1989_2018.csv \
+    --tickers AAPL,XOM,JPM,WMT,PFE,AMZN,BAC,T --start 2012-01-01 --end 2014-12-31
+```
+
+```
+bars            : 754 (2012-01-03 to 2014-12-31)
+equity          : 100,000.00 -> 128,575.70 (+28.58%, +8.76%/yr)
+max drawdown    : 9.3%
+fills           : 114, fees paid 469.36
+halted          : False
+positions       : AAPL 25.0%, JPM 25.0%, WMT 25.0%, BAC 25.0%
+```
+
+### The four parts, and which one is missing
+
+**Feeds.**  A feed yields one bar per tick.  `ReplayFeed` replays a CSV, so
+the engine is testable offline and deterministic.  `FileFeed` tails a CSV
+that some other process appends to and delivers each new row.  That is the
+live path, chosen deliberately over a vendor API: whatever can write a CSV
+row — a cron job, a broker export, a spreadsheet — is a live feed, and the
+engine has no dependency that can break when a data vendor changes its
+endpoint (which is how `yfinance` broke in 2025).
+
+**Broker.**  Four methods: positions, cash, submit, snapshot.  `PaperBroker`
+fills at the close with a proportional fee, scales a buy down to what cash
+allows rather than rejecting it, and keeps a ledger.  It has no slippage
+and no partial fills, which makes its results an upper bound on any real
+venue.  **It is the only broker.**  `--live` refuses to start unless a
+`Broker` subclass is passed in code, because connecting to an exchange is a
+decision that should be made by a person writing the adapter, not by a
+flag.
+
+**Strategy.**  Any function from `MarketData` to weights — the same
+signature the walk-forward backtest validates, so what was scored there is
+what runs here.  Default: cardinality-constrained mean-variance by
+simulated annealing, which matched exhaustive search at every one of 130
+rebalances on real prices.
+
+**Risk limits**, checked before every order:
+
+| limit | default | what it does |
+|---|---|---|
+| `max_weight` | 40% | per-name cap after rebalance, mass redistributed |
+| `max_turnover` | 50% | one-way turnover per rebalance; the move is shrunk toward the target |
+| `min_history` | 252 | bars before the first fit |
+| `max_drawdown` | 25% | **kill switch**: liquidate and halt |
+
+The kill switch is not advisory.  Once tripped the engine liquidates, writes
+`halted: true` with the reason, and processes every later bar as `halted`
+until a person edits the state file.  Through 2007–2009 with a 15% limit
+it fired on 2008-09-15 (the Lehman Monday), holding the loss to 10.6% where
+equal weight went on to lose more than twice that.
+
+### State and restarts
+
+`live_state.json` is rewritten atomically after every bar (write to a
+temporary file, rename) and holds the price history, the book, the equity
+curve, the peak, the targets, the halt flag, every fill and the last 500 log
+lines.  Starting the engine with an existing state file resumes from the
+last bar it saw; bars already seen are skipped by date.  Tested by running
+a replay to June, then rerunning it to December: the second run processes
+only the new bars, and the date list has no duplicates.
+
+### What the numbers mean
+
+The 8.76% a year above is a paper result on a hindsight-selected universe
+with no slippage, over a period when the S&P 500 returned about 20% a year.
+It is here to show the engine works, not that the strategy does.  The
+question of whether the strategy works was answered in the out-of-sample
+section: it beat equal weight on one real decade with a t-statistic of 2.1,
+and lost on synthetic data.  A live engine changes the execution, not the
+arithmetic.
+
 ---
 
 ## Validation
@@ -859,7 +942,7 @@ Searched but not used, with the reason:
 python3 -m pytest tests -q        # or: python3 -m unittest discover -s tests -v
 ```
 
-169 tests. The principle throughout: **every quantum routine is checked against
+176 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,
@@ -885,6 +968,10 @@ an exact classical reference**, never against itself.
 - Backtest — the 1/N period return equals the mean asset return; every weight
   vector is long-only and sums to one; simulated annealing and exhaustive search
   produce identical out-of-sample returns.
+- Live engine — cash plus positions equals the equity curve at every bar; a
+  restart resumes without reprocessing; the kill switch liquidates and halts
+  with no later trades; per-name and turnover caps hold; the file feed
+  delivers only rows newer than the last seen; unaffordable buys are scaled.
 - External data — the QOBLIB certified optimum decodes as feasible and is a
   strict local minimum of the loaded QUBO with every flip costing ≥ 10⁶; the
   omitted constant equals 1.16 × 10¹⁰ on two instances; a solver result never

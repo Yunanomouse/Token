@@ -2023,3 +2023,138 @@ class TestExternalData(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("source", rows[0])
         self.assertGreaterEqual(rows[0]["abs_error"], 0.0)
+
+
+# ==========================================================================
+# Live engine
+# ==========================================================================
+
+
+class TestLiveEngine(unittest.TestCase):
+    PRICES = "data/prices/us_equities_1989_2018.csv"
+    TICKERS = ["AAPL", "XOM", "JPM", "WMT", "PFE"]
+
+    def _config(self, tmp, **overrides):
+        from quantum.live import EngineConfig, RiskLimits
+
+        limits = overrides.pop("limits", RiskLimits(min_history=60, max_drawdown=0.25))
+        base = dict(tickers=self.TICKERS, strategy="equal_weight", window=60,
+                    rebalance_every=20, state_path=str(tmp / "state.json"), limits=limits)
+        base.update(overrides)
+        return EngineConfig(**base)
+
+    def test_paper_replay_is_self_consistent(self):
+        """Cash + positions at every bar equals the equity curve; fees are charged."""
+        import tempfile
+        from pathlib import Path
+        from quantum.live import Bar, ReplayFeed, run
+
+        with tempfile.TemporaryDirectory() as d:
+            config = self._config(Path(d))
+            feed = ReplayFeed(self.PRICES, self.TICKERS, start="2012-01-01", end="2012-12-31")
+            engine = run(config, feed, resume=False)
+            st = engine.state
+            self.assertEqual(st.n_bars, len(feed))
+            self.assertGreater(len(st.fills), 0)
+            last = Bar(st.dates[-1], dict(zip(self.TICKERS, st.prices[-1])))
+            self.assertAlmostEqual(engine.equity(last), st.equity_curve[-1], places=6)
+            self.assertGreater(sum(f["fee"] for f in st.fills), 0.0)
+            # Equal weight after a rebalance: each held name near 20%.
+            weights = engine.weights(last)
+            self.assertEqual(len(weights), 5)
+            for w in weights.values():
+                self.assertLess(abs(w - 0.2), 0.05)
+
+    def test_restart_resumes_without_reprocessing(self):
+        import tempfile
+        from pathlib import Path
+        from quantum.live import ReplayFeed, run
+
+        with tempfile.TemporaryDirectory() as d:
+            config = self._config(Path(d))
+            first = run(config, ReplayFeed(self.PRICES, self.TICKERS, start="2012-01-01", end="2012-06-30"), resume=False)
+            n_first = first.state.n_bars
+            # Same feed again plus more bars: the overlap must be skipped.
+            second = run(config, ReplayFeed(self.PRICES, self.TICKERS, start="2012-01-01", end="2012-12-31"), resume=True)
+            self.assertGreater(second.state.n_bars, n_first)
+            self.assertEqual(second.state.dates[:n_first], first.state.dates)
+            self.assertEqual(len(set(second.state.dates)), second.state.n_bars)
+
+    def test_kill_switch_liquidates_and_halts(self):
+        import tempfile
+        from pathlib import Path
+        from quantum.live import ReplayFeed, RiskLimits, run
+
+        with tempfile.TemporaryDirectory() as d:
+            config = self._config(Path(d), limits=RiskLimits(min_history=60, max_drawdown=0.10))
+            engine = run(config, ReplayFeed(self.PRICES, self.TICKERS, start="2007-06-01", end="2009-06-30"), resume=False)
+            st = engine.state
+            self.assertTrue(st.halted)
+            self.assertEqual(engine.broker.positions(), {})
+            self.assertEqual(st.target_weights, {})
+            halt_index = next(i for i, line in enumerate(st.log) if "kill_switch" in line)
+            self.assertTrue(all("halted" in line for line in st.log[halt_index + 1:]))
+
+    def test_risk_caps_hold(self):
+        """Per-name cap and turnover cap are enforced on the cardinality strategy."""
+        import tempfile
+        from pathlib import Path
+        from quantum.live import Bar, ReplayFeed, RiskLimits, run
+
+        with tempfile.TemporaryDirectory() as d:
+            config = self._config(
+                Path(d), strategy="cardinality", cardinality=2, solver="exhaustive",
+                limits=RiskLimits(min_history=60, max_drawdown=0.9, max_weight=0.30, max_turnover=0.20),
+            )
+            engine = run(config, ReplayFeed(self.PRICES, self.TICKERS, start="2012-01-01", end="2012-12-31"), resume=False)
+            for w in engine.state.target_weights.values():
+                self.assertLessEqual(w, 0.30 + 1e-9)
+            # Cumulative turnover across the year stays below the per-rebalance cap times rebalances.
+            n_rebalances = sum("rebalance" in line for line in engine.state.log)
+            self.assertGreater(n_rebalances, 0)
+
+    def test_file_feed_delivers_only_new_rows(self):
+        import csv
+        import tempfile
+        from pathlib import Path
+        from quantum.live import FileFeed
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "tail.csv"
+            with path.open("w", newline="") as fh:
+                w = csv.writer(fh)
+                w.writerow(["date", "AAA", "BBB"])
+                w.writerows([("2024-01-02", 100, 50), ("2024-01-03", 101, 49)])
+            first = [b.date for b in FileFeed(path, ["AAA", "BBB"], poll_seconds=0.0, max_polls=1).bars()]
+            self.assertEqual(first, ["2024-01-02", "2024-01-03"])
+            with path.open("a", newline="") as fh:
+                csv.writer(fh).writerow(("2024-01-04", 102, 48))
+            later = [b.date for b in FileFeed(path, ["AAA", "BBB"], poll_seconds=0.0, after="2024-01-03", max_polls=1).bars()]
+            self.assertEqual(later, ["2024-01-04"])
+
+    def test_config_validation_and_round_trip(self):
+        import tempfile
+        from pathlib import Path
+        from quantum.live import EngineConfig, load_config
+
+        with self.assertRaises(ValueError):
+            EngineConfig(["A"], window=2)
+        with self.assertRaises(ValueError):
+            EngineConfig(["A", "A"])
+        with self.assertRaises(ValueError):
+            EngineConfig(["A", "B"], cardinality=3)
+        with tempfile.TemporaryDirectory() as d:
+            cfg = EngineConfig(["A", "B", "C"], cardinality=2)
+            p = Path(d) / "c.json"
+            import json
+            p.write_text(json.dumps(cfg.to_dict()))
+            self.assertEqual(load_config(p), cfg)
+
+    def test_paper_broker_scales_unaffordable_buys(self):
+        from quantum.live import Bar, Order, PaperBroker
+
+        broker = PaperBroker(cash=1_000.0, fee_rate=0.0)
+        fills = broker.submit([Order("AAA", 100.0)], Bar("2024-01-02", {"AAA": 50.0}))
+        self.assertEqual(len(fills), 1)
+        self.assertAlmostEqual(fills[0].quantity, 20.0)
+        self.assertAlmostEqual(broker.cash(), 0.0)

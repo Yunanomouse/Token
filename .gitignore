@@ -11,3 +11,4 @@ __pycache__/
 /QOKit/
 /QTensor/
 *.egg-info/
+live_state.json

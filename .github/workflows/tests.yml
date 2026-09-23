@@ -26,3 +26,4 @@ jobs:
           python -m quantum export --qubits 3 --powers 1 -o call.qasm
           python -m quantum backtest --assets 4 --days 300 --cardinality 2 --window 120 --horizon 60
           python -m quantum qoblib --sweeps 100 --restarts 1 --solvers simulated_annealing
+          python -m quantum live --replay data/prices/us_equities_1989_2018.csv --tickers AAPL,XOM,JPM,WMT --start 2013-01-01 --end 2014-06-30 --window 120 --state ci_state.json
