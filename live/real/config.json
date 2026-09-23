@@ -10,7 +10,8 @@
  "initial_cash": 40.0,
  "fee_rate": 0.0,
  "whole_shares": true,
- "limits": {"max_weight": 0.5, "max_turnover": 0.5, "max_drawdown": 0.25, "min_history": 252, "min_cash_fraction": 0.03, "rearm_after": 63},
+ "fill_leftover": true,
+ "limits": {"max_weight": 0.5, "max_turnover": 0.5, "max_drawdown": 0.25, "min_history": 252, "min_cash_fraction": 0.03, "rearm_after": 63, "deploy_from_cash": true},
  "state_path": "live/real/state.json",
  "seed": 0,
  "trade_from": "2026-09-23"

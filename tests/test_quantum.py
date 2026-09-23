@@ -2882,6 +2882,50 @@ class TestWholeShareBot(unittest.TestCase):
             self.assertEqual(q, round(q))
         self.assertGreaterEqual(engine.state.cash, -1e-9)
 
+    def test_fill_leftover_spends_rounding_cash_within_caps(self):
+        from quantum.live import RiskLimits
+        plain = self._run(rebalance_every=1)
+        filled = self._run(rebalance_every=1, fill_leftover=True)
+        # Same targets, more of them bought: never more cash left over.
+        self.assertLess(filled.state.cash, plain.state.cash)
+        self.assertGreaterEqual(filled.state.cash, -1e-9)
+        for f in filled.state.fills:
+            self.assertEqual(f["quantity"], round(f["quantity"]))
+        # Per-name cap holds on every rebalance day.
+        for i, d in enumerate(filled.state.dates):
+            px = dict(zip(filled.state.tickers, filled.state.prices[i]))
+            held = {}
+            for f in filled.state.fills:
+                if f["date"] <= d:
+                    held[f["ticker"]] = held.get(f["ticker"], 0.0) + f["quantity"]
+            eq = filled.state.equity_curve[i]
+            for t, q in held.items():
+                self.assertLessEqual(q * px[t], 0.5 * eq + 1e-6)
+        # The cash reserve holds too: after every rebalance, cash >= 30% of equity.
+        kept = self._run(rebalance_every=1, fill_leftover=True,
+                         limits=RiskLimits(min_history=5, max_weight=0.5, max_turnover=1.0, min_cash_fraction=0.3))
+        for i, d in enumerate(kept.state.dates):
+            if any(f["date"] == d for f in kept.state.fills):
+                cash = 40.0 - sum(f["quantity"] * f["price"] for f in kept.state.fills if f["date"] <= d)
+                self.assertGreaterEqual(cash, 0.3 * kept.state.equity_curve[i] - 1e-6)
+
+    def test_deploy_from_cash_skips_the_cap_only_from_cash(self):
+        from quantum.live import RiskLimits
+        limits = dict(min_history=5, max_weight=0.5, max_turnover=0.5)
+        capped = self._run(whole_shares=False, limits=RiskLimits(**limits))
+        free = self._run(whole_shares=False, limits=RiskLimits(**limits, deploy_from_cash=True))
+        first = capped.state.fills[0]["date"]
+        self.assertEqual(free.state.fills[0]["date"], first)
+        spent = lambda e: sum(f["quantity"] * f["price"] for f in e.state.fills if f["date"] == first)
+        self.assertAlmostEqual(spent(capped), 20.0, places=6)   # half of $40
+        self.assertAlmostEqual(spent(free), 40.0, places=6)     # all of it
+        # Later rebalances are still capped: max(buys, sells) <= 50% of equity.
+        for d in sorted({f["date"] for f in free.state.fills} - {first}):
+            i = free.state.dates.index(d)
+            buys = sum(f["quantity"] * f["price"] for f in free.state.fills if f["date"] == d and f["quantity"] > 0)
+            sells = -sum(f["quantity"] * f["price"] for f in free.state.fills if f["date"] == d and f["quantity"] < 0)
+            self.assertLessEqual(max(buys, sells), 0.5 * free.state.equity_curve[i] + 1e-6)
+
     def test_mode_is_validated(self):
         from quantum.live import EngineConfig
         with self.assertRaises(ValueError):
@@ -2908,3 +2952,5 @@ class TestWholeShareBot(unittest.TestCase):
         self.assertTrue(cfg.whole_shares)
         self.assertEqual(cfg.initial_cash, 40.0)
         self.assertEqual(cfg.state_path, "live/real/state.json")
+        self.assertTrue(cfg.fill_leftover)
+        self.assertTrue(cfg.limits.deploy_from_cash)

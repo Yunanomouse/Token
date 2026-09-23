@@ -16,6 +16,31 @@ What is different, and why:
 | Shares | fractional | whole only | Questrade sells whole shares |
 | Cash kept aside | 0% | 3% | limit prices sit 1% above the close |
 
+## Two rules for small accounts
+
+A $50 test month (Aug 24 to Sep 23, 2026) put only $9.96 to work and left
+80% in cash. Two rules did that, and both are now changed for this bot:
+
+- `"deploy_from_cash": true`: the 50% turnover cap is skipped when the
+  book is almost all cash, so the first buy goes all the way to the target.
+  The cap still limits every later swap between stocks.
+- `"fill_leftover": true`: after rounding down to whole shares, the money
+  rounding left behind buys one more share of the stock furthest below its
+  target, if it fits the budget, the 3% cash reserve and the 50% cap.
+
+Tested from 46 start dates over the past year (Sep 2025 to Aug 2026, one
+every 5 trading days):
+
+| Money | Invested in month 1, before / after | Average 1-month return, before / after | Average return to Sep 23, before / after |
+|---|---|---|---|
+| $40 | 16% / 76% | +1.05% / +2.28% | +5.97% / +5.88% |
+| $50 | 20% / 74% | +1.57% / +2.96% | +1.51% / +2.70% |
+| $100 | 37% / 89% | +1.52% / +2.98% | +0.16% / +3.11% |
+
+Being invested means taking the market's moves both ways. On the $50 test
+month itself the new rules bought 2 NOK and 1 VALE, and VALE then fell:
+the account ended at $50.12 instead of $50.67, after reaching $52.53.
+
 ## The paper/live switch
 
 In `config.json`, the first line:

@@ -386,6 +386,11 @@ class RiskLimits:
     """Bars to sit in cash after the kill switch trips; then the peak resets
     to current equity and trading resumes.  0 keeps the halt until a person
     clears it."""
+    deploy_from_cash: bool = False
+    """Skip the turnover cap when the book is almost all cash (under 5%
+    invested): the first buy, and the first after a re-arm, go all the way
+    to the target.  The cap exists to limit churn between holdings, and
+    there is none to limit when nothing is held."""
 
 
 @dataclass
@@ -411,6 +416,10 @@ class EngineConfig:
     whole_shares: bool = False
     """Trade whole shares only (for brokers without fractional shares).
     Buys round down, so the book never spends cash it does not have."""
+    fill_leftover: bool = False
+    """With whole shares: after rounding down, spend what rounding left
+    behind on one more share of the names furthest below their target,
+    as long as it fits the rebalance's budget and the per-name cap."""
     mode: str = "paper"
     """``paper``: orders are simulated only.  ``live``: the same simulation
     runs, and each day's orders are also published for a person to place
@@ -620,17 +629,22 @@ class Engine:
         # invested is 100% turnover, not 50%.
         turnover = float((np.abs(move).sum() + abs(move.sum())) / 2.0)
         note = ""
-        if turnover > self.limits.max_turnover and turnover > 0:
+        from_cash = self.limits.deploy_from_cash and current.sum() < 0.05
+        if turnover > self.limits.max_turnover and turnover > 0 and not from_cash:
             scale = self.limits.max_turnover / turnover
             target = current + move * scale
             note = f"turnover {turnover:.1%} capped to {self.limits.max_turnover:.1%}"
 
         eq = self.equity(bar)
+        prices = np.array([bar.prices[t] for t in self.state.tickers])
+        shares = target * eq / prices
+        if self.config.whole_shares:
+            shares = np.floor(shares + 1e-9)
+            if self.config.fill_leftover:
+                shares = self._fill_leftover(shares, target, prices, eq)
         orders = []
         for i, ticker in enumerate(self.state.tickers):
-            desired = target[i] * eq / bar.prices[ticker]
-            if self.config.whole_shares:
-                desired = float(math.floor(desired + 1e-9))
+            desired = float(shares[i])
             held = self.broker.positions().get(ticker, 0.0)
             delta = desired - held
             if abs(delta * bar.prices[ticker]) >= 1.0:  # ignore sub-dollar dust
@@ -638,6 +652,28 @@ class Engine:
         fills = self.broker.submit(orders, bar)
         targets = {t: float(w) for t, w in zip(self.state.tickers, target) if w > 1e-9}
         return fills, targets, note
+
+    def _fill_leftover(self, shares: np.ndarray, target: np.ndarray, prices: np.ndarray,
+                       eq: float) -> np.ndarray:
+        """Add whole shares, one at a time, to the names furthest below target.
+
+        The budget is the rebalance's own: the target's total value, so the
+        cash reserve and a capped turnover still hold.  A share is added only
+        if it fits what is left of that budget and keeps the name at or under
+        the per-name cap.
+        """
+        shares = shares.copy()
+        fee = 1.0 + self.config.fee_rate
+        budget = float(target.sum() * eq - (shares * prices).sum() * fee)
+        cap_value = self.limits.max_weight * eq
+        while True:
+            short = target * eq - shares * prices
+            fits = (prices * fee <= budget + 1e-9) & ((shares + 1) * prices <= cap_value + 1e-9) & (target > 1e-9)
+            if not fits.any():
+                return shares
+            i = int(np.argmax(np.where(fits, short, -np.inf)))
+            shares[i] += 1
+            budget -= float(prices[i] * fee)
 
     def _liquidate(self, bar: Bar, reason: str) -> list[Fill]:
         orders = [Order(t, -q, reason) for t, q in self.broker.positions().items()]
