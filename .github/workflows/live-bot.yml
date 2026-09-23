@@ -14,6 +14,7 @@ on:
   push:
     paths:
       - "live/config.json"
+      - "live/real/config.json"
       - ".github/workflows/live-bot.yml"
       - "scripts/fetch_prices.py"
 
@@ -47,6 +48,21 @@ jobs:
         run: |
           python -m quantum live --config live/config.json --feed live/prices.csv \
             --catch-up --poll 0 --snapshot live/snapshot.json
+      # The $40 whole-share bot (live/real/). Same engine and rules as the
+      # main bot, on cheaper stocks. Its "mode" line in live/real/config.json
+      # is the paper/live switch; in live mode live/real/orders.json lists
+      # the day's orders for a person to place (tools/tradingview_orders.py).
+      # A failure here must not stop the main bot's state from being saved.
+      - name: Fetch prices for the $40 bot
+        id: real_fetch
+        continue-on-error: true
+        run: python scripts/fetch_prices.py --config live/real/config.json --out live/real/prices.csv
+      - name: Run the $40 bot and write today's orders
+        if: steps.real_fetch.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python -m quantum live --config live/real/config.json --feed live/real/prices.csv \
+            --catch-up --poll 0 --orders live/real/orders.json
       - name: Save the bot's state
         run: |
           git config user.name "quantum-trading-bot"

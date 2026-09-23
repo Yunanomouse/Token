@@ -18,6 +18,13 @@ Steps are in `live/README.md`. Never ask for API keys in chat (they go in
 GitHub repository secrets), and never flip the real-money settings for the
 owner.
 
+**The $40 bot** (`live/real/`, added 2026-09-23 at the owner's request): same
+engine and rules on cheaper stocks, whole shares, $40 budget, Questrade via
+TradingView. Its `"mode"` line is the owner's paper/live switch; in live mode
+`live/real/orders.json` lists each day's orders, and
+`tools/tradingview_orders.py` (run on the owner's PC) fills the TradingView
+ticket but never clicks Buy/Sell. Keep the person-clicks-the-button step.
+
 ## Where everything is
 
 | What | Where |
@@ -100,5 +107,5 @@ script is pushed.
    failed.
 4. Run the **larger QOBLIB instances** (up to 400 stocks).
 
-Checks before any push: `python -m pytest tests -q` (209 tests pass as of
+Checks before any push: `python -m pytest tests -q` (213 tests pass as of
 this note), and `python web/build.py` after changing `web/` or the engine.

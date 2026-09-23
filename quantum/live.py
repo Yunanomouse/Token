@@ -241,9 +241,10 @@ class PaperBroker(Broker):
     """
 
     def __init__(self, cash: float = 100_000.0, fee_rate: float = 0.0005,
-                 positions: dict[str, float] | None = None) -> None:
+                 positions: dict[str, float] | None = None, whole_shares: bool = False) -> None:
         self._cash = float(cash)
         self.fee_rate = float(fee_rate)
+        self.whole_shares = bool(whole_shares)
         self._positions: dict[str, float] = dict(positions or {})
         self.fills: list[Fill] = []
 
@@ -265,6 +266,8 @@ class PaperBroker(Broker):
             if notional + fee > self._cash + 1e-9:
                 # Scale the buy down to what cash allows rather than reject it.
                 affordable = max(self._cash / (price * (1.0 + self.fee_rate)), 0.0)
+                if self.whole_shares:
+                    affordable = float(math.floor(affordable + 1e-9))
                 if affordable < 1e-9:
                     continue
                 order = Order(order.ticker, affordable, order.reason + "/scaled")
@@ -405,6 +408,13 @@ class EngineConfig:
     prices feed the estimates, but no order is placed and the book stays
     in cash.  This is what keeps a bot started today from back-filling a
     year of trades it never made."""
+    whole_shares: bool = False
+    """Trade whole shares only (for brokers without fractional shares).
+    Buys round down, so the book never spends cash it does not have."""
+    mode: str = "paper"
+    """``paper``: orders are simulated only.  ``live``: the same simulation
+    runs, and each day's orders are also published for a person to place
+    at the broker (see :func:`todays_orders`)."""
 
     def __post_init__(self) -> None:
         self.tickers = [str(t) for t in self.tickers]
@@ -420,6 +430,8 @@ class EngineConfig:
             raise ValueError("initial_cash must be positive")
         if not 0.0 <= self.fee_rate < 1.0:
             raise ValueError("fee_rate must lie in [0, 1)")
+        if self.mode not in ("paper", "live"):
+            raise ValueError("mode must be 'paper' or 'live'")
         if self.strategy == "cardinality" and not 1 <= self.cardinality <= len(self.tickers):
             raise ValueError("cardinality must be between 1 and the number of tickers")
 
@@ -501,7 +513,8 @@ class Engine:
         self.state = state or EngineState(tickers=list(config.tickers), cash=config.initial_cash)
         if self.state.tickers != list(config.tickers):
             raise ValueError("state file was written for a different ticker list")
-        self.broker = broker or PaperBroker(self.state.cash, config.fee_rate, self.state.positions)
+        self.broker = broker or PaperBroker(self.state.cash, config.fee_rate, self.state.positions,
+                                            whole_shares=config.whole_shares)
         self.strategy = strategy or build_strategy(config)
         self._log = log or (lambda line: None)
 
@@ -616,6 +629,8 @@ class Engine:
         orders = []
         for i, ticker in enumerate(self.state.tickers):
             desired = target[i] * eq / bar.prices[ticker]
+            if self.config.whole_shares:
+                desired = float(math.floor(desired + 1e-9))
             held = self.broker.positions().get(ticker, 0.0)
             delta = desired - held
             if abs(delta * bar.prices[ticker]) >= 1.0:  # ignore sub-dollar dust
@@ -732,6 +747,38 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
         "full_history": keep == 0,
     }
     return status, prices
+
+
+def todays_orders(engine: "Engine", limit_pad: float = 0.01) -> dict:
+    """The orders from the newest bar, for a person to place at the broker.
+
+    The engine's book assumes they fill at that bar's close; at a real broker
+    they go in the next morning.  Each carries a limit price ``limit_pad``
+    past the close (above for buys, below for sells) so a small opening gap
+    still fills but a large one does not.  Orders from older bars are never
+    listed: a missed day is not traded late.
+    """
+    st, cfg = engine.state, engine.config
+    last = st.dates[-1] if st.dates else None
+    orders = []
+    for f in st.fills:
+        if f["date"] != last or abs(f["quantity"]) < 1e-12:
+            continue
+        side = "buy" if f["quantity"] > 0 else "sell"
+        limit = f["price"] * (1 + limit_pad if side == "buy" else 1 - limit_pad)
+        orders.append({"ticker": f["ticker"], "side": side, "shares": abs(f["quantity"]),
+                       "close": round(f["price"], 4), "limit": round(limit, 2)})
+    return {
+        "schema": 1,
+        "mode": cfg.mode,
+        "date": last,
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "budget": cfg.initial_cash,
+        "whole_shares": cfg.whole_shares,
+        "orders": sorted(orders, key=lambda o: o["side"] != "sell"),  # sells first
+        "holdings_after": st.positions,
+        "cash_after": st.cash,
+    }
 
 
 def load_config(path: str | Path) -> EngineConfig:

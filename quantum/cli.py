@@ -477,6 +477,17 @@ def cmd_live(args) -> int:
         with open(base.replace(".json", "") + "_prices.json", "w", encoding="utf-8") as fh:
             json.dump(prices, fh, separators=(",", ":"))
         print(f"snapshot: {base} (+ prices)")
+    if args.orders:
+        from .live import todays_orders
+        doc = todays_orders(engine)
+        with open(args.orders, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=1)
+        label = "LIVE: place these at your broker" if doc["mode"] == "live" else "paper: for information only"
+        print(f"orders for {doc['date']} ({label}): {args.orders}")
+        for o in doc["orders"]:
+            print(f"  {o['side'].upper():4} {o['shares']:g} {o['ticker']} limit ${o['limit']:.2f}")
+        if not doc["orders"]:
+            print("  none today")
     if broker is None:
         print("Paper fills at the close with no slippage: an upper bound on a real venue.")
     else:
@@ -651,6 +662,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--broker", choices=["paper", "alpaca"], default=None,
                    help="where orders go (default: $QT_BROKER, else paper); alpaca reads its keys from the environment")
     p.add_argument("--live", action="store_true", help="insist on a real broker; refused with the paper broker")
+    p.add_argument("--orders", help="also write the newest bar's orders (for placing by hand) as JSON here")
     p.add_argument("--write-config", dest="write_config", help="also write the effective config JSON here")
     p.add_argument("--verbose", "-v", action="store_true", help="log every bar")
     p.set_defaults(func=cmd_live)

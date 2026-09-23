@@ -2852,3 +2852,59 @@ class TestAlpacaBroker(unittest.TestCase):
             code = main(["live", "--config", "live/config.json", "--replay", "live/prices.csv", "--broker", "alpaca"])
         self.assertEqual(code, 2)
         self.assertIn("nothing sent", out.getvalue())
+
+
+class TestWholeShareBot(unittest.TestCase):
+    """The $40 bot: whole shares, a paper/live switch, and the day's orders."""
+
+    def _run(self, **overrides):
+        import tempfile
+        from quantum.live import Bar, EngineConfig, RiskLimits, run
+        rng = np.random.default_rng(3)
+        tickers = ["A", "B", "C", "D"]
+        prices = 10 + np.cumsum(rng.normal(0, 0.2, size=(40, 4)), axis=0).clip(-5, None)
+        days = [f"2026-01-{d:02d}" for d in range(1, 32)] + [f"2026-02-{d:02d}" for d in range(1, 10)]
+        bars = [Bar(d, dict(zip(tickers, map(float, row)))) for d, row in zip(days, prices)]
+        feed = type("Feed", (), {"bars": lambda self: iter(bars)})()
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = dict(tickers=tickers, strategy="equal_weight", window=5, rebalance_every=10,
+                       initial_cash=40.0, fee_rate=0.0, whole_shares=True, state_path=f"{tmp}/s.json",
+                       limits=RiskLimits(min_history=5, max_weight=0.5, max_turnover=1.0))
+            cfg.update(overrides)
+            return run(EngineConfig(**cfg), feed)
+
+    def test_whole_shares_and_never_overspends(self):
+        engine = self._run()
+        self.assertTrue(engine.state.fills)
+        for f in engine.state.fills:
+            self.assertEqual(f["quantity"], round(f["quantity"]))
+        for q in engine.state.positions.values():
+            self.assertEqual(q, round(q))
+        self.assertGreaterEqual(engine.state.cash, -1e-9)
+
+    def test_mode_is_validated(self):
+        from quantum.live import EngineConfig
+        with self.assertRaises(ValueError):
+            EngineConfig(tickers=["A"], strategy="equal_weight", mode="real")
+
+    def test_todays_orders_lists_only_the_newest_bar(self):
+        from quantum.live import todays_orders
+        engine = self._run(mode="live", rebalance_every=1)
+        doc = todays_orders(engine)
+        self.assertEqual(doc["mode"], "live")
+        self.assertEqual(doc["date"], engine.state.dates[-1])
+        newest = [f for f in engine.state.fills if f["date"] == doc["date"]]
+        self.assertEqual(len(doc["orders"]), len(newest))
+        sides = [o["side"] for o in doc["orders"]]
+        self.assertEqual(sides, sorted(sides, key=lambda s: s != "sell"))
+        for o in doc["orders"]:
+            pad = 1.01 if o["side"] == "buy" else 0.99
+            self.assertAlmostEqual(o["limit"], round(o["close"] * pad, 2), places=2)
+
+    def test_real_bot_config(self):
+        from quantum.live import load_config
+        cfg = load_config("live/real/config.json")
+        self.assertEqual(cfg.mode, "paper")  # live only when the owner flips it
+        self.assertTrue(cfg.whole_shares)
+        self.assertEqual(cfg.initial_cash, 40.0)
+        self.assertEqual(cfg.state_path, "live/real/state.json")
