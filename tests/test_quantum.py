@@ -498,6 +498,27 @@ class TestPortfolio(unittest.TestCase):
         )
         self.assertAlmostEqual(float(weights.sum()), 1.0, places=9)
 
+    def test_mean_variance_meets_its_optimality_conditions(self):
+        # KKT for min q w'Sw - mu'w, sum(w) = 1 (and w >= 0): the gradient is
+        # one constant on the held names and no lower than it on the rest.
+        # Normalising Sigma^-1 mu (the tangency portfolio) fails this, and
+        # ignores the risk aversion altogether.
+        mu, cov = self.market.expected_returns, self.market.covariance
+        seen = []
+        for q in (0.5, 2.0, 20.0):
+            for long_only in (False, True):
+                w = unconstrained_mean_variance(mu, cov, q, long_only=long_only)
+                self.assertAlmostEqual(float(w.sum()), 1.0, places=9)
+                grad = 2.0 * q * cov @ w - mu
+                held = w > 1e-9 if long_only else np.ones(w.size, bool)
+                level = grad[held].mean()
+                self.assertLess(np.abs(grad[held] - level).max(), 1e-7)
+                if long_only:
+                    self.assertTrue(np.all(w >= 0))
+                    self.assertTrue(np.all(grad[~held] >= level - 1e-7))
+            seen.append(w)
+        self.assertGreater(np.abs(seen[0] - seen[-1]).max(), 1e-3)
+
     def test_rejects_mismatched_covariance(self):
         with self.assertRaises(ValueError):
             PortfolioProblem(np.zeros(4), np.zeros((3, 3)))
@@ -509,6 +530,14 @@ class TestPricing(unittest.TestCase):
         call = black_scholes_call(spot, strike, rate, vol, maturity)
         put = black_scholes_put(spot, strike, rate, vol, maturity)
         self.assertAlmostEqual(call - put, spot - strike * math.exp(-rate * maturity), places=9)
+
+    def test_black_scholes_without_volatility_discounts_the_strike(self):
+        spot, strike, rate, maturity = 100.0, 90.0, 0.05, 1.0
+        forward_gap = spot - strike * math.exp(-rate * maturity)
+        self.assertAlmostEqual(black_scholes_call(spot, strike, rate, 0.0, maturity), forward_gap, places=12)
+        self.assertEqual(black_scholes_put(spot, strike, rate, 0.0, maturity), 0.0)
+        self.assertAlmostEqual(black_scholes_put(80.0, strike, rate, 0.0, maturity),
+                               strike * math.exp(-rate * maturity) - 80.0, places=12)
 
     def test_integer_comparator(self):
         for threshold in (0, 1, 3, 5, 7, 8):
@@ -740,6 +769,12 @@ class TestRisk(unittest.TestCase):
                                           n_powers=4, shots_per_power=256,
                                           rng=np.random.default_rng(0))
         self.assertGreaterEqual(cvar.value, var.value - 1e-9)
+
+    def test_var_is_not_pushed_past_the_quantile_by_rounding(self):
+        # Ten atoms of 0.1 accumulate to 0.8999999999999999 at the ninth.
+        values = np.arange(10.0)
+        var, _ = classical_var_cvar(values, np.full(10, 0.1), 0.9)
+        self.assertEqual(var, 8.0)
 
     def test_parametric_var_agrees_with_grid(self):
         exact, _ = classical_var_cvar(self.dist.values, self.dist.probabilities, 0.95)
@@ -1633,6 +1668,62 @@ class TestCLI(unittest.TestCase):
                 self.assertEqual(main(argv), 0, f"{argv[0]} failed")
 
 
+class TestAgainstReferenceLibraries(unittest.TestCase):
+    """Independent implementations, installed with ``pip install -e ".[test]"``.
+
+    Skipped when the reference is missing, so the package itself stays numpy-only.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from quantum.market import load_price_csv
+
+        cls.market = load_price_csv("data/prices/us_equities_1989_2018.csv",
+                                    tickers=["AAPL", "GE", "AMD", "WMT", "BAC", "T", "XOM", "PFE", "JPM"],
+                                    start="2008-01-01", end="2008-12-31")
+
+    def test_ledoit_wolf_matches_scikit_learn(self):
+        try:
+            from sklearn.covariance import LedoitWolf
+        except ImportError:
+            self.skipTest("scikit-learn not installed")
+        cov, intensity = ledoit_wolf_shrinkage(self.market.returns)
+        ref = LedoitWolf().fit(self.market.returns)
+        self.assertAlmostEqual(intensity, ref.shrinkage_, places=12)
+        np.testing.assert_allclose(cov, ref.covariance_, rtol=1e-10, atol=0)
+
+    def test_long_only_mean_variance_matches_scipy(self):
+        try:
+            from scipy.optimize import minimize
+        except ImportError:
+            self.skipTest("scipy not installed")
+        mu, cov = self.market.expected_returns, self.market.covariance
+        n = mu.size
+        for q in (1.0, 2.0, 5.0):
+            w = unconstrained_mean_variance(mu, cov, q, long_only=True)
+            ref = minimize(lambda x: q * x @ cov @ x - mu @ x, np.full(n, 1.0 / n),
+                           jac=lambda x: 2.0 * q * cov @ x - mu, method="SLSQP",
+                           bounds=[(0.0, None)] * n,
+                           constraints=[{"type": "eq", "fun": lambda x: x.sum() - 1.0}],
+                           options={"ftol": 1e-15, "maxiter": 1000})
+            objective = lambda x: q * x @ cov @ x - mu @ x
+            self.assertLessEqual(objective(w), objective(ref.x) + 1e-10)
+            np.testing.assert_allclose(w, ref.x, atol=1e-5)
+
+    def test_black_scholes_matches_scipy(self):
+        try:
+            from scipy.stats import norm
+        except ImportError:
+            self.skipTest("scipy not installed")
+        for spot, strike, rate, vol, t in [(100, 90, 0.05, 0.2, 1.0), (100, 120, 0.01, 0.4, 0.25),
+                                           (50, 50, 0.0, 0.1, 2.0), (80, 100, 0.03, 0.6, 5.0)]:
+            d1 = (math.log(spot / strike) + (rate + vol * vol / 2) * t) / (vol * math.sqrt(t))
+            d2 = d1 - vol * math.sqrt(t)
+            call = spot * norm.cdf(d1) - strike * math.exp(-rate * t) * norm.cdf(d2)
+            put = strike * math.exp(-rate * t) * norm.cdf(-d2) - spot * norm.cdf(-d1)
+            self.assertAlmostEqual(black_scholes_call(spot, strike, rate, vol, t), call, places=10)
+            self.assertAlmostEqual(black_scholes_put(spot, strike, rate, vol, t), put, places=10)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
@@ -2492,6 +2583,29 @@ class TestLiveBot(unittest.TestCase):
             self.assertEqual(mod.fetch("BBB", 10), (good, "stooq"))
             self.assertEqual(st.call_count, 4)
         self.assertEqual(mod.UNREACHABLE, set())
+
+    def test_yahoo_retries_a_rate_limit_as_another_user_agent(self):
+        import importlib.util
+        import json
+        import urllib.error
+        from unittest import mock
+
+        spec = importlib.util.spec_from_file_location("fetch_prices", "scripts/fetch_prices.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        body = json.dumps({"chart": {"result": [{"timestamp": [1790035200],
+                          "indicators": {"adjclose": [{"adjclose": [12.5]}]}}]}}).encode()
+        limited = urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None)
+        with mock.patch.object(mod, "_get", side_effect=[limited, body]) as get:
+            self.assertEqual(list(mod.yahoo("AAA", 10).values()), [12.5])
+        self.assertIsNone(get.call_args_list[0].kwargs["headers"])
+        self.assertEqual(get.call_args_list[1].kwargs["headers"], {"User-Agent": mod.ALT_UAS[0]})
+        with mock.patch.object(mod, "_get", side_effect=[limited] * 3), self.assertRaises(urllib.error.HTTPError):
+            mod.yahoo("AAA", 10)
+        missing = urllib.error.HTTPError("u", 404, "Not Found", {}, None)
+        with mock.patch.object(mod, "_get", side_effect=[missing]) as get, self.assertRaises(urllib.error.HTTPError):
+            mod.yahoo("AAA", 10)
+        self.assertEqual(get.call_count, 1)
 
     def test_bot_config_is_valid_and_paper(self):
         from quantum.live import load_config

@@ -454,13 +454,43 @@ const QT = (function () {
 
   function equalWeight(m) { return new Array(m.n).fill(1 / m.n); }
 
+  // Exact minimiser of lambda w'Sw - mu'w with sum(w) = 1, w >= 0 -- same
+  // algorithm as quantum/portfolio.py unconstrained_mean_variance(long_only=True).
+  function projectSimplex(v) {
+    const u = v.slice().sort((a, b) => b - a);
+    let css = 0, theta = 0;
+    for (let i = 0; i < u.length; i++) { css += u[i]; if (u[i] - (css - 1) / (i + 1) > 0) theta = (css - 1) / (i + 1); }
+    return v.map(x => Math.max(x - theta, 0));
+  }
   function markowitz(m, lambda) {
-    const A = m.cov.map(r => r.map(v => 2 * lambda * v));
-    let raw = solve(A, m.mu) || new Array(m.n).fill(1);
-    raw = raw.map(v => Math.max(v, 0));
-    const total = raw.reduce((a, v) => a + v, 0);
-    if (Math.abs(total) < 1e-12) return new Array(m.n).fill(1 / m.n);
-    return normalise(raw.map(v => v / total));
+    const n = m.n, A = m.cov.map(r => r.map(v => 2 * lambda * v)), ones = new Array(n).fill(1);
+    const x = solve(A, m.mu), y = solve(A, ones);
+    if (x && y) {
+      const sy = y.reduce((a, v) => a + v, 0), sx = x.reduce((a, v) => a + v, 0);
+      if (Math.abs(sy) > 1e-18) {
+        const lam = (1 - sx) / sy, w = x.map((v, i) => v + lam * y[i]);
+        if (w.every(v => v >= 0)) return w;
+      }
+    }
+    // Lipschitz constant 2*lambda*maxEig(S) by power iteration.
+    let e = ones.map(v => v / Math.sqrt(n)), L = 0;
+    for (let it = 0; it < 500; it++) {
+      const z = A.map(r => r.reduce((a, v, j) => a + v * e[j], 0));
+      const nz = Math.sqrt(z.reduce((a, v) => a + v * v, 0)); if (nz <= 0) break;
+      L = nz; e = z.map(v => v / nz);
+    }
+    L = Math.max(L * 1.0001, 1e-18);
+    let w = new Array(n).fill(1 / n), yk = w.slice(), t = 1;
+    for (let it = 0; it < 20000; it++) {
+      const g = A.map((r, i) => r.reduce((a, v, j) => a + v * yk[j], 0) - m.mu[i]);
+      const wn = projectSimplex(yk.map((v, i) => v - g[i] / L));
+      const tn = 0.5 * (1 + Math.sqrt(1 + 4 * t * t));
+      let step = 0; for (let i = 0; i < n; i++) step = Math.max(step, Math.abs(wn[i] - w[i]));
+      yk = wn.map((v, i) => v + ((t - 1) / tn) * (v - w[i]));
+      w = wn; t = tn;
+      if (step < 1e-13) break;
+    }
+    return w;
   }
 
   // Exact optimum over all C(n, K) equal-weighted subsets, in the same

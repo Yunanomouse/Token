@@ -25,10 +25,16 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 UA = {"User-Agent": "Mozilla/5.0 (quantum-trading paper bot)"}
+# Yahoo rate-limits (HTTP 429) by User-Agent string, and which strings it
+# refuses changes over time; on a 429 the same request is retried as these.
+ALT_UAS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
+    "Mozilla/5.0",
+]
 
 
-def _get(url: str, timeout: float = 30.0) -> bytes:
-    req = urllib.request.Request(url, headers=UA)
+def _get(url: str, timeout: float = 30.0, headers: dict | None = None) -> bytes:
+    req = urllib.request.Request(url, headers=headers or UA)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
@@ -55,7 +61,13 @@ def yahoo(ticker: str, days: int) -> dict[str, float]:
     start = end - days * 86400
     url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
            f"?period1={start}&period2={end}&interval=1d&events=div,split")
-    data = json.loads(_get(url))
+    for ua in [None] + ALT_UAS:
+        try:
+            data = json.loads(_get(url, headers={"User-Agent": ua} if ua else None))
+            break
+        except urllib.error.HTTPError as exc:
+            if exc.code != 429 or ua == ALT_UAS[-1]:
+                raise
     res = data["chart"]["result"][0]
     ts = res["timestamp"]
     adj = res["indicators"].get("adjclose", [{}])[0].get("adjclose") or res["indicators"]["quote"][0]["close"]

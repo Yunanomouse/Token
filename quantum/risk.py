@@ -124,7 +124,9 @@ def classical_var_cvar(
     sorted_probs = probabilities[order]
     cdf = np.cumsum(sorted_probs)
 
-    idx = int(np.searchsorted(cdf, confidence, side="left"))
+    # Tolerate cumsum rounding: ten atoms of 0.1 sum to 0.8999999999999999,
+    # which would otherwise push the 90% quantile one atom too far.
+    idx = int(np.searchsorted(cdf, confidence - 1e-12 * cdf[-1], side="left"))
     idx = min(idx, sorted_losses.size - 1)
     var = float(sorted_losses[idx])
 

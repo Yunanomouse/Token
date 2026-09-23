@@ -66,23 +66,54 @@ def unconstrained_mean_variance(
     risk_aversion: float = 1.0,
     long_only: bool = False,
 ) -> np.ndarray:
-    """Closed-form Markowitz weights, normalised to sum to one.
+    """Exact minimiser of ``q w'Sigma w - mu'w`` subject to ``sum(w) == 1``.
 
-    This is the "quantum computers will not help here" baseline.  It is a single
-    linear solve; on thousands of assets it takes milliseconds.
+    ``long_only=False`` is the closed form ``Sigma^-1 (mu + lambda 1) / 2q`` with
+    ``lambda`` chosen to meet the budget.  ``long_only=True`` adds ``w >= 0`` and
+    is solved by accelerated projected gradient onto the simplex -- still a
+    convex problem, still milliseconds.  (Normalising ``Sigma^-1 mu`` instead
+    gives the tangency portfolio, which ignores ``risk_aversion``; clipping it
+    does not give the long-only optimum.)
     """
     mu = np.asarray(expected_returns, dtype=np.float64).reshape(-1)
     cov = np.asarray(covariance, dtype=np.float64)
     if risk_aversion <= 0:
         raise ValueError("risk aversion must be positive")
+    n = mu.size
+    ones = np.ones(n)
+    inv = np.linalg.pinv(2.0 * risk_aversion * cov)
+    denom = float(ones @ inv @ ones)
+    if abs(denom) < 1e-18:
+        w = np.full(n, 1.0 / n)
+    else:
+        lam = (1.0 - float(ones @ inv @ mu)) / denom
+        w = inv @ (mu + lam * ones)
+    if not long_only or np.all(w >= 0):
+        return w
+    return _simplex_qp(mu, cov, risk_aversion)
 
-    raw = np.linalg.pinv(2.0 * risk_aversion * cov) @ mu
-    if long_only:
-        raw = np.clip(raw, 0.0, None)
-    total = raw.sum()
-    if abs(total) < 1e-12:
-        return np.full(mu.size, 1.0 / mu.size)
-    return raw / total
+
+def _project_simplex(v: np.ndarray) -> np.ndarray:
+    """Euclidean projection onto ``{w >= 0, sum(w) == 1}`` (Duchi et al. 2008)."""
+    u = np.sort(v)[::-1]
+    css = np.cumsum(u) - 1.0
+    k = np.nonzero(u - css / np.arange(1, v.size + 1) > 0)[0][-1]
+    return np.maximum(v - css[k] / (k + 1.0), 0.0)
+
+
+def _simplex_qp(mu, cov, q, iters: int = 20000, tol: float = 1e-13) -> np.ndarray:
+    """FISTA for ``min q w'Sigma w - mu'w`` over the simplex."""
+    lipschitz = max(2.0 * q * float(np.linalg.eigvalsh((cov + cov.T) / 2.0)[-1]), 1e-18)
+    w = y = np.full(mu.size, 1.0 / mu.size)
+    t = 1.0
+    for _ in range(iters):
+        w_next = _project_simplex(y - (2.0 * q * cov @ y - mu) / lipschitz)
+        t_next = 0.5 * (1.0 + math.sqrt(1.0 + 4.0 * t * t))
+        y = w_next + ((t - 1.0) / t_next) * (w_next - w)
+        if np.abs(w_next - w).max() < tol:
+            return w_next
+        w, t = w_next, t_next
+    return w
 
 
 def exhaustive_cardinality(

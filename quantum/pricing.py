@@ -79,8 +79,10 @@ def _norm_cdf(x: float) -> float:
 
 def black_scholes_call(spot: float, strike: float, rate: float, vol: float, maturity: float) -> float:
     """Closed-form European call -- the correctness oracle for the quantum run."""
-    if maturity <= 0 or vol <= 0:
+    if maturity <= 0:
         return max(spot - strike, 0.0)
+    if vol <= 0:  # deterministic forward: intrinsic value against the discounted strike
+        return max(spot - strike * math.exp(-rate * maturity), 0.0)
     d1 = (math.log(spot / strike) + (rate + 0.5 * vol**2) * maturity) / (vol * math.sqrt(maturity))
     d2 = d1 - vol * math.sqrt(maturity)
     return spot * _norm_cdf(d1) - strike * math.exp(-rate * maturity) * _norm_cdf(d2)

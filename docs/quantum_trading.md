@@ -593,6 +593,12 @@ periods (`python3 -m quantum backtest --assets 8 --days 1512`):
 |---|---|---|---|---|---|---|---|
 | equal weight | 5.11% | 14.77% | 0.35 | −0.16 | 32.6% | 0.0% | — |
 | Markowitz long-only | 9.07% | 18.31% | 0.50 | 1.30 | 32.5% | 21.7% | +0.88 |
+
+The Markowitz row above predates a fix: `unconstrained_mean_variance` then
+normalised Σ⁻¹μ (the tangency portfolio, blind to the risk aversion) and
+clipped it, rather than solving the long-only problem.  The real-price table
+below is re-run with the fix; this synthetic one is not, because the
+generator has changed since and no longer reproduces any of its rows.
 | cardinality 4, simulated annealing | 3.06% | 16.22% | 0.19 | 0.91 | 31.8% | 17.4% | −0.44 |
 | cardinality 4, exhaustive | 3.06% | 16.22% | 0.19 | 0.91 | 31.8% | 17.4% | −0.44 |
 
@@ -732,7 +738,7 @@ out-of-sample periods:
 | strategy | ann. return | ann. vol | Sharpe | *in-sample* Sharpe | max DD | turnover | t vs 1/N |
 |---|---|---|---|---|---|---|---|
 | equal weight | 11.13% | 19.97% | 0.56 | 0.57 | 49.9% | 0.0% | — |
-| Markowitz long-only | 17.43% | 18.73% | 0.93 | 2.06 | 36.5% | 20.8% | +1.73 |
+| Markowitz long-only | 13.52% | 30.15% | 0.45 | 2.07 | 41.7% | 29.8% | +0.64 |
 | cardinality 4, simulated annealing | 23.32% | 22.11% | 1.06 | 2.05 | 42.4% | 19.8% | +2.14 |
 | cardinality 4, exhaustive | 23.32% | 22.11% | 1.06 | 2.05 | 42.4% | 19.8% | +2.14 |
 
@@ -742,6 +748,12 @@ conventional threshold.  Unchanged in the other two: the in-sample Sharpe of
 2.05 realised 1.06 (the overfit halved it), and simulated annealing matched
 exhaustive search at all 130 rebalances, so once again what is being scored
 is the optimum, not the solver.
+
+The Markowitz row is the true long-only optimum of `q w'Σw − μ'w` at q = 2.
+Before the fix it read 17.43% and Sharpe 0.93: that was the tangency
+portfolio, clipped.  Solved properly the same objective concentrates harder,
+runs 30% volatility and loses to equal weight on Sharpe; its t of +0.64 is
+noise.
 
 The caveat is the universe.  These twenty names were picked in 2018 by
 someone writing a portfolio library, and they include Apple, Amazon, Google
