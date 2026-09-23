@@ -509,7 +509,8 @@
   "2026-09-16",
   "2026-09-17",
   "2026-09-18",
-  "2026-09-21"
+  "2026-09-21",
+  "2026-09-23"
  ],
  "prices": [
   [
@@ -5511,11 +5512,25 @@
    12.94,
    16.040001,
    20.870001
+  ],
+  [
+   12.94,
+   10.63,
+   13.82,
+   8.18,
+   5.29,
+   12.41,
+   15.38,
+   20.24
   ]
  ],
- "cash": 40.0,
- "positions": {},
+ "cash": 15.549999999999997,
+ "positions": {
+  "NOK": 1.0,
+  "VALE": 1.0
+ },
  "equity_curve": [
+  40.0,
   40.0,
   40.0,
   40.0,
@@ -6018,14 +6033,31 @@
   40.0
  ],
  "peak_equity": 40.0,
- "last_rebalance_index": -1,
- "target_weights": {},
+ "last_rebalance_index": 501,
+ "target_weights": {
+  "NOK": 0.485,
+  "VALE": 0.485
+ },
  "halted": false,
  "halt_reason": "",
  "halt_index": -1,
- "fills": [],
+ "fills": [
+  {
+   "ticker": "NOK",
+   "quantity": 1.0,
+   "price": 10.63,
+   "fee": 0.0,
+   "date": "2026-09-23"
+  },
+  {
+   "ticker": "VALE",
+   "quantity": 1.0,
+   "price": 13.82,
+   "fee": 0.0,
+   "date": "2026-09-23"
+  }
+ ],
  "log": [
-  "2024-09-23 equity=40.00 dd=0.0% warmup",
   "2024-09-24 equity=40.00 dd=0.0% warmup",
   "2024-09-25 equity=40.00 dd=0.0% warmup",
   "2024-09-26 equity=40.00 dd=0.0% warmup",
@@ -6524,6 +6556,7 @@
   "2026-09-16 equity=40.00 dd=0.0% warmup",
   "2026-09-17 equity=40.00 dd=0.0% warmup",
   "2026-09-18 equity=40.00 dd=0.0% warmup",
-  "2026-09-21 equity=40.00 dd=0.0% warmup"
+  "2026-09-21 equity=40.00 dd=0.0% warmup",
+  "2026-09-23 equity=40.00 dd=0.0% rebalance fills=2"
  ]
 }
