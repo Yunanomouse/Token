@@ -16,6 +16,17 @@ opens in your web browser at http://127.0.0.1:8765/. Close the black window
 to stop the program. The first start offers to install numpy, the one
 dependency.
 
+If NOTHING happens, or a window flashes and vanishes:
+  - You may still be looking inside the zip. Right-click the zip, choose
+    "Extract All..." (Windows) or double-click it (Mac), and open the
+    extracted folder, not the zip.
+  - Python is probably not installed. Install it from python.org (tick
+    "Add python.exe to PATH" on Windows), then double-click again.
+  - Windows may show "Windows protected your PC": click "More info", then
+    "Run anyway". The launcher is a plain text file you can open in Notepad.
+  - If the browser does not open by itself, open it yourself and go to
+    http://127.0.0.1:8765/  while the black window is open.
+
 Everything is PAPER trading: fills at the close, no slippage, no exchange
 connection. The dashboard cannot place real orders.
 
