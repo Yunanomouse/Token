@@ -2,7 +2,11 @@ name: tests
 
 on:
   push:
+    paths-ignore:
+      - "live/**"
   pull_request:
+    paths-ignore:
+      - "live/**"
 
 jobs:
   test:
