@@ -1,0 +1,27 @@
+QUANTUM TRADING - paper-trading dashboard
+=========================================
+
+Needs: Python 3.10 or newer (https://www.python.org/downloads/).
+       On Windows, tick "Add python.exe to PATH" in the installer.
+
+To open the program:
+
+  Windows : double-click  Quantum Trading.bat
+  macOS   : double-click  quantum_trading.command
+            (first time: right-click > Open, because it is unsigned)
+  Linux   : run  python3 launch.py  in this folder
+
+A black window opens and stays open (that is the server), then the dashboard
+opens in your web browser at http://127.0.0.1:8765/. Close the black window
+to stop the program. The first start offers to install numpy, the one
+dependency.
+
+Everything is PAPER trading: fills at the close, no slippage, no exchange
+connection. The dashboard cannot place real orders.
+
+Try first: leave the defaults, set "Replay speed" to 40, press Start, and
+watch it trade eight years of real prices. Then try "Start fresh" with
+"Kill switch" at 0.12 and Start date 2007-01-01 to see it halt in 2008.
+
+Command line, if you prefer:   python -m quantum desktop
+More:                          README.md and docs/quantum_trading.md
