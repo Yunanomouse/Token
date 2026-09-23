@@ -1,0 +1,576 @@
+"""A paper backtester for minute-bar day trading with Kaufman's adaptive average.
+
+This is built for one specific, very common style and nothing else: pick the
+most volatile stocks of the day, go long when the Kaufman Adaptive Moving
+Average (KAMA) turns up by more than its noise filter, get out when it turns
+down by the same amount, hold for minutes, be flat by the close, and do all of
+it in a small cash account that buys whole shares only.  The point is to test
+that style *honestly* -- with the frictions a $50 account actually faces --
+and to compare it with random entries under exactly the same conditions.
+
+What it is, precisely
+---------------------
+* **The indicator** is Perry Kaufman's, as published in *Smarter Trading*
+  (1995) and *Trading Systems and Methods*:
+
+  - efficiency ratio ``ER_t = |C_t - C_{t-n}| / sum_{i=t-n+1..t} |C_i - C_{i-1}|``
+  - smoothing constant ``sc_t = (ER_t * (2/(fast+1) - 2/(slow+1)) + 2/(slow+1))**2``
+  - ``KAMA_t = KAMA_{t-1} + sc_t * (C_t - KAMA_{t-1})``, seeded with
+    ``KAMA_n = C_n``.
+
+  Defaults ``n=10, fast=2, slow=30`` are Kaufman's.  KAMA runs continuously
+  per ticker across days, as it does on a chart, so each morning starts with
+  a warmed-up average built from prior sessions only.
+
+* **The signal** is Kaufman's filter rule.  ``filter_t = k * std(dKAMA)`` over
+  the last ``filter_n`` one-bar KAMA changes.  Go long when
+  ``KAMA_t - min(KAMA over the last lookback bars) > filter_t``; exit when
+  ``max(KAMA since entry) - KAMA_t > filter_t``.  Long only: a cash account
+  cannot short.
+
+* **The screen** ranks, each morning, the tickers by the *previous* sessions'
+  (high - low) / close range and keeps the top ``top_n`` whose last prior
+  close lets at least one whole share fit the position budget.  Nothing
+  from the current session is used.
+
+* **Execution** is deliberately unflattering.  A signal on bar ``t``'s close
+  fills at bar ``t+1``'s *open*, moved against you by ``slippage_bps``.  Stops
+  are checked on the bar's low and fill at ``min(stop, open)`` so a gap is
+  taken in full.  Everything is closed at the first bar at or after
+  ``flat_by``; nothing is held overnight.  Shares are floored to whole
+  numbers, cash never goes negative, and -- by default -- the proceeds of a
+  sale are unsettled until the next session (T+1), so a small account cannot
+  recycle the same dollars into trade after trade in one day.
+
+* **The baseline** (:func:`random_baseline`) takes the strategy's trades and
+  replays the same number of entries per day, with holding times drawn from
+  the strategy's own, at random times on random screened tickers, through the
+  same engine, costs and rules.  If the KAMA signal cannot beat that, it has
+  no edge.
+
+What it is not
+--------------
+It is not a live trading tool, and it does not predict anything.  At $50 with
+whole shares the minimum trade is one share of whatever you can afford, and
+10 bps per side of slippage is often optimistic on the most volatile names.
+Read the baseline comparison before reading the return.
+
+Running it
+----------
+::
+
+    from quantum.intraday import IntradayConfig, load_bars, backtest, random_baseline
+    bars = load_bars("data/intraday/bars.csv")
+    cfg = IntradayConfig()
+    res = backtest(bars, cfg)
+    base = random_baseline(bars, cfg, res["trades"], seed=0)
+    print(res["summary"], base["summary"], sep="\\n")
+"""
+
+from __future__ import annotations
+
+import csv
+import math
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Sequence
+
+import numpy as np
+
+__all__ = [
+    "IntradayConfig",
+    "load_bars",
+    "efficiency_ratio",
+    "kama",
+    "kaufman_filter",
+    "kama_signals",
+    "daily_ranges",
+    "volatility_screen",
+    "backtest",
+    "random_baseline",
+    "summarize",
+]
+
+_FIELDS = ("open", "high", "low", "close", "volume")
+
+
+# --------------------------------------------------------------------------
+# Data
+# --------------------------------------------------------------------------
+
+
+def load_bars(path: str | Path) -> dict[str, dict[str, np.ndarray]]:
+    """Read a long CSV of minute bars into per-ticker arrays.
+
+    The file has columns ``datetime,ticker,open,high,low,close,volume`` with
+    ``datetime`` like ``2026-09-23 09:31:00`` (New York time, regular session
+    only).  Returns ``{ticker: {"datetime": str array, "open": float array,
+    ..., "volume": float array}}``, each ticker sorted by time.
+    """
+    rows: dict[str, list[tuple]] = {}
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        missing = {"datetime", "ticker", *_FIELDS} - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"{path}: missing columns {sorted(missing)}")
+        for r in reader:
+            try:
+                vals = tuple(float(r[f]) for f in _FIELDS)
+            except (TypeError, ValueError):
+                continue
+            rows.setdefault(r["ticker"].strip(), []).append((r["datetime"].strip(), *vals))
+    return {t: _to_arrays(sorted(rs, key=lambda x: x[0])) for t, rs in rows.items()}
+
+
+def _to_arrays(rows: Sequence[tuple]) -> dict[str, np.ndarray]:
+    out = {"datetime": np.array([r[0] for r in rows], dtype=str)}
+    for j, f in enumerate(_FIELDS, start=1):
+        out[f] = np.array([r[j] for r in rows], dtype=float)
+    return out
+
+
+# --------------------------------------------------------------------------
+# Kaufman's adaptive moving average
+# --------------------------------------------------------------------------
+
+
+def efficiency_ratio(close: np.ndarray, n: int = 10) -> np.ndarray:
+    """Kaufman's efficiency ratio: net move over n bars divided by path length.
+
+    ``ER_t = |C_t - C_{t-n}| / sum |C_i - C_{i-1}|`` over the ``n`` one-bar
+    changes ending at ``t``.  1 on a straight line, near 0 in pure noise, and
+    defined as 0 when the window has no movement at all.  ``NaN`` for
+    ``t < n``.  Causal: ``ER_t`` uses only ``C_{t-n} .. C_t``.
+    """
+    c = np.asarray(close, dtype=float)
+    if n < 1:
+        raise ValueError("n must be at least 1")
+    er = np.full(c.shape, np.nan)
+    if c.size <= n:
+        return er
+    change = np.abs(c[n:] - c[:-n])
+    vol = np.lib.stride_tricks.sliding_window_view(np.abs(np.diff(c)), n).sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        er[n:] = np.where(vol > 0, change / np.where(vol > 0, vol, 1.0), 0.0)
+    return er
+
+
+def kama(close: np.ndarray, n: int = 10, fast: int = 2, slow: int = 30) -> np.ndarray:
+    """Kaufman Adaptive Moving Average.
+
+    ``sc_t = (ER_t * (2/(fast+1) - 2/(slow+1)) + 2/(slow+1))**2`` and
+    ``KAMA_t = KAMA_{t-1} + sc_t * (C_t - KAMA_{t-1})``, seeded with
+    ``KAMA_n = C_n``; earlier values are ``NaN``.  Causal.
+    """
+    if not 1 <= fast < slow:
+        raise ValueError("need 1 <= fast < slow")
+    c = np.asarray(close, dtype=float)
+    out = np.full(c.shape, np.nan)
+    if c.size <= n:
+        return out
+    fast_sc, slow_sc = 2.0 / (fast + 1), 2.0 / (slow + 1)
+    sc = (efficiency_ratio(c, n) * (fast_sc - slow_sc) + slow_sc) ** 2
+    k = c[n]
+    out[n] = k
+    for t in range(n + 1, c.size):
+        k = k + sc[t] * (c[t] - k)
+        out[t] = k
+    return out
+
+
+def kaufman_filter(ama: np.ndarray, filter_n: int = 20, k: float = 0.5) -> np.ndarray:
+    """Kaufman's noise filter: ``k`` times the rolling (population) standard
+    deviation of the last ``filter_n`` one-bar changes in the average.
+
+    ``NaN`` until ``filter_n`` valid changes exist.  Causal.
+    """
+    a = np.asarray(ama, dtype=float)
+    out = np.full(a.shape, np.nan)
+    if a.size <= filter_n:
+        return out
+    d = np.diff(a)  # d[j] = a[j+1] - a[j]
+    win = np.lib.stride_tricks.sliding_window_view(d, filter_n)
+    out[filter_n:] = k * win.std(axis=1)  # NaN windows stay NaN
+    return out
+
+
+def _rolling_min(a: np.ndarray, w: int) -> np.ndarray:
+    out = np.full(a.shape, np.nan)
+    if a.size >= w:
+        out[w - 1:] = np.lib.stride_tricks.sliding_window_view(a, w).min(axis=1)
+    return out
+
+
+def kama_signals(close: np.ndarray, config: "IntradayConfig") -> dict[str, np.ndarray]:
+    """Per-bar arrays for one ticker: ``kama``, ``filter``, and ``entry``
+    (bool: ``KAMA - min(KAMA, lookback) > filter``).  The exit rule depends
+    on the entry bar and is evaluated inside the backtest."""
+    a = kama(close, config.kama_n, config.kama_fast, config.kama_slow)
+    f = kaufman_filter(a, config.filter_n, config.filter_k)
+    lo = _rolling_min(a, config.entry_lookback)
+    with np.errstate(invalid="ignore"):
+        entry = (a - lo) > f
+    return {"kama": a, "filter": f, "entry": entry & ~np.isnan(f) & ~np.isnan(lo)}
+
+
+# --------------------------------------------------------------------------
+# Configuration
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class IntradayConfig:
+    cash: float = 50.0
+    deploy_fraction: float = 0.7
+    """Share of current equity put into a position (the owner uses 60-80%)."""
+    max_positions: int = 1
+    whole_shares: bool = True
+    slippage_bps: float = 10.0
+    """Per side, always against you: buys fill higher, sells lower."""
+    commission: float = 0.0
+    """Flat fee per order (each side)."""
+    max_trades_per_day: int = 6
+    """Round trips (entries) per session."""
+    stop_loss_pct: float | None = None
+    """Optional hard stop, as a fraction below the entry fill, checked on
+    each bar's low and filled at ``min(stop, open)``."""
+    flat_by: str = "15:55"
+    """Close everything at the first bar at or after this time."""
+    no_entry_after: str = "15:30"
+    """No entry signal is acted on from a bar at or after this time."""
+    settled_cash_only: bool = True
+    """Cash account, T+1: sale proceeds cannot be reused until the next
+    session."""
+    kama_n: int = 10
+    kama_fast: int = 2
+    kama_slow: int = 30
+    filter_n: int = 20
+    filter_k: float = 0.5
+    entry_lookback: int = 3
+    """Bars over which the KAMA low (entry) is taken."""
+    top_n: int = 5
+    screen_days: int = 1
+    """Prior sessions averaged for the volatility ranking."""
+
+    def __post_init__(self) -> None:
+        if self.cash <= 0:
+            raise ValueError("cash must be positive")
+        if not 0.0 < self.deploy_fraction <= 1.0:
+            raise ValueError("deploy_fraction must lie in (0, 1]")
+        if self.max_positions < 1 or self.max_trades_per_day < 0 or self.top_n < 1:
+            raise ValueError("max_positions and top_n must be >= 1, max_trades_per_day >= 0")
+        if self.slippage_bps < 0 or self.commission < 0:
+            raise ValueError("slippage_bps and commission must be non-negative")
+        if self.stop_loss_pct is not None and not 0.0 < self.stop_loss_pct < 1.0:
+            raise ValueError("stop_loss_pct must lie in (0, 1)")
+        if self.entry_lookback < 1 or self.filter_n < 2 or self.screen_days < 1:
+            raise ValueError("entry_lookback >= 1, filter_n >= 2, screen_days >= 1")
+        if not 1 <= self.kama_fast < self.kama_slow or self.kama_n < 1:
+            raise ValueError("need kama_n >= 1 and 1 <= kama_fast < kama_slow")
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+# --------------------------------------------------------------------------
+# Volatility screen
+# --------------------------------------------------------------------------
+
+
+def daily_ranges(bars: dict[str, dict[str, np.ndarray]]) -> dict[str, dict[str, tuple[float, float]]]:
+    """``{ticker: {date: ((high - low) / close, close)}}`` per session, using
+    that session's high, low and last close."""
+    out: dict[str, dict[str, tuple[float, float]]] = {}
+    for t, b in bars.items():
+        dates = np.array([d[:10] for d in b["datetime"]])
+        per: dict[str, tuple[float, float]] = {}
+        if dates.size:
+            starts = np.flatnonzero(np.r_[True, dates[1:] != dates[:-1]])
+            ends = np.r_[starts[1:], dates.size]
+            for s, e in zip(starts, ends):
+                c = b["close"][e - 1]
+                rng = (b["high"][s:e].max() - b["low"][s:e].min()) / c if c > 0 else 0.0
+                per[str(dates[s])] = (float(rng), float(c))
+        out[t] = per
+    return out
+
+
+def volatility_screen(ranges: dict[str, dict[str, tuple[float, float]]], date: str, budget: float,
+                      top_n: int = 5, screen_days: int = 1, slippage_bps: float = 0.0,
+                      commission: float = 0.0, tradable: set[str] | None = None) -> list[str]:
+    """Tickers for ``date``, most volatile first, using prior sessions only.
+
+    Each ticker is scored by its mean (high - low) / close range over its last
+    ``screen_days`` sessions strictly before ``date``.  A ticker qualifies if
+    its last prior close (plus slippage and commission) fits one whole share
+    in ``budget``; the top ``top_n`` qualifiers are returned.  ``tradable``
+    optionally restricts to tickers that have bars on ``date``.
+    """
+    scored = []
+    for t, per in ranges.items():
+        if tradable is not None and t not in tradable:
+            continue
+        prior = sorted(d for d in per if d < date)[-screen_days:]
+        if not prior:
+            continue
+        last_close = per[prior[-1]][1]
+        if last_close * (1 + slippage_bps / 1e4) + commission > budget:
+            continue
+        scored.append((-float(np.mean([per[d][0] for d in prior])), t))
+    scored.sort()
+    return [t for _, t in scored[:top_n]]
+
+
+# --------------------------------------------------------------------------
+# Engine
+# --------------------------------------------------------------------------
+
+
+class _KamaPolicy:
+    """Kaufman's filter rule on precomputed per-ticker arrays."""
+
+    def __init__(self, bars, config):
+        self.sig = {t: kama_signals(b["close"], config) for t, b in bars.items()}
+
+    def start_day(self, date, screen, times, trades_today_cap):
+        pass
+
+    def want_entry(self, ticker, i, time):
+        return bool(self.sig[ticker]["entry"][i]), {}
+
+    def want_exit(self, ticker, i, pos):
+        s = self.sig[ticker]
+        a, f = s["kama"][i], s["filter"][i]
+        if np.isnan(a):
+            return False
+        pos["peak"] = a if pos.get("peak") is None else max(pos["peak"], a)
+        return not np.isnan(f) and pos["peak"] - a > f
+
+
+class _RandomPolicy:
+    """Same count of entries per day and same holding-time distribution as a
+    given set of trades, at random times on random screened tickers."""
+
+    def __init__(self, trades, config, seed):
+        self.rng = np.random.default_rng(seed)
+        self.per_day: dict[str, int] = {}
+        for tr in trades:
+            d = tr["entry_time"][:10]
+            self.per_day[d] = self.per_day.get(d, 0) + 1
+        self.holds = np.array([max(1, int(tr.get("bars_held", 1))) for tr in trades] or [1])
+        self.no_entry_after = config.no_entry_after
+        self.queue: list[tuple[str, str, int]] = []
+
+    def start_day(self, date, screen, times, trades_today_cap):
+        k = self.per_day.get(date, 0)
+        ok = [t for t in times if t[11:16] < self.no_entry_after]
+        self.queue = []
+        if k and screen and ok:
+            when = sorted(self.rng.choice(len(ok), size=k, replace=len(ok) < k))
+            who = self.rng.integers(0, len(screen), size=k)
+            hold = self.rng.choice(self.holds, size=k)
+            self.queue = [(ok[w], screen[j], int(h)) for w, j, h in zip(when, who, hold)]
+
+    def want_entry(self, ticker, i, time):
+        if self.queue and self.queue[0][0] <= time and self.queue[0][1] == ticker:
+            _, _, h = self.queue.pop(0)
+            return True, {"hold": h}
+        return False, {}
+
+    def want_exit(self, ticker, i, pos):
+        return i - pos["entry_idx"] >= pos["meta"]["hold"] - 1
+
+
+def _simulate(bars, config: IntradayConfig, policy) -> dict:
+    cfg = config
+    slip = cfg.slippage_bps / 1e4
+    ranges = daily_ranges(bars)
+    index = {t: {d: i for i, d in enumerate(b["datetime"])} for t, b in bars.items()}
+    by_date: dict[str, set[str]] = {}
+    for t, b in bars.items():
+        for d in b["datetime"]:
+            by_date.setdefault(d[:10], set()).add(str(d))
+    last_of_day: dict[str, dict[str, int]] = {}
+    for t, b in bars.items():
+        ld: dict[str, int] = {}
+        for i, d in enumerate(b["datetime"]):
+            ld[d[:10]] = i
+        last_of_day[t] = ld
+
+    settled, unsettled = float(cfg.cash), 0.0
+    positions: dict[str, dict] = {}
+    trades: list[dict] = []
+    equity_curve: list[dict] = []
+    total_steps = invested_steps = 0
+    in_use_frac: list[float] = []
+    in_use_dollars: list[float] = []
+
+    def equity_now():
+        return settled + unsettled + sum(p["shares"] * p["last"] for p in positions.values())
+
+    def close_pos(t, i, price, reason):
+        nonlocal settled, unsettled
+        p = positions.pop(t)
+        fill = price * (1 - slip)
+        proceeds = p["shares"] * fill - cfg.commission
+        if cfg.settled_cash_only:
+            unsettled += proceeds
+        else:
+            settled += proceeds
+        pnl = proceeds - p["cost"]
+        trades.append({
+            "ticker": t, "entry_time": p["entry_time"], "entry_price": p["entry_price"],
+            "exit_time": str(bars[t]["datetime"][i]), "exit_price": float(fill), "shares": p["shares"],
+            "pnl": float(pnl), "pnl_pct": float(pnl / p["cost"]) if p["cost"] else 0.0, "reason": reason,
+            "bars_held": int(i - p["entry_idx"]),
+        })
+
+    for date in sorted(by_date):
+        settled += unsettled
+        unsettled = 0.0
+        times = sorted(by_date[date])
+        eq0 = equity_now()
+        screen = volatility_screen(ranges, date, cfg.deploy_fraction * eq0, cfg.top_n, cfg.screen_days,
+                                   cfg.slippage_bps, cfg.commission,
+                                   tradable={t for t in bars if date in last_of_day[t]})
+        policy.start_day(date, screen, times, cfg.max_trades_per_day)
+        pending: dict[str, tuple[str, dict]] = {}
+        entries = 0
+
+        for now in times:
+            hm = now[11:16]
+            live = [(t, index[t][now]) for t in screen if now in index[t]]
+            # 1. exits at the open: end of day, then signalled exits.
+            for t, i in live:
+                if t not in positions:
+                    continue
+                if hm >= cfg.flat_by:
+                    pending.pop(t, None)
+                    close_pos(t, i, bars[t]["open"][i], "eod")
+                elif pending.get(t, ("",))[0] == "sell":
+                    pending.pop(t)
+                    close_pos(t, i, bars[t]["open"][i], "signal")
+            # 2. entries at the open.
+            for t, i in live:
+                if pending.get(t, ("",))[0] != "buy":
+                    continue
+                _, meta = pending.pop(t)
+                if hm >= cfg.flat_by or t in positions:
+                    continue
+                fill = bars[t]["open"][i] * (1 + slip)
+                spend = min(cfg.deploy_fraction * equity_now(), settled) - cfg.commission
+                shares = spend / fill if spend > 0 else 0.0
+                if cfg.whole_shares:
+                    shares = float(math.floor(shares + 1e-12))
+                if shares <= 0 or (cfg.whole_shares and shares < 1):
+                    continue
+                fill = float(fill)
+                cost = shares * fill + cfg.commission
+                settled = max(0.0, settled - cost)
+                entries += 1
+                positions[t] = {
+                    "shares": shares, "entry_price": fill, "cost": cost, "entry_idx": i,
+                    "entry_time": now, "last": float(bars[t]["close"][i]), "peak": None, "meta": meta,
+                    "stop": fill * (1 - cfg.stop_loss_pct) if cfg.stop_loss_pct else None,
+                }
+            # 3. intrabar stop, forced close on the last bar, signals on the close.
+            for t, i in live:
+                b = bars[t]
+                if t in positions:
+                    p = positions[t]
+                    if p["stop"] is not None and b["low"][i] <= p["stop"]:
+                        pending.pop(t, None)
+                        close_pos(t, i, min(p["stop"], b["open"][i]), "stop")
+                        continue
+                    p["last"] = float(b["close"][i])
+                    if i == last_of_day[t][date]:
+                        pending.pop(t, None)
+                        close_pos(t, i, b["close"][i], "eod")
+                        continue
+                    if t not in pending and hm < cfg.flat_by and policy.want_exit(t, i, p):
+                        pending[t] = ("sell", {})
+                elif (t not in pending and hm < cfg.no_entry_after and i != last_of_day[t][date]
+                      and entries + sum(1 for v in pending.values() if v[0] == "buy") < cfg.max_trades_per_day
+                      and len(positions) + sum(1 for v in pending.values() if v[0] == "buy") < cfg.max_positions):
+                    want, meta = policy.want_entry(t, i, now)
+                    if want:
+                        pending[t] = ("buy", meta)
+            total_steps += 1
+            if positions:
+                invested_steps += 1
+                val = sum(p["shares"] * p["last"] for p in positions.values())
+                in_use_dollars.append(val)
+                in_use_frac.append(val / equity_now())
+
+        for t in list(positions):  # safety net: never hold overnight
+            close_pos(t, last_of_day[t][date], bars[t]["close"][last_of_day[t][date]], "eod")
+        equity_curve.append({"date": date, "equity": float(equity_now())})
+
+    summary = summarize(trades, equity_curve, cfg.cash)
+    summary.update({
+        "avg_capital_in_use": float(np.mean(in_use_frac)) if in_use_frac else 0.0,
+        "avg_capital_in_use_dollars": float(np.mean(in_use_dollars)) if in_use_dollars else 0.0,
+        "time_invested_fraction": invested_steps / total_steps if total_steps else 0.0,
+    })
+    return {"trades": trades, "equity": equity_curve, "summary": summary, "config": cfg.to_dict()}
+
+
+def _max_drawdown(values: Sequence[float]) -> float:
+    v = np.asarray(values, dtype=float)
+    if v.size == 0:
+        return 0.0
+    peak = np.maximum.accumulate(v)
+    return float(np.max((peak - v) / peak))
+
+
+def summarize(trades: Sequence[dict], equity_curve: Sequence[dict], cash: float) -> dict:
+    """Headline statistics for a list of trades and a daily equity curve."""
+    pnl = np.array([t["pnl"] for t in trades], dtype=float)
+    wins, losses = pnl[pnl > 0], pnl[pnl <= 0]
+    final = equity_curve[-1]["equity"] if equity_curve else cash
+    days = len(equity_curve)
+    gross_loss = -losses.sum()
+    return {
+        "initial_equity": cash,
+        "final_equity": final,
+        "total_return": float(final / cash - 1.0),
+        "n_trades": int(pnl.size),
+        "n_days": days,
+        "trades_per_day": float(pnl.size / days) if days else 0.0,
+        "win_rate": float(wins.size / pnl.size) if pnl.size else None,
+        "avg_win": float(wins.mean()) if wins.size else None,
+        "avg_loss": float(losses.mean()) if losses.size else None,
+        "avg_pnl_pct": float(np.mean([t["pnl_pct"] for t in trades])) if trades else None,
+        "profit_factor": (float(wins.sum() / gross_loss) if gross_loss > 0
+                          else (math.inf if wins.size else None)),
+        "max_drawdown_daily": _max_drawdown([cash] + [e["equity"] for e in equity_curve]),
+        "max_drawdown_trades": _max_drawdown(cash + np.r_[0.0, np.cumsum(pnl)]),
+        "exits": {r: sum(1 for t in trades if t["reason"] == r) for r in ("signal", "stop", "eod")},
+    }
+
+
+def backtest(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig | None = None) -> dict:
+    """Run Kaufman's KAMA filter strategy over minute bars.
+
+    Returns ``{"trades": [...], "equity": [{"date", "equity"}], "summary": {...},
+    "config": {...}}``.  Each trade has ``ticker, entry_time, entry_price,
+    exit_time, exit_price, shares, pnl, pnl_pct, reason`` (``signal``,
+    ``stop`` or ``eod``) and ``bars_held``.  See the module docstring for the
+    execution rules.
+    """
+    config = config or IntradayConfig()
+    return _simulate(bars, config, _KamaPolicy(bars, config))
+
+
+def random_baseline(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig,
+                    trades: Sequence[dict], seed: int = 0) -> dict:
+    """Random entries under the same screen, timing, costs and rules.
+
+    For every day, the same number of entries as ``trades`` has on that day
+    are placed at uniformly random bar times (before ``no_entry_after``) on
+    uniformly random screened tickers, each held for a number of bars drawn
+    from ``trades``' own holding times (stops and the end-of-day close still
+    apply).  Entries that would overlap an open position wait for it to
+    close.  Returns the same structure as :func:`backtest`.
+    """
+    return _simulate(bars, config, _RandomPolicy(trades, config, seed))
