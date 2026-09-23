@@ -2204,6 +2204,28 @@ class TestLiveEngine(unittest.TestCase):
             n_rebalances = sum("rebalance" in line for line in engine.state.log)
             self.assertGreater(n_rebalances, 0)
 
+    def test_turnover_cap_counts_cash(self):
+        """One-way turnover is max(buys, sells) / equity, so cash moving counts too."""
+        import tempfile
+        from collections import defaultdict
+        from pathlib import Path
+        from quantum.live import ReplayFeed, RiskLimits, run
+
+        with tempfile.TemporaryDirectory() as d:
+            config = self._config(Path(d), limits=RiskLimits(min_history=60, max_drawdown=0.9, max_turnover=0.30))
+            engine = run(config, ReplayFeed(self.PRICES, self.TICKERS, start="2012-01-01", end="2012-12-31"), resume=False)
+            st = engine.state
+            traded = defaultdict(lambda: [0.0, 0.0])
+            for f in st.fills:
+                traded[f["date"]][f["quantity"] < 0] += abs(f["quantity"]) * f["price"]
+            self.assertGreater(len(traded), 1)
+            equity = dict(zip(st.dates, st.equity_curve))
+            for date, (buys, sells) in traded.items():
+                self.assertLessEqual(max(buys, sells), 0.30 * equity[date] * (1 + 1e-9), date)
+            # From all cash the first rebalance deploys the cap, not twice it.
+            first = traded[min(traded)]
+            self.assertAlmostEqual(first[0] / config.initial_cash, 0.30, delta=1e-6)
+
     def test_file_feed_delivers_only_new_rows(self):
         import csv
         import tempfile

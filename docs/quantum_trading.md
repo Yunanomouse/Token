@@ -879,9 +879,9 @@ python3 -m quantum live --replay data/prices/us_equities_1989_2018.csv \
 
 ```
 bars            : 754 (2012-01-03 to 2014-12-31)
-equity          : 100,000.00 -> 128,575.70 (+28.58%, +8.76%/yr)
+equity          : 100,000.00 -> 130,715.18 (+30.72%, +9.36%/yr)
 max drawdown    : 9.3%
-fills           : 114, fees paid 469.36
+fills           : 115, fees paid 457.20
 halted          : False
 positions       : AAPL 25.0%, JPM 25.0%, WMT 25.0%, BAC 25.0%
 ```
@@ -916,7 +916,7 @@ rebalances on real prices.
 | limit | default | what it does |
 |---|---|---|
 | `max_weight` | 40% | per-name cap after rebalance, mass redistributed |
-| `max_turnover` | 50% | one-way turnover per rebalance; the move is shrunk toward the target |
+| `max_turnover` | 50% | one-way turnover per rebalance, max(buys, sells) / equity with cash counted, so the first trade from all cash deploys at most this much; the move is shrunk toward the target |
 | `min_history` | 252 | bars before the first fit |
 | `max_drawdown` | 25% | **kill switch**: liquidate and halt |
 
@@ -938,7 +938,7 @@ only the new bars, and the date list has no duplicates.
 
 ### What the numbers mean
 
-The 8.76% a year above is a paper result on a hindsight-selected universe
+The 9.36% a year above is a paper result on a hindsight-selected universe
 with no slippage, over a period when the S&P 500 returned about 20% a year.
 It is here to show the engine works, not that the strategy does.  The
 question of whether the strategy works was answered in the out-of-sample

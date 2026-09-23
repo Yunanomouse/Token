@@ -287,7 +287,9 @@ class RiskLimits:
     max_weight: float = 0.40
     """No single name above this fraction of equity after a rebalance."""
     max_turnover: float = 0.50
-    """Maximum one-way turnover per rebalance, as a fraction of equity."""
+    """Maximum one-way turnover per rebalance, as a fraction of equity:
+    max(buys, sells), so cash counts and a first trade from all cash deploys
+    at most this much."""
     max_drawdown: float = 0.25
     """Peak-to-trough equity loss that trips the kill switch."""
     min_history: int = 252
@@ -499,7 +501,10 @@ class Engine:
         # Risk limit 2: turnover cap, by shrinking the move toward the target.
         current = np.array([self.weights(bar).get(t, 0.0) for t in self.state.tickers])
         move = target - current
-        turnover = float(np.abs(move).sum() / 2.0)
+        # Cash is a holding too: it moves by -sum(move).  Counting it makes
+        # this max(buys, sells) / equity, so going from all cash to fully
+        # invested is 100% turnover, not 50%.
+        turnover = float((np.abs(move).sum() + abs(move.sum())) / 2.0)
         note = ""
         if turnover > self.limits.max_turnover and turnover > 0:
             scale = self.limits.max_turnover / turnover
