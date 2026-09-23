@@ -1,0 +1,641 @@
+<title>Quantum Trading</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --ground: #f2f3f1;
+  --surface: #fbfbfa;
+  --sunken: #eceeeb;
+  --line: #dadcd8;
+  --grid: #e5e7e3;
+  --ink: #121513;
+  --ink-2: #4b504c;
+  --ink-3: #767b77;
+  --btn: #121513;
+  --btn-ink: #fbfbfa;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --dd: #e34948;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --tip-shadow: 0 4px 16px rgba(18, 21, 19, .10);
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #101211; --surface: #181a19; --sunken: #202321; --line: #2d302e; --grid: #262927;
+    --ink: #f1f2f0; --ink-2: #b8bcb8; --ink-3: #8a8f8b; --btn: #f1f2f0; --btn-ink: #121513;
+    --series-1: #3987e5; --series-2: #d95926; --dd: #e66767;
+    --tip-shadow: 0 4px 16px rgba(0, 0, 0, .45);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #101211; --surface: #181a19; --sunken: #202321; --line: #2d302e; --grid: #262927;
+  --ink: #f1f2f0; --ink-2: #b8bcb8; --ink-3: #8a8f8b; --btn: #f1f2f0; --btn-ink: #121513;
+  --series-1: #3987e5; --series-2: #d95926; --dd: #e66767;
+  --tip-shadow: 0 4px 16px rgba(0, 0, 0, .45);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--ground); color: var(--ink); font: 14px/1.5 var(--sans); }
+.num, td.num, .tile .value, .mono { font-variant-numeric: tabular-nums; }
+header.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
+}
+header.bar h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.pill { font: 600 11px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase;
+  padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); background: var(--surface); }
+.pill.paper { border-color: var(--warning); color: var(--ink); }
+.pill.running { border-color: var(--good); color: var(--ink); }
+.pill.halted { border-color: var(--critical); color: var(--ink); }
+.pill .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 0; background: var(--ink-3); }
+.pill.running .dot { background: var(--good); }
+.pill.halted .dot { background: var(--critical); }
+.pill.paper .dot { background: var(--warning); }
+#runinfo { color: var(--ink-3); font-size: 12.5px; }
+.grow { flex: 1; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-inline: 16px; padding-block: 16px 40px; }
+.layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.panel + .panel { margin-top: 12px; }
+.panel h2 { margin: 0 0 10px; font: 600 11.5px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.field { display: grid; gap: 4px; margin-top: 10px; }
+.field:first-of-type { margin-top: 0; }
+label, .lbl { font-size: 12px; color: var(--ink-2); }
+input[type=number], input[type=date], select {
+  width: 100%; padding: 7px 9px; font: 14px var(--sans); color: var(--ink);
+  background: var(--ground); border: 1px solid var(--line); border-radius: 6px;
+}
+input:focus-visible, select:focus-visible, button:focus-visible, .chip input:focus-visible + span { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; margin-top: 10px; }
+.pair > .field { margin-top: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip span { display: inline-block; padding: 4px 9px; border: 1px solid var(--line); border-radius: 5px;
+  font: 500 12.5px/1.3 var(--mono); color: var(--ink-2); background: var(--ground); cursor: pointer; user-select: none; }
+.chip input:checked + span { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.hint { font-size: 12px; color: var(--ink-3); margin: 6px 0 0; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+button { font: 600 13.5px var(--sans); padding: 9px 14px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--sunken); color: var(--ink); }
+button.primary { background: var(--btn); color: var(--btn-ink); border-color: var(--btn); }
+button.warn { border-color: var(--critical); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+.error { color: var(--critical); font-weight: 500; margin-top: 10px; font-size: 13px; }
+.error:empty { display: none; }
+.banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; color: var(--ink-2); }
+.banner.halt { border-color: var(--critical); color: var(--ink); }
+.banner b { color: var(--ink); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; }
+.tile .label { font-size: 12px; color: var(--ink-2); }
+.tile .value { font-size: 23px; font-weight: 600; margin-top: 1px; letter-spacing: -.01em; }
+.tile .sub { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-2); margin: -2px 0 8px; }
+.legend .key { display: inline-block; width: 16px; height: 2px; vertical-align: 4px; margin-right: 6px; border-radius: 1px; }
+.legend b { color: var(--ink); font-weight: 600; }
+.chart { position: relative; height: 270px; touch-action: pan-y; }
+.chart.small { height: 118px; }
+.chart canvas { display: block; width: 100%; height: 100%; }
+.cross { position: absolute; top: 8px; bottom: 22px; width: 1px; background: var(--ink-3); pointer-events: none; }
+.tip { position: absolute; top: 6px; pointer-events: none; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 10px; font-size: 12px; box-shadow: var(--tip-shadow); white-space: nowrap; }
+.tip .row { display: flex; align-items: center; gap: 7px; }
+.tip .row b { font-weight: 600; color: var(--ink); }
+.tip .sw { width: 10px; height: 2px; border-radius: 1px; }
+.tip .date { color: var(--ink-3); margin-bottom: 3px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+@media (max-width: 1150px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.two .panel + .panel { margin-top: 0; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { font-weight: 500; font-size: 12px; color: var(--ink-2); }
+td.t { font-family: var(--mono); font-weight: 500; }
+th.num, td.num { text-align: right; }
+td.muted { color: var(--ink-3); }
+.wbar { height: 5px; border-radius: 3px; background: var(--series-1); min-width: 2px; }
+pre.log { margin: 0; max-height: 240px; overflow: auto; font: 12px/1.55 var(--mono); color: var(--ink-2); white-space: pre; }
+.about { margin-top: 12px; color: var(--ink-2); font-size: 13px; }
+.about p { margin: 0 0 6px; max-width: 70ch; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<header class="bar">
+  <h1>Quantum Trading</h1>
+  <span class="pill paper" title="Simulated fills at the daily close. No exchange connection, no real money."><span class="dot"></span>Paper</span>
+  <span class="pill" id="status"><span class="dot"></span><span id="statusText">Ready</span></span>
+  <span id="runinfo"></span>
+  <span class="grow"></span>
+</header>
+
+<div class="wrap">
+  <div class="layout">
+    <aside>
+      <div class="panel">
+        <h2>Run</h2>
+        <div class="field">
+          <span class="lbl" id="uniLbl">Stocks to trade</span>
+          <div class="chips" id="universe" role="group" aria-labelledby="uniLbl"></div>
+          <p class="hint" id="dataHint"></p>
+        </div>
+        <div class="pair">
+          <div class="field"><label for="start">From</label><input type="date" id="start"></div>
+          <div class="field"><label for="end">To</label><input type="date" id="end"></div>
+        </div>
+        <div class="field">
+          <label for="speed">Speed</label>
+          <select id="speed">
+            <option value="10">Slow: 10 trading days a second</option>
+            <option value="40" selected>Watch: 40 trading days a second</option>
+            <option value="150">Fast: 150 trading days a second</option>
+            <option value="0">Instant</option>
+          </select>
+        </div>
+        <div class="btns">
+          <button class="primary" id="btnStart">Start</button>
+          <button id="btnPause" disabled>Pause</button>
+          <button id="btnReset">Reset</button>
+        </div>
+        <div class="btns" id="confirmReset" hidden>
+          <span class="hint" style="margin:0;align-self:center">Clear this run and start over?</span>
+          <button class="warn" id="btnResetYes">Clear it</button>
+          <button id="btnResetNo">Keep it</button>
+        </div>
+        <div class="error" id="error" role="alert"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Strategy</h2>
+        <div class="field">
+          <label for="strategy">How to pick the portfolio</label>
+          <select id="strategy">
+            <option value="cardinality">Best N stocks (QUBO portfolio optimiser)</option>
+            <option value="markowitz">Markowitz mean-variance</option>
+            <option value="equal_weight">Equal weight in everything</option>
+          </select>
+        </div>
+        <div class="pair">
+          <div class="field"><label for="cardinality">Hold exactly N stocks</label><input type="number" id="cardinality" min="1" value="4"></div>
+          <div class="field"><label for="riskAversion">Risk aversion</label><input type="number" id="riskAversion" min="0.1" step="0.5" value="2"></div>
+        </div>
+        <div class="pair">
+          <div class="field"><label for="window">Look back (days)</label><input type="number" id="window" min="20" value="252"></div>
+          <div class="field"><label for="rebalanceEvery">Rebalance every (days)</label><input type="number" id="rebalanceEvery" min="1" value="21"></div>
+        </div>
+        <p class="hint">252 trading days is one year; 21 is about a month.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Money and risk</h2>
+        <div class="pair">
+          <div class="field"><label for="initialCash">Starting cash ($)</label><input type="number" id="initialCash" min="1" value="100000"></div>
+          <div class="field"><label for="feePct">Fee per trade (%)</label><input type="number" id="feePct" min="0" step="0.01" value="0.05"></div>
+        </div>
+        <div class="pair">
+          <div class="field"><label for="maxWeightPct">Max in one stock (%)</label><input type="number" id="maxWeightPct" min="1" max="100" value="40"></div>
+          <div class="field"><label for="maxTurnoverPct">Max traded per rebalance (%)</label><input type="number" id="maxTurnoverPct" min="1" max="100" value="50"></div>
+        </div>
+        <div class="field">
+          <label for="maxDrawdownPct">Kill switch: stop after a fall of (%)</label>
+          <input type="number" id="maxDrawdownPct" min="1" max="100" value="25">
+        </div>
+        <p class="hint">If the account falls this far from its peak, everything is sold and trading stops until you allow it again.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Your own prices</h2>
+        <div class="field">
+          <label for="upload">Load a CSV file</label>
+          <input type="file" id="upload" accept=".csv,text/csv">
+        </div>
+        <p class="hint">One date column, then one closing-price column per stock. Rows with a missing price are skipped.</p>
+        <div class="btns" id="builtinRow" hidden><button id="btnBuiltin">Back to the built-in prices</button></div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="banner" id="banner"></div>
+      <div class="banner halt" id="haltBanner" hidden>
+        <span><b>Kill switch tripped.</b> <span id="haltReason"></span>. Everything was sold and trading stopped.</span>
+        <span class="grow"></span>
+        <button id="btnResume">Allow trading again</button>
+      </div>
+
+      <div class="tiles">
+        <div class="tile"><div class="label">Account value</div><div class="value" id="tEquity">–</div><div class="sub" id="tEquitySub"></div></div>
+        <div class="tile"><div class="label">Total return</div><div class="value" id="tReturn">–</div><div class="sub" id="tReturnSub"></div></div>
+        <div class="tile"><div class="label">Versus equal weight</div><div class="value" id="tVs">–</div><div class="sub" id="tVsSub"></div></div>
+        <div class="tile"><div class="label">Fall from peak</div><div class="value" id="tDD">–</div><div class="sub" id="tDDSub"></div></div>
+        <div class="tile"><div class="label">Trades</div><div class="value" id="tFills">–</div><div class="sub" id="tFillsSub"></div></div>
+      </div>
+
+      <div class="panel">
+        <h2>Account value</h2>
+        <div class="legend" id="legend"></div>
+        <div class="chart" id="eqWrap"><canvas id="cEquity" aria-label="Account value over time for the strategy and for equal weight"></canvas>
+          <div class="cross" id="cross" hidden></div><div class="tip" id="tip" hidden></div></div>
+        <h2 style="margin-top:14px">Fall from peak</h2>
+        <div class="chart small"><canvas id="cDD" aria-label="Drawdown from the running peak"></canvas></div>
+      </div>
+
+      <div class="two">
+        <div class="panel">
+          <h2>Holdings</h2>
+          <div class="scroll"><table>
+            <thead><tr><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Share of account</th><th style="width:28%"><span class="visually-hidden">Weight bar</span></th></tr></thead>
+            <tbody id="positions"></tbody>
+          </table></div>
+          <p class="hint" id="cashLine"></p>
+        </div>
+        <div class="panel">
+          <h2>Latest trades</h2>
+          <div class="scroll"><table>
+            <thead><tr><th>Date</th><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Fee</th></tr></thead>
+            <tbody id="fills"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <h2>Engine log</h2>
+        <pre class="log" id="log"></pre>
+      </div>
+
+      <div class="about">
+        <p><b>What this is.</b> A paper-trading simulator. It replays real daily closing prices from 2006 to 2018 and trades them the way the Quantum Trading engine would: every rebalance it re-estimates returns and risk from the look-back window, picks the portfolio, checks the risk limits, and fills orders at that day's close less the fee. No real money, no exchange, no slippage, so real results would be worse.</p>
+        <p><b>How to read it.</b> The orange line is the plain alternative of holding every selected stock in equal amounts. If the blue line is not clearly above it, the optimiser did not earn its keep over that period.</p>
+        <p><b>Prices</b>: adjusted daily closes from PyPortfolioOpt's test data (MIT licence), originally Yahoo Finance.</p>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+/*__ENGINE__*/
+</script>
+<script>
+const BUILTIN = /*__DATA__*/;
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const DEFAULT_TICKERS = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"];
+  const FIELDS = ["cardinality", "riskAversion", "window", "rebalanceEvery", "initialCash", "feePct", "maxWeightPct", "maxTurnoverPct", "maxDrawdownPct", "strategy", "speed", "start", "end"];
+  const money = v => v == null ? "–" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const money2 = v => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pct = (v, d = 1) => v == null || !isFinite(v) ? "–" : (v * 100).toFixed(d) + "%";
+  const signed = (v, d = 1) => v == null || !isFinite(v) ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(d) + "%";
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  let dataset = BUILTIN, isBuiltin = true;
+  let run = null;        // {engine, bench, bars, i, status, timer, last, example}
+  let selected = new Set(DEFAULT_TICKERS);
+
+  // ---- settings (per-viewer convenience only) ----------------------------
+  function loadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem("qt-settings") || "null");
+      if (!s) return;
+      FIELDS.forEach(f => { if (s[f] != null && $(f)) $(f).value = s[f]; });
+      if (Array.isArray(s.tickers)) selected = new Set(s.tickers);
+    } catch (e) { /* storage unavailable: defaults stand */ }
+  }
+  function saveSettings() {
+    try {
+      const s = {}; FIELDS.forEach(f => s[f] = $(f).value); s.tickers = [...selected];
+      localStorage.setItem("qt-settings", JSON.stringify(s));
+    } catch (e) { /* ignore */ }
+  }
+
+  // ---- universe and dates ------------------------------------------------
+  function buildUniverse() {
+    const box = $("universe"); box.textContent = "";
+    const avail = dataset.tickers;
+    if (![...selected].some(t => avail.includes(t))) selected = new Set(avail.slice(0, Math.min(8, avail.length)));
+    avail.forEach(t => {
+      const lab = document.createElement("label"); lab.className = "chip";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "tk-" + t; cb.checked = selected.has(t);
+      cb.addEventListener("change", () => { cb.checked ? selected.add(t) : selected.delete(t); saveSettings(); });
+      const sp = document.createElement("span"); sp.textContent = t;
+      lab.append(cb, sp); box.appendChild(lab);
+    });
+    const d0 = dataset.dates[0], d1 = dataset.dates[dataset.dates.length - 1];
+    ["start", "end"].forEach(id => { $(id).min = d0; $(id).max = d1; });
+    if (!$("start").value || $("start").value < d0 || $("start").value > d1) $("start").value = isBuiltin ? "2010-01-01" : d0;
+    if (!$("end").value || $("end").value > d1 || $("end").value < d0) $("end").value = d1;
+    $("dataHint").textContent = (isBuiltin ? "Built-in prices" : "Your file") + `: ${avail.length} stocks, ${d0} to ${d1}.`;
+    $("builtinRow").hidden = isBuiltin;
+  }
+
+  function readConfig() {
+    const tickers = dataset.tickers.filter(t => selected.has(t));
+    const num = id => Number($(id).value);
+    const cfg = {
+      tickers, strategy: $("strategy").value, cardinality: Math.round(num("cardinality")),
+      riskAversion: num("riskAversion"), window: Math.round(num("window")), rebalanceEvery: Math.round(num("rebalanceEvery")),
+      initialCash: num("initialCash"), feeRate: num("feePct") / 100,
+      limits: { maxWeight: num("maxWeightPct") / 100, maxTurnover: num("maxTurnoverPct") / 100,
+                maxDrawdown: num("maxDrawdownPct") / 100, minHistory: Math.round(num("window")) },
+    };
+    if (!tickers.length) throw new Error("Pick at least one stock.");
+    if (cfg.strategy === "cardinality" && (cfg.cardinality < 1 || cfg.cardinality > tickers.length))
+      throw new Error(`"Hold exactly N stocks" must be between 1 and the ${tickers.length} stocks picked.`);
+    if (!(cfg.window >= 20)) throw new Error("Look back must be at least 20 days.");
+    if (!(cfg.rebalanceEvery >= 1)) throw new Error("Rebalance every must be at least 1 day.");
+    if (!(cfg.initialCash > 0)) throw new Error("Starting cash must be more than zero.");
+    if (!(cfg.riskAversion > 0)) throw new Error("Risk aversion must be more than zero.");
+    if (!(cfg.feeRate >= 0 && cfg.feeRate < 1)) throw new Error("Fee must be between 0 and 100%.");
+    for (const k of ["maxWeight", "maxTurnover", "maxDrawdown"]) if (!(cfg.limits[k] > 0 && cfg.limits[k] <= 1)) throw new Error("Percentages must be between 1 and 100.");
+    return cfg;
+  }
+
+  function barsFor(tickers, start, end) {
+    const out = [], P = dataset.prices;
+    for (let i = 0; i < dataset.dates.length; i++) {
+      const d = dataset.dates[i];
+      if ((start && d < start) || (end && d > end)) continue;
+      const p = {}; let ok = true;
+      for (const t of tickers) { const v = P[t][i]; if (!(v > 0)) { ok = false; break; } p[t] = v; }
+      if (ok) out.push({ date: d, prices: p });
+    }
+    return out;
+  }
+
+  // ---- running -----------------------------------------------------------
+  function newRun(example) {
+    const cfg = readConfig();
+    const bars = barsFor(cfg.tickers, $("start").value, $("end").value);
+    if (bars.length <= cfg.window) throw new Error(`Only ${bars.length} trading days in that range; the look-back needs more than ${cfg.window}. Widen the dates or shorten the look-back.`);
+    const benchCfg = Object.assign({}, cfg, { strategy: "equal_weight", limits: Object.assign({}, cfg.limits, { maxDrawdown: 2, maxWeight: 1 }) });
+    return { cfg, engine: new QT.Engine(cfg), bench: new QT.Engine(benchCfg), bars, i: 0, status: "running", timer: null, last: 0, example };
+  }
+
+  function step(r, count) {
+    const end = Math.min(r.bars.length, r.i + count);
+    for (; r.i < end; r.i++) {
+      const bar = r.bars[r.i];
+      const ev = r.engine.onBar(bar);
+      r.bench.onBar(bar);
+      if (ev.action === "kill_switch") { r.i++; r.status = "halted"; return; }
+    }
+    if (r.i >= r.bars.length) r.status = "done";
+  }
+
+  function loop(ts) {
+    const r = run;
+    if (!r || r.status !== "running") return;
+    const speed = Number($("speed").value);
+    if (!r.last) r.last = ts;
+    let n;
+    if (speed <= 0) n = r.bars.length;
+    else { r.acc = (r.acc || 0) + (ts - r.last) / 1000 * speed; n = Math.floor(r.acc); r.acc -= n; }
+    r.last = ts;
+    if (n > 0) step(r, n);
+    render();
+    if (r.status === "running") r.timer = requestAnimationFrame(loop);
+  }
+
+  function start() {
+    $("error").textContent = "";
+    if (run && run.status === "paused") { run.status = "running"; run.last = 0; run.timer = requestAnimationFrame(loop); render(); return; }
+    try { run = newRun(false); } catch (e) { $("error").textContent = e.message; return; }
+    saveSettings();
+    run.timer = requestAnimationFrame(loop);
+    render();
+  }
+  function pause() { if (run && run.status === "running") { run.status = "paused"; cancelAnimationFrame(run.timer); render(); } }
+  function reset() { if (run) cancelAnimationFrame(run.timer); run = null; $("confirmReset").hidden = true; render(); }
+  function resume() {
+    if (!run || !run.engine.halted) return;
+    const e = run.engine;
+    e.halted = false; e.haltReason = ""; e.peak = e.equity[e.equity.length - 1];
+    e.log.push(`${e.dates[e.dates.length - 1]} kill switch cleared by you; peak reset to current value`);
+    if (run.i < run.bars.length) { run.status = "running"; run.last = 0; run.timer = requestAnimationFrame(loop); }
+    else run.status = "done";
+    render();
+  }
+
+  // ---- charts ------------------------------------------------------------
+  let geom = null;
+  function sampleIdx(n, max) {
+    if (n <= max) return Array.from({ length: n }, (_, i) => i);
+    const out = [], stepN = (n - 1) / (max - 1);
+    for (let k = 0; k < max; k++) out.push(Math.round(k * stepN));
+    return out;
+  }
+  function drawChart(canvas, dates, series, opt) {
+    const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    const c = canvas.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+    const padL = opt.padL || 64, padR = opt.padR || 14, padT = 8, padB = 22;
+    const n = dates.length;
+    c.font = "11px " + css("--sans").split(",")[0] + ", system-ui, sans-serif";
+    if (n < 2) { c.fillStyle = css("--ink-3"); c.fillText("Press Start to run the simulation.", padL, h / 2); return null; }
+    let lo = Infinity, hi = -Infinity;
+    for (const s of series) for (const v of s.values) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    if (opt.zeroTop) { hi = 0; lo = Math.min(lo, -0.02); }
+    if (hi === lo) { hi += 1; lo -= 1; }
+    const span = hi - lo; if (!opt.zeroTop) { lo -= span * 0.04; hi += span * 0.04; }
+    const X = i => padL + i / (n - 1) * (w - padL - padR);
+    const Y = v => padT + (1 - (v - lo) / (hi - lo)) * (h - padT - padB);
+    c.strokeStyle = css("--grid"); c.lineWidth = 1; c.fillStyle = css("--ink-3"); c.textAlign = "right";
+    for (let k = 0; k <= 4; k++) {
+      const v = lo + (hi - lo) * k / 4, y = Math.round(Y(v)) + 0.5;
+      c.beginPath(); c.moveTo(padL, y); c.lineTo(w - padR, y); c.stroke();
+      c.fillText(opt.fmt(v), padL - 8, y + 4);
+    }
+    c.textAlign = "left"; c.fillText(dates[0], padL, h - 6);
+    c.textAlign = "right"; c.fillText(dates[n - 1], w - padR, h - 6);
+    const idx = sampleIdx(n, Math.max(60, Math.floor(w - padL - padR)));
+    for (const s of series.slice().reverse()) {
+      if (s.fill) {
+        c.beginPath(); c.moveTo(X(0), Y(opt.zeroTop ? 0 : lo));
+        idx.forEach(i => c.lineTo(X(i), Y(s.values[i])));
+        c.lineTo(X(n - 1), Y(opt.zeroTop ? 0 : lo)); c.closePath();
+        c.globalAlpha = 0.14; c.fillStyle = s.color; c.fill(); c.globalAlpha = 1;
+      }
+      c.beginPath(); idx.forEach((i, k) => k ? c.lineTo(X(i), Y(s.values[i])) : c.moveTo(X(i), Y(s.values[i])));
+      c.strokeStyle = s.color; c.lineWidth = 2; c.lineJoin = "round"; c.stroke();
+      const ex = X(n - 1), ey = Y(s.values[n - 1]);
+      c.beginPath(); c.arc(ex, ey, 4, 0, Math.PI * 2); c.fillStyle = s.color; c.fill();
+      c.lineWidth = 2; c.strokeStyle = css("--surface"); c.stroke();
+    }
+    return { X, Y, padL, padR, w, h, n };
+  }
+
+  function showTip(e) {
+    if (!geom || !run) return;
+    const wrap = $("eqWrap"), rect = wrap.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const i = Math.max(0, Math.min(geom.n - 1, Math.round((x - geom.padL) / (geom.w - geom.padL - geom.padR) * (geom.n - 1))));
+    const eng = run.engine, b = run.bench;
+    const cross = $("cross"), tip = $("tip");
+    const cx = geom.X(i);
+    cross.hidden = false; cross.style.left = cx + "px";
+    tip.hidden = false; tip.textContent = "";
+    const d = document.createElement("div"); d.className = "date"; d.textContent = eng.dates[i]; tip.appendChild(d);
+    [[css("--series-1"), eng.equity[i], "Strategy"], [css("--series-2"), b.equity[i], "Equal weight"]].forEach(([col, v, name]) => {
+      const row = document.createElement("div"); row.className = "row";
+      const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = col;
+      const val = document.createElement("b"); val.textContent = money(v);
+      row.append(sw, val, document.createTextNode(" " + name)); tip.appendChild(row);
+    });
+    const tw = tip.offsetWidth;
+    tip.style.left = Math.max(4, Math.min(cx + 12, geom.w - tw - 4)) + "px";
+  }
+  function hideTip() { $("cross").hidden = true; $("tip").hidden = true; }
+
+  // ---- rendering ---------------------------------------------------------
+  function td(text, cls) { const c = document.createElement("td"); c.textContent = text; if (cls) c.className = cls; return c; }
+
+  function render() {
+    const r = run, e = r && r.engine, b = r && r.bench;
+    const has = e && e.equity.length > 0;
+    const st = !r ? "ready" : r.status;
+    const labels = { ready: "Ready", running: "Running", paused: "Paused", done: "Finished", halted: "Halted" };
+    $("status").className = "pill " + (st === "running" ? "running" : st === "halted" ? "halted" : "");
+    $("statusText").textContent = labels[st];
+    $("runinfo").textContent = r ? `${r.cfg.tickers.length} stocks · ${r.i} of ${r.bars.length} trading days` : "";
+    $("btnStart").textContent = st === "paused" ? "Continue" : (st === "done" || st === "halted") ? "Run again" : "Start";
+    $("btnStart").disabled = st === "running";
+    $("btnPause").disabled = st !== "running";
+
+    const banner = $("banner");
+    if (r && r.example) { banner.hidden = false; banner.textContent = ""; const s = document.createElement("span");
+      s.append(Object.assign(document.createElement("b"), { textContent: "Example run with the default settings. " }),
+        document.createTextNode("Change anything on the left and press Start to watch it trade day by day.")); banner.appendChild(s); }
+    else if (!r) { banner.hidden = false; banner.textContent = "Pick stocks and settings, then press Start."; }
+    else banner.hidden = true;
+
+    $("haltBanner").hidden = !(e && e.halted);
+    if (e && e.halted) $("haltReason").textContent = e.haltReason.replace(/^drawdown/, "The account fell").replace(">= limit", "against a limit of");
+
+    if (!has) {
+      ["tEquity", "tReturn", "tVs", "tDD", "tFills"].forEach(id => $(id).textContent = "–");
+      ["tEquitySub", "tReturnSub", "tVsSub", "tDDSub", "tFillsSub"].forEach(id => $(id).textContent = "");
+      $("legend").textContent = ""; geom = drawChart($("cEquity"), [], [], { fmt: String }); drawChart($("cDD"), [], [], { fmt: String });
+      $("positions").textContent = ""; $("fills").textContent = ""; $("log").textContent = ""; $("cashLine").textContent = "";
+      return;
+    }
+    const eq = e.equity, n = eq.length, last = eq[n - 1], first = eq[0];
+    const total = last / first - 1, years = n / 252;
+    const ann = total > -1 ? Math.pow(1 + total, 1 / Math.max(years, 1e-9)) - 1 : -1;
+    const bLast = b.equity[b.equity.length - 1], bTotal = bLast / b.equity[0] - 1;
+    let peak = 0, worst = 0; const dd = eq.map(v => { peak = Math.max(peak, v); const x = 1 - v / peak; worst = Math.max(worst, x); return -x; });
+    const fees = e.fills.reduce((a, f) => a + f.fee, 0);
+
+    $("tEquity").textContent = money(last);
+    $("tEquitySub").textContent = "started with " + money(first);
+    $("tReturn").textContent = signed(total);
+    $("tReturnSub").textContent = years >= 1 ? signed(ann) + " a year" : "less than a year so far";
+    $("tVs").textContent = signed(total - bTotal);
+    $("tVsSub").textContent = "equal weight made " + signed(bTotal);
+    $("tDD").textContent = pct(-dd[n - 1]);
+    $("tDDSub").textContent = "worst " + pct(worst) + " · limit " + pct(r.cfg.limits.maxDrawdown, 0);
+    $("tFills").textContent = e.fills.length.toLocaleString("en-US");
+    $("tFillsSub").textContent = "fees " + money(fees);
+
+    const lg = $("legend"); lg.textContent = "";
+    [["--series-1", "Strategy", last], ["--series-2", "Equal weight", bLast]].forEach(([v, name, val]) => {
+      const s = document.createElement("span"); const k = document.createElement("span"); k.className = "key"; k.style.background = css(v);
+      const bb = document.createElement("b"); bb.textContent = money(val);
+      s.append(k, document.createTextNode(name + " "), bb); lg.appendChild(s);
+    });
+    const fmtAxis = v => "$" + (Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + "M" : Math.round(v / 1000) + "k");
+    geom = drawChart($("cEquity"), e.dates, [
+      { values: eq, color: css("--series-1"), fill: false },
+      { values: b.equity, color: css("--series-2"), fill: false },
+    ], { fmt: fmtAxis });
+    drawChart($("cDD"), e.dates, [{ values: dd, color: css("--dd"), fill: true }], { fmt: v => Math.round(v * 100) + "%", zeroTop: true });
+
+    const bar = r.bars[Math.max(0, r.i - 1)], pos = e.broker.positions(), w = e.weights(bar);
+    const tb = $("positions"); tb.textContent = "";
+    const names = Object.keys(pos).sort((a, c) => (w[c] || 0) - (w[a] || 0));
+    names.forEach(t => {
+      const tr = document.createElement("tr");
+      tr.append(td(t, "t"), td(pos[t].toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(bar.prices[t]), "num"), td(pct(w[t]), "num"));
+      const cell = document.createElement("td"); const wb = document.createElement("div"); wb.className = "wbar"; wb.style.width = Math.max(1, (w[t] || 0) * 100) + "%"; cell.appendChild(wb); tr.appendChild(cell);
+      tb.appendChild(tr);
+    });
+    if (!names.length) { const tr = document.createElement("tr"); const c = td(e.halted ? "All cash: the kill switch sold everything." : e.dates.length < r.cfg.window ? `Waiting for ${r.cfg.window} days of history before the first trade.` : "All cash.", "muted"); c.colSpan = 5; tr.appendChild(c); tb.appendChild(tr); }
+    $("cashLine").textContent = "Cash " + money(e.broker.cash) + " · prices as of " + bar.date;
+
+    const fb = $("fills"); fb.textContent = "";
+    e.fills.slice(-20).reverse().forEach(f => {
+      const tr = document.createElement("tr");
+      tr.append(td(f.date), td(f.ticker, "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num"));
+      fb.appendChild(tr);
+    });
+    if (!e.fills.length) { const tr = document.createElement("tr"); const c = td("No trades yet.", "muted"); c.colSpan = 5; tr.appendChild(c); fb.appendChild(tr); }
+    $("log").textContent = e.log.slice(-40).reverse().join("\n");
+  }
+
+  // ---- your own CSV ------------------------------------------------------
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 3) throw new Error("That file has fewer than three rows.");
+    const split = l => l.split(",").map(s => s.trim().replace(/^"|"$/g, ""));
+    const head = split(lines[0]);
+    let di = head.findIndex(h => /^(date|timestamp|time|day)$/i.test(h)); if (di < 0) di = 0;
+    const tick = head.filter((_, i) => i !== di);
+    if (!tick.length) throw new Error("No price columns found after the date column.");
+    const rows = lines.slice(1).map(split).filter(r => r[di]).map(r => ({ d: r[di].slice(0, 10), r }));
+    rows.sort((a, c) => a.d < c.d ? -1 : a.d > c.d ? 1 : 0);
+    const out = { dates: [], tickers: tick, prices: {} }; tick.forEach(t => out.prices[t] = []);
+    rows.forEach(({ d, r }) => {
+      if (out.dates.length && out.dates[out.dates.length - 1] === d) return;
+      out.dates.push(d);
+      head.forEach((h, i) => { if (i !== di) { const v = parseFloat(r[i]); out.prices[h].push(v > 0 && isFinite(v) ? v : NaN); } });
+    });
+    return out;
+  }
+
+  // ---- wiring ------------------------------------------------------------
+  $("btnStart").addEventListener("click", start);
+  $("btnPause").addEventListener("click", pause);
+  $("btnReset").addEventListener("click", () => { if (!run) return; $("confirmReset").hidden = false; });
+  $("btnResetYes").addEventListener("click", reset);
+  $("btnResetNo").addEventListener("click", () => { $("confirmReset").hidden = true; });
+  $("btnResume").addEventListener("click", resume);
+  FIELDS.forEach(f => $(f).addEventListener("change", saveSettings));
+  $("upload").addEventListener("change", ev => {
+    const file = ev.target.files && ev.target.files[0]; if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const d = parseCsv(String(rd.result)); dataset = d; isBuiltin = false;
+        selected = new Set(d.tickers.slice(0, Math.min(8, d.tickers.length)));
+        $("start").value = ""; $("end").value = ""; reset(); buildUniverse(); $("error").textContent = "";
+      } catch (err) { $("error").textContent = err.message; }
+    };
+    rd.onerror = () => { $("error").textContent = "Could not read that file."; };
+    rd.readAsText(file);
+  });
+  $("btnBuiltin").addEventListener("click", () => { dataset = BUILTIN; isBuiltin = true; selected = new Set(DEFAULT_TICKERS); $("start").value = ""; $("end").value = ""; $("upload").value = ""; reset(); buildUniverse(); });
+  const eqWrap = $("eqWrap");
+  eqWrap.addEventListener("pointermove", showTip);
+  eqWrap.addEventListener("pointerdown", showTip);
+  eqWrap.addEventListener("pointerleave", hideTip);
+  let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 80); });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", render);
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  // ---- open in a working state: a finished example run --------------------
+  loadSettings();
+  buildUniverse();
+  try { run = newRun(true); step(run, run.bars.length); } catch (e) { run = null; $("error").textContent = e.message; }
+  render();
+})();
+</script>

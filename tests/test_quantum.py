@@ -2316,3 +2316,54 @@ class TestDesktop(unittest.TestCase):
                 self.assertIn("start refused", get("/api/state")["messages"][-1])
             finally:
                 srv.shutdown()
+
+
+# ==========================================================================
+# Browser port of the engine (web/engine.js) must match the Python engine
+# ==========================================================================
+
+
+class TestWebEngineParity(unittest.TestCase):
+    def test_browser_engine_matches_python_to_the_cent(self):
+        import json
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        from quantum.live import Bar, Engine, EngineConfig, RiskLimits
+
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+        import csv as _csv
+        rows = list(_csv.DictReader(open("data/prices/us_equities_1989_2018.csv")))
+        tick = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
+        rows = [r for r in rows if "2007-01-01" <= r["date"] <= "2012-12-31" and all(r[t] for t in tick)]
+        cases = [("equal_weight", 0.9), ("markowitz", 0.9), ("cardinality", 0.9), ("cardinality", 0.12)]
+        expected = []
+        for strat, ks in cases:
+            e = Engine(EngineConfig(tickers=tick, strategy=strat, cardinality=4, solver="exhaustive",
+                                    window=252, rebalance_every=21, initial_cash=100000, fee_rate=0.0005,
+                                    limits=RiskLimits(max_weight=0.4, max_turnover=0.5, max_drawdown=ks, min_history=252),
+                                    state_path="unused.json"))
+            for r in rows:
+                e.on_bar(Bar(r["date"], {t: float(r[t]) for t in tick}))
+            expected.append([e.state.equity_curve[-1], len(e.state.fills), e.state.halted])
+        with tempfile.TemporaryDirectory() as d:
+            payload = {"rows": [[r["date"]] + [float(r[t]) for t in tick] for r in rows], "tick": tick,
+                       "cases": [list(c) for c in cases]}
+            (Path(d) / "in.json").write_text(json.dumps(payload))
+            script = Path(d) / "run.js"
+            script.write_text(
+                "const QT=require(%s);const p=require(%s);const out=p.cases.map(([s,ks])=>{"
+                "const e=new QT.Engine({tickers:p.tick,strategy:s,cardinality:4,riskAversion:2,window:252,"
+                "rebalanceEvery:21,initialCash:100000,feeRate:0.0005,limits:{maxWeight:0.4,maxTurnover:0.5,"
+                "maxDrawdown:ks,minHistory:252}});p.rows.forEach(r=>{const q={};p.tick.forEach((t,i)=>q[t]=r[i+1]);"
+                "e.onBar({date:r[0],prices:q});});return [e.equity[e.equity.length-1],e.fills.length,e.halted];});"
+                "console.log(JSON.stringify(out));"
+                % (json.dumps(str(Path("web/engine.js").resolve())), json.dumps(str(Path(d) / "in.json"))))
+            got = json.loads(subprocess.run([node, str(script)], capture_output=True, text=True, check=True).stdout)
+        for (pe, pf, ph), (je, jf, jh) in zip(expected, got):
+            self.assertAlmostEqual(pe, je, delta=1e-6 * pe)
+            self.assertEqual(pf, jf)
+            self.assertEqual(ph, jh)

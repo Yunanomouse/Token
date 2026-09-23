@@ -81,6 +81,10 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   per-name and turnover caps, and a drawdown kill switch. `--live` refuses to
   run until you supply a broker adapter in code.
 
+- **In the browser, nothing to install** — `web/quantum-trading.html` is the
+  same engine ported to JavaScript with 12 years of prices for 17 stocks built
+  in; it matches the Python engine to the cent (tested). Open the file, or the
+  published copy, and press Start.
 - **On the desktop** — double-click `Quantum Trading.bat` / `quantum_trading.command`
   / `quantum-trading.desktop` (or `python3 -m quantum desktop`) for a local
   point-and-click dashboard: watch the engine trade through history at any
