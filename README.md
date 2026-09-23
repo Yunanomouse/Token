@@ -26,6 +26,27 @@ Requires **numpy only**. No Qiskit, no Cirq, no cloud account — the statevecto
 simulator, Grover operator and amplitude estimation are implemented from the
 postulates up in `quantum/statevector.py` and `quantum/amplitude.py`.
 
+## Download and run it on your computer
+
+The standalone app needs nothing installed: Python and numpy are inside.
+Download the zip for your system from the
+[desktop-latest release](https://github.com/Yunanomouse/Token/releases/tag/desktop-latest),
+unzip it, and double-click:
+
+| System | Zip | Double-click |
+|---|---|---|
+| Windows | `quantum-trading-windows-x64.zip` | `Quantum Trading.exe` |
+| Mac (Apple Silicon) | `quantum-trading-macos-arm64.zip` | `Open Quantum Trading.command` (right-click > Open the first time) |
+| Mac (Intel) | `quantum-trading-macos-x64.zip` | same |
+| Linux | `quantum-trading-linux-x64.zip` | `Quantum Trading` |
+
+A terminal window opens (the engine) and the dashboard opens in the browser.
+The same program runs every command-line engine command, e.g.
+`"Quantum Trading" live --replay data/prices/us_equities_1989_2018.csv ...`.
+`README.txt` in the zip has the details.  The release is rebuilt by running
+the **desktop app** workflow with *publish*; `python packaging/build.py`
+builds it locally for the machine you are on.
+
 ## What it does
 
 | Module | Application | Status today |
