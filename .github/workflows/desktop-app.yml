@@ -1,9 +1,11 @@
 name: desktop app
 
 # Builds the standalone app (Python and numpy bundled, nothing to install) on
-# each operating system, starts the built program to prove it runs, and
-# keeps the zips as run artifacts.  Run it by hand with "publish" ticked to
-# put the zips on the "desktop-latest" release, a stable download link.
+# each operating system, starts the built program to prove it runs, keeps
+# the zips as run artifacts, and, once every system built, puts them on the
+# "desktop-latest" release: one stable download link.  That happens on every
+# push that changes the app, and on a manual run with "publish" ticked (a
+# manual run needs this file on the default branch).
 on:
   push:
     paths:
@@ -72,7 +74,7 @@ jobs:
 
   publish:
     needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

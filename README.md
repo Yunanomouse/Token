@@ -43,9 +43,9 @@ unzip it, and double-click:
 A terminal window opens (the engine) and the dashboard opens in the browser.
 The same program runs every command-line engine command, e.g.
 `"Quantum Trading" live --replay data/prices/us_equities_1989_2018.csv ...`.
-`README.txt` in the zip has the details.  The release is rebuilt by running
-the **desktop app** workflow with *publish*; `python packaging/build.py`
-builds it locally for the machine you are on.
+`README.txt` in the zip has the details.  The release is rebuilt by the
+**desktop app** workflow on every push that changes the app;
+`python packaging/build.py` builds it locally for the machine you are on.
 
 ## What it does
 
