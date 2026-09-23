@@ -84,12 +84,21 @@ jobs:
           MENU="$(cygpath -u "$APPDATA")/Microsoft/Windows/Start Menu/Programs/Quantum Trading"
           ls "$APPDIR" "$MENU"
           ls "$(cygpath -u "$USERPROFILE")/Desktop/Quantum Trading.lnk" || ls "$(cygpath -u "$PUBLIC")/Desktop/Quantum Trading.lnk"
+          # Use it the way a person does: a replay that saves a paper book in the
+          # folder, and the dashboard left running.
           (cd "$APPDIR" && ./"Quantum Trading.exe" live --replay data/prices/us_equities_1989_2018.csv --tickers AAPL,XOM,JPM,WMT \
-            --start 2013-01-01 --end 2013-06-30 --window 60 --state ci_state.json | grep "gains/losses" && rm -f ci_state.json)
-          # The uninstaller hands off to a temporary copy and returns at once: wait for it.
+            --start 2013-01-01 --end 2013-06-30 --window 60 --state live_state.json | grep "gains/losses")
+          ls "$APPDIR/live_state.json"
+          (cd "$APPDIR" && ./"Quantum Trading.exe" desktop --port 8798 --no-browser > /dev/null 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8798/api/state > /dev/null && break; sleep 1; done
+          tasklist | grep -i "Quantum Trading"
+          # Uninstall with all that in place.  The uninstaller hands off to a
+          # temporary copy and returns at once: wait for the folder to go.
           "$APPDIR/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
-          for i in $(seq 1 60); do [ -e "$APPDIR/Quantum Trading.exe" ] || break; sleep 1; done
-          [ ! -e "$APPDIR/Quantum Trading.exe" ] && [ ! -e "$MENU" ] && echo "uninstalled cleanly"
+          for i in $(seq 1 90); do [ -e "$APPDIR" ] || break; sleep 1; done
+          if [ -e "$APPDIR" ] || [ -e "$MENU" ]; then echo "left behind:"; find "$APPDIR" "$MENU" 2>/dev/null | head -20; exit 1; fi
+          ! tasklist | grep -i "Quantum Trading"
+          echo "uninstalled cleanly: program stopped, folder and Start menu entries gone"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}

@@ -7,8 +7,9 @@
 ; %LOCALAPPDATA%\Programs\Quantum Trading.  That folder is the user's own and
 ; writable, so the paper book (live_state.json) is saved beside the program and
 ; survives updates: installing a newer version replaces the program files and
-; leaves the book alone.  Uninstalling removes the program and asks nothing;
-; the book stays unless the user deletes the folder.
+; leaves the book alone.  Uninstalling closes the program if it is running
+; (Windows will not delete a file in use) and removes the whole folder,
+; including the book and anything else the program wrote there.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -49,6 +50,15 @@ Name: "{group}\Read me"; Filename: "{app}\README.txt"
 Name: "{group}\Simulator in the browser"; Filename: "{app}\quantum-trading.html"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Tasks: desktopicon
+
+[UninstallRun]
+; A running engine holds its files open; stop it so they can be deleted.
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /T /IM ""{#AppExe}"""; Flags: runhidden; RunOnceId: "StopApp"
+
+[UninstallDelete]
+; Files the program created after installing (the paper book, its temp
+; file, replay state), which the uninstaller would otherwise leave behind.
+Type: filesandordirs; Name: "{app}"
 
 [Run]
 Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Description: "Open {#AppName} now"; Flags: nowait postinstall skipifsilent

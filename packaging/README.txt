@@ -6,7 +6,9 @@ Nothing else to install: Python and numpy are included.
 On Windows the easiest way is "Quantum Trading Setup.exe" from the same
 download page: double-click it, click Next, and it adds Quantum Trading to
 the Start menu (and the desktop if you like), with an uninstaller under
-Settings > Apps. If Windows says "Windows protected your PC", click
+Settings > Apps. Uninstalling closes the program if it is open and removes
+everything, including your saved paper book; installing a newer version
+over the old one keeps the book. If Windows says "Windows protected your PC", click
 "More info", then "Run anyway" (the program is not code-signed).
 Once installed, open it from the Start menu and skip to step 3.
 
