@@ -2132,6 +2132,32 @@ class TestLiveEngine(unittest.TestCase):
             later = [b.date for b in FileFeed(path, ["AAA", "BBB"], poll_seconds=0.0, after="2024-01-03", max_polls=1).bars()]
             self.assertEqual(later, ["2024-01-04"])
 
+    def test_once_advances_past_bars_already_seen(self):
+        """Regression: a --once start used to spend its one tick on a duplicate."""
+        import csv
+        import tempfile
+        from pathlib import Path
+        from quantum.live import Engine, EngineConfig, FileFeed, RiskLimits
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "feed.csv"
+            with path.open("w", newline="") as fh:
+                w = csv.writer(fh)
+                w.writerow(["date", "AAA", "BBB"])
+                w.writerows([("2024-01-02", 100, 50), ("2024-01-03", 101, 49), ("2024-01-04", 102, 48)])
+            cfg = EngineConfig(["AAA", "BBB"], strategy="equal_weight", window=3, rebalance_every=1,
+                               limits=RiskLimits(min_history=3, max_drawdown=0.5),
+                               state_path=str(Path(d) / "s.json"))
+            engine = Engine(cfg)
+            seen = []
+            for _ in range(3):
+                events = engine.run(FileFeed(path, ["AAA", "BBB"], poll_seconds=0.0, max_polls=1), once=True)
+                seen.append([e["date"] for e in events])
+            self.assertEqual(seen, [["2024-01-02"], ["2024-01-03"], ["2024-01-04"]])
+            events = engine.run(FileFeed(path, ["AAA", "BBB"], poll_seconds=0.0, max_polls=1), once=True)
+            self.assertEqual(events, [])
+            self.assertEqual(engine.state.n_bars, 3)
+
     def test_config_validation_and_round_trip(self):
         import tempfile
         from pathlib import Path

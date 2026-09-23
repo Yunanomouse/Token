@@ -8,6 +8,7 @@ do not buy you.
 from __future__ import annotations
 
 import argparse
+import os
 import math
 import sys
 
@@ -426,8 +427,15 @@ def cmd_live(args) -> int:
         feed = ReplayFeed(args.replay, config.tickers, start=args.start, end=args.end)
         print(f"replaying {len(feed)} bars from {args.replay} (paper broker)")
     elif args.feed:
+        # Resume from the last bar the state file knows, so the writer may
+        # keep the whole history in the CSV and only new rows are delivered.
+        last = None
+        if not args.fresh and os.path.exists(config.state_path):
+            from .live import EngineState
+            dates = EngineState.load(config.state_path).dates
+            last = dates[-1] if dates else None
         feed = FileFeed(args.feed, config.tickers, poll_seconds=args.poll,
-                        max_polls=1 if args.once else None)
+                        after=last, max_polls=1 if args.once else None)
         print(f"tailing {args.feed} every {args.poll:.0f}s (paper broker); Ctrl-C to stop")
     else:
         print("give --replay <csv> or --feed <csv>")

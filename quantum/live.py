@@ -523,7 +523,10 @@ class Engine:
             if missing:
                 self._log(f"{bar.date} skipped: missing {missing}")
                 continue
-            events.append(self.on_bar(bar))
+            event = self.on_bar(bar)
+            if event["action"] == "duplicate":
+                continue  # already in the state; not a tick
+            events.append(event)
             self.state.save(path)
             if once:
                 break
