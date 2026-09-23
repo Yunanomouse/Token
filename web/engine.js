@@ -177,6 +177,56 @@ const QT = (function () {
     }
   }
 
+  // ---- gains and losses (quantum/live.py trade_ledger) -------------------
+  // Average cost from the fills: a buy's fee joins its cost, a sell's fee
+  // comes off its proceeds, so realized + unrealized = change in equity.
+  function ledger(fills, lastPrices) {
+    lastPrices = lastPrices || {};
+    const shares = {}, basis = {}, realized = {}, trip = {}, trips = [], annotated = [];
+    for (const f of fills) {
+      const t = f.ticker, q = f.quantity, px = f.price, fee = f.fee, held = shares[t] || 0;
+      let pnl = 0;
+      if (q > 0) {
+        if (held <= 1e-12) trip[t] = { ticker: t, entry_date: f.date, cost: 0, pnl: 0 };
+        shares[t] = held + q; basis[t] = (basis[t] || 0) + q * px + fee; trip[t].cost += q * px + fee;
+      } else if (held > 1e-12) {
+        const sold = Math.min(-q, held), avg = basis[t] / held;
+        pnl = sold * px - fee - avg * sold;
+        shares[t] = held - sold; basis[t] -= avg * sold;
+        realized[t] = (realized[t] || 0) + pnl; trip[t].pnl += pnl;
+        if (shares[t] <= 1e-9 * Math.max(held, 1)) {
+          shares[t] = 0; basis[t] = 0;
+          const done = trip[t]; delete trip[t];
+          done.exit_date = f.date; done.exit_price = px; done.return_pct = done.cost > 0 ? done.pnl / done.cost : 0;
+          trips.push(done);
+        }
+      }
+      annotated.push(Object.assign({}, f, { realized_pnl: pnl }));
+    }
+    const names = [...new Set([...Object.keys(shares), ...Object.keys(realized)])].sort();
+    const byTicker = {}, positions = {};
+    let totalReal = 0, totalUnreal = 0;
+    for (const t of names) {
+      let unreal = 0;
+      if ((shares[t] || 0) > 1e-12) {
+        const px = lastPrices[t], value = px != null ? shares[t] * px : basis[t];
+        unreal = value - basis[t];
+        positions[t] = { shares: shares[t], avg_cost: basis[t] / shares[t], cost_basis: basis[t], price: px == null ? null : px,
+                         market_value: value, unrealized_pnl: unreal, unrealized_pct: basis[t] > 0 ? unreal / basis[t] : 0,
+                         since: trip[t].entry_date };
+      }
+      const r = realized[t] || 0;
+      byTicker[t] = { realized_pnl: r, unrealized_pnl: unreal, total_pnl: r + unreal };
+      totalReal += r; totalUnreal += unreal;
+    }
+    const wins = trips.filter(x => x.pnl > 0), losses = trips.filter(x => x.pnl <= 0);
+    return { fills: annotated, positions, by_ticker: byTicker, round_trips: trips,
+             realized_pnl: totalReal, unrealized_pnl: totalUnreal, total_pnl: totalReal + totalUnreal,
+             n_round_trips: trips.length, n_wins: wins.length, win_rate: trips.length ? wins.length / trips.length : null,
+             avg_win: wins.length ? wins.reduce((a, x) => a + x.pnl, 0) / wins.length : null,
+             avg_loss: losses.length ? losses.reduce((a, x) => a + x.pnl, 0) / losses.length : null };
+  }
+
   // ---- engine (quantum/live.py Engine) ----------------------------------
   class Engine {
     constructor(cfg) {
@@ -268,6 +318,6 @@ const QT = (function () {
     }
   }
 
-  return { Engine, PaperBroker, marketData, ledoitWolf, markowitz, cardinality, equalWeight };
+  return { Engine, PaperBroker, marketData, ledoitWolf, markowitz, cardinality, equalWeight, ledger };
 })();
 if (typeof module !== "undefined") module.exports = QT;

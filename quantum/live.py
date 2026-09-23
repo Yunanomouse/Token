@@ -92,6 +92,7 @@ __all__ = [
     "load_config",
     "run",
     "snapshot",
+    "trade_ledger",
 ]
 
 
@@ -275,6 +276,88 @@ class PaperBroker(Broker):
             fills.append(fill)
             self.fills.append(fill)
         return fills
+
+
+# --------------------------------------------------------------------------
+# Gains and losses
+# --------------------------------------------------------------------------
+
+
+def trade_ledger(fills: Sequence[dict], last_prices: dict[str, float] | None = None) -> dict:
+    """Gains and losses per trade and per name, by average cost, from the fills.
+
+    Rebuilt from the fill history every time rather than stored, so it works
+    on any saved state and cannot drift from the trades.  A buy's fee is part
+    of its cost; a sell's fee comes off its proceeds.  With that convention
+    ``realized + unrealized`` is exactly the change in equity since the start
+    (cash plus positions at ``last_prices``).  A round trip runs from a flat
+    position to flat again; it is a win if it closed with a gain.
+    """
+    last_prices = last_prices or {}
+    shares: dict[str, float] = {}
+    basis: dict[str, float] = {}
+    realized: dict[str, float] = {}
+    trip: dict[str, dict] = {}
+    trips: list[dict] = []
+    annotated: list[dict] = []
+    for f in fills:
+        t, q, px, fee = f["ticker"], float(f["quantity"]), float(f["price"]), float(f["fee"])
+        held = shares.get(t, 0.0)
+        pnl = 0.0
+        if q > 0:
+            if held <= 1e-12:
+                trip[t] = {"ticker": t, "entry_date": f["date"], "cost": 0.0, "pnl": 0.0}
+            shares[t] = held + q
+            basis[t] = basis.get(t, 0.0) + q * px + fee
+            trip[t]["cost"] += q * px + fee
+        elif held > 1e-12:
+            sold = min(-q, held)
+            avg = basis[t] / held
+            pnl = sold * px - fee - avg * sold
+            shares[t] = held - sold
+            basis[t] -= avg * sold
+            realized[t] = realized.get(t, 0.0) + pnl
+            trip[t]["pnl"] += pnl
+            if shares[t] <= 1e-9 * max(held, 1.0):
+                shares[t], basis[t] = 0.0, 0.0
+                done = trip.pop(t)
+                done.update(exit_date=f["date"], exit_price=px,
+                            return_pct=done["pnl"] / done["cost"] if done["cost"] > 0 else 0.0)
+                trips.append(done)
+        annotated.append({**f, "realized_pnl": pnl})
+
+    names = sorted(set(shares) | set(realized))
+    by_name, positions = {}, {}
+    for t in names:
+        unreal = 0.0
+        if shares.get(t, 0.0) > 1e-12:
+            px = last_prices.get(t)
+            value = shares[t] * px if px is not None else basis[t]
+            unreal = value - basis[t]
+            positions[t] = {"shares": shares[t], "avg_cost": basis[t] / shares[t], "cost_basis": basis[t],
+                            "price": px, "market_value": value, "unrealized_pnl": unreal,
+                            "unrealized_pct": unreal / basis[t] if basis[t] > 0 else 0.0,
+                            "since": trip[t]["entry_date"]}
+        r = realized.get(t, 0.0)
+        by_name[t] = {"realized_pnl": r, "unrealized_pnl": unreal, "total_pnl": r + unreal}
+    wins = [x for x in trips if x["pnl"] > 0]
+    total_real = sum(realized.values())
+    total_unreal = sum(p["unrealized_pnl"] for p in positions.values())
+    return {
+        "fills": annotated,
+        "positions": positions,
+        "by_ticker": by_name,
+        "round_trips": trips,
+        "realized_pnl": total_real,
+        "unrealized_pnl": total_unreal,
+        "total_pnl": total_real + total_unreal,
+        "n_round_trips": len(trips),
+        "n_wins": len(wins),
+        "win_rate": len(wins) / len(trips) if trips else None,
+        "avg_win": sum(x["pnl"] for x in wins) / len(wins) if wins else None,
+        "avg_loss": (sum(x["pnl"] for x in trips if x["pnl"] <= 0) / (len(trips) - len(wins))
+                     if len(trips) > len(wins) else None),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -562,6 +645,12 @@ class Engine:
             f"halted          : {st.halted}" + (f" ({st.halt_reason})" if st.halted else ""),
             "positions       : " + (", ".join(f"{t} {w:.1%}" for t, w in sorted(st.target_weights.items(), key=lambda kv: -kv[1])) or "none"),
         ]
+        if st.fills:
+            led = trade_ledger(st.fills, dict(zip(st.tickers, st.prices[-1])))
+            lines.append(f"gains/losses    : realized {led['realized_pnl']:+,.2f}, unrealized {led['unrealized_pnl']:+,.2f}"
+                         f", total {led['total_pnl']:+,.2f}")
+            if led["n_round_trips"]:
+                lines.append(f"round trips     : {led['n_round_trips']} closed, {led['n_wins']} won ({led['win_rate']:.0%})")
         return "\n".join(lines)
 
 
@@ -589,6 +678,7 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
         idx.append(len(curve) - 1)
     last_prices = dict(zip(st.tickers, st.prices[-1])) if st.prices else {}
     equity = st.equity_curve[-1] if st.equity_curve else cfg.initial_cash
+    ledger = trade_ledger(st.fills, last_prices)
     status = {
         "schema": 1,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -607,7 +697,9 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
         "halt_reason": st.halt_reason,
         "curve_dates": [dates[i] for i in idx],
         "curve": [curve[i] for i in idx],
-        "fills": st.fills[-60:],
+        "fills": ledger["fills"][-60:],
+        "pnl": {k: v for k, v in ledger.items() if k not in ("fills", "round_trips")}
+               | {"round_trips": ledger["round_trips"][-60:]},
         "n_fills": len(st.fills),
         "fees": sum(f.get("fee", 0.0) for f in st.fills),
         "log": st.log[-60:],

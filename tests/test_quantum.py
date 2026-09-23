@@ -2226,6 +2226,54 @@ class TestLiveEngine(unittest.TestCase):
             first = traded[min(traded)]
             self.assertAlmostEqual(first[0] / config.initial_cash, 0.30, delta=1e-6)
 
+    def test_trade_ledger_by_hand(self):
+        from quantum.live import trade_ledger
+
+        fills = [
+            {"ticker": "A", "quantity": 10.0, "price": 10.0, "fee": 1.0, "date": "d1"},
+            {"ticker": "A", "quantity": 10.0, "price": 20.0, "fee": 2.0, "date": "d2"},   # avg cost 303/20
+            {"ticker": "A", "quantity": -5.0, "price": 30.0, "fee": 1.5, "date": "d3"},   # 150 - 1.5 - 75.75
+            {"ticker": "B", "quantity": 4.0, "price": 50.0, "fee": 0.0, "date": "d3"},
+            {"ticker": "A", "quantity": -15.0, "price": 5.0, "fee": 0.75, "date": "d4"},  # 75 - 0.75 - 227.25
+        ]
+        led = trade_ledger(fills, {"A": 7.0, "B": 60.0})
+        self.assertAlmostEqual(led["fills"][2]["realized_pnl"], 72.75, places=10)
+        self.assertAlmostEqual(led["fills"][4]["realized_pnl"], -153.0, places=10)
+        self.assertEqual(led["fills"][0]["realized_pnl"], 0.0)
+        self.assertAlmostEqual(led["realized_pnl"], -80.25, places=10)
+        self.assertNotIn("A", led["positions"])
+        self.assertAlmostEqual(led["positions"]["B"]["avg_cost"], 50.0)
+        self.assertAlmostEqual(led["unrealized_pnl"], 40.0)
+        self.assertEqual(led["n_round_trips"], 1)
+        trip = led["round_trips"][0]
+        self.assertEqual((trip["entry_date"], trip["exit_date"]), ("d1", "d4"))
+        self.assertAlmostEqual(trip["pnl"], -80.25, places=10)
+        self.assertEqual(led["n_wins"], 0)
+        self.assertAlmostEqual(led["by_ticker"]["A"]["total_pnl"], -80.25, places=10)
+
+    def test_gains_and_losses_add_up_to_the_equity_change(self):
+        """realized + unrealized is the change in equity, through rebalances and a kill switch."""
+        import tempfile
+        from pathlib import Path
+        from quantum.live import ReplayFeed, RiskLimits, run, snapshot, trade_ledger
+
+        for limits, end in ((RiskLimits(min_history=60, max_drawdown=0.9), "2012-12-31"),
+                            (RiskLimits(min_history=60, max_drawdown=0.10), "2009-06-30")):
+            with tempfile.TemporaryDirectory() as d:
+                config = self._config(Path(d), strategy="cardinality", cardinality=2, solver="exhaustive", limits=limits)
+                start = "2012-01-01" if end.startswith("2012") else "2007-06-01"
+                engine = run(config, ReplayFeed(self.PRICES, self.TICKERS, start=start, end=end), resume=False)
+                st = engine.state
+                led = trade_ledger(st.fills, dict(zip(st.tickers, st.prices[-1])))
+                self.assertAlmostEqual(led["total_pnl"], st.equity_curve[-1] - config.initial_cash, delta=1e-6)
+                self.assertGreater(led["n_round_trips"], 0)
+                if st.halted:  # everything sold: nothing left open
+                    self.assertEqual(led["positions"], {})
+                    self.assertAlmostEqual(led["unrealized_pnl"], 0.0)
+                status, _ = snapshot(engine)
+                self.assertAlmostEqual(status["pnl"]["total_pnl"], led["total_pnl"], places=9)
+                self.assertTrue(all("realized_pnl" in f for f in status["fills"]))
+
     def test_file_feed_delivers_only_new_rows(self):
         import csv
         import tempfile
@@ -2443,7 +2491,7 @@ class TestWebEngineParity(unittest.TestCase):
         import subprocess
         import tempfile
         from pathlib import Path
-        from quantum.live import Bar, Engine, EngineConfig, RiskLimits
+        from quantum.live import Bar, Engine, EngineConfig, RiskLimits, trade_ledger
 
         node = shutil.which("node")
         if node is None:
@@ -2462,7 +2510,9 @@ class TestWebEngineParity(unittest.TestCase):
                                     state_path="unused.json", trade_from=tf))
             for r in rows:
                 e.on_bar(Bar(r["date"], {t: float(r[t]) for t in tick}))
-            expected.append([e.state.equity_curve[-1], len(e.state.fills), e.state.halted])
+            led = trade_ledger(e.state.fills, dict(zip(tick, e.state.prices[-1])))
+            expected.append([e.state.equity_curve[-1], len(e.state.fills), e.state.halted,
+                             led["realized_pnl"], led["unrealized_pnl"], led["n_round_trips"], led["n_wins"]])
         with tempfile.TemporaryDirectory() as d:
             payload = {"rows": [[r["date"]] + [float(r[t]) for t in tick] for r in rows], "tick": tick,
                        "cases": [list(c) for c in cases]}
@@ -2473,14 +2523,19 @@ class TestWebEngineParity(unittest.TestCase):
                 "const e=new QT.Engine({tickers:p.tick,strategy:s,cardinality:4,riskAversion:2,window:252,"
                 "rebalanceEvery:21,initialCash:100000,feeRate:0.0005,limits:{maxWeight:0.4,maxTurnover:0.5,"
                 "maxDrawdown:ks,minHistory:252},tradeFrom:tf});p.rows.forEach(r=>{const q={};p.tick.forEach((t,i)=>q[t]=r[i+1]);"
-                "e.onBar({date:r[0],prices:q});});return [e.equity[e.equity.length-1],e.fills.length,e.halted];});"
+                "e.onBar({date:r[0],prices:q});});const last=p.rows[p.rows.length-1],lp={};p.tick.forEach((t,i)=>lp[t]=last[i+1]);"
+                "const L=QT.ledger(e.fills,lp);return [e.equity[e.equity.length-1],e.fills.length,e.halted,"
+                "L.realized_pnl,L.unrealized_pnl,L.n_round_trips,L.n_wins];});"
                 "console.log(JSON.stringify(out));"
                 % (json.dumps(str(Path("web/engine.js").resolve())), json.dumps(str(Path(d) / "in.json"))))
             got = json.loads(subprocess.run([node, str(script)], capture_output=True, text=True, check=True).stdout)
-        for (pe, pf, ph), (je, jf, jh) in zip(expected, got):
+        for (pe, pf, ph, pr, pu, pn, pw), (je, jf, jh, jr, ju, jn, jw) in zip(expected, got):
             self.assertAlmostEqual(pe, je, delta=1e-6 * pe)
             self.assertEqual(pf, jf)
             self.assertEqual(ph, jh)
+            self.assertAlmostEqual(pr, jr, delta=0.01)
+            self.assertAlmostEqual(pu, ju, delta=0.01)
+            self.assertEqual((pn, pw), (jn, jw))
 
 
 

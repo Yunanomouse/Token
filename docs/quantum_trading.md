@@ -886,6 +886,15 @@ halted          : False
 positions       : AAPL 25.0%, JPM 25.0%, WMT 25.0%, BAC 25.0%
 ```
 
+The engine also keeps the books per trade: `trade_ledger` replays the
+fills by average cost and reports, for each sale, the gain or loss it locked
+in; for each holding, its average cost and open gain; and for each round
+trip (flat to flat), entry, exit and result.  On the run above that is
++13,247.57 locked in and +17,467.61 open, which add up to the +30,715.18
+equity change exactly, with 8 of 14 closed round trips won.  It is derived
+from the fills on demand rather than stored, so an old state file gets it
+too and it cannot drift from the trades.
+
 ### The four parts, and which one is missing
 
 **Feeds.**  A feed yields one bar per tick.  `ReplayFeed` replays a CSV, so

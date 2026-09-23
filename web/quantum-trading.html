@@ -97,7 +97,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; color: var(--ink-2); }
 .banner.halt { border-color: var(--critical); color: var(--ink); }
 .banner b { color: var(--ink); }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; }
 .tile .label { font-size: 12px; color: var(--ink-2); }
 .tile .value { font-size: 23px; font-weight: 600; margin-top: 1px; letter-spacing: -.01em; }
@@ -125,7 +125,8 @@ th { font-weight: 500; font-size: 12px; color: var(--ink-2); }
 td.t { font-family: var(--mono); font-weight: 500; }
 th.num, td.num { text-align: right; }
 td.muted { color: var(--ink-3); }
-.wbar { height: 5px; border-radius: 3px; background: var(--series-1); min-width: 2px; }
+td.gain, .value.gain { color: var(--good); }
+td.loss, .value.loss { color: var(--critical); }
 pre.log { margin: 0; max-height: 240px; overflow: auto; font: 12px/1.55 var(--mono); color: var(--ink-2); white-space: pre; }
 .about { margin-top: 12px; color: var(--ink-2); font-size: 13px; }
 .about p { margin: 0 0 6px; max-width: 70ch; }
@@ -176,6 +177,7 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
         <div class="tile"><div class="label">Versus equal weight</div><div class="value" id="lVs">–</div><div class="sub" id="lVsSub"></div></div>
         <div class="tile"><div class="label">Fall from peak</div><div class="value" id="lDD">–</div><div class="sub" id="lDDSub"></div></div>
         <div class="tile"><div class="label">Trades</div><div class="value" id="lFills">–</div><div class="sub" id="lFillsSub"></div></div>
+        <div class="tile"><div class="label">Gains and losses</div><div class="value" id="lPnl">–</div><div class="sub" id="lPnlSub"></div></div>
       </div>
       <div class="livegrid">
         <div>
@@ -189,7 +191,7 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
             <div class="panel">
               <h2>Bot holdings</h2>
               <div class="scroll"><table>
-                <thead><tr><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Share of account</th><th style="width:28%"><span class="visually-hidden">Weight bar</span></th></tr></thead>
+                <thead><tr><th>Stock</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Gain/loss</th><th class="num">Share</th></tr></thead>
                 <tbody id="lPositions"></tbody>
               </table></div>
               <p class="hint" id="lCash"></p>
@@ -197,7 +199,7 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
             <div class="panel">
               <h2>Bot's latest trades</h2>
               <div class="scroll"><table>
-                <thead><tr><th>Date</th><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Fee</th></tr></thead>
+                <thead><tr><th>Date</th><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Fee</th><th class="num">Gain/loss</th></tr></thead>
                 <tbody id="lFillsTable"></tbody>
               </table></div>
             </div>
@@ -328,6 +330,7 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
         <div class="tile"><div class="label">Versus equal weight</div><div class="value" id="tVs">–</div><div class="sub" id="tVsSub"></div></div>
         <div class="tile"><div class="label">Fall from peak</div><div class="value" id="tDD">–</div><div class="sub" id="tDDSub"></div></div>
         <div class="tile"><div class="label">Trades</div><div class="value" id="tFills">–</div><div class="sub" id="tFillsSub"></div></div>
+        <div class="tile"><div class="label">Gains and losses</div><div class="value" id="tPnl">–</div><div class="sub" id="tPnlSub"></div></div>
       </div>
 
       <div class="panel">
@@ -343,7 +346,7 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
         <div class="panel">
           <h2>Holdings</h2>
           <div class="scroll"><table>
-            <thead><tr><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Share of account</th><th style="width:28%"><span class="visually-hidden">Weight bar</span></th></tr></thead>
+            <thead><tr><th>Stock</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Gain/loss</th><th class="num">Share</th></tr></thead>
             <tbody id="positions"></tbody>
           </table></div>
           <p class="hint" id="cashLine"></p>
@@ -351,7 +354,7 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
         <div class="panel">
           <h2>Latest trades</h2>
           <div class="scroll"><table>
-            <thead><tr><th>Date</th><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Fee</th></tr></thead>
+            <thead><tr><th>Date</th><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Fee</th><th class="num">Gain/loss</th></tr></thead>
             <tbody id="fills"></tbody>
           </table></div>
         </div>
@@ -552,6 +555,56 @@ const QT = (function () {
     }
   }
 
+  // ---- gains and losses (quantum/live.py trade_ledger) -------------------
+  // Average cost from the fills: a buy's fee joins its cost, a sell's fee
+  // comes off its proceeds, so realized + unrealized = change in equity.
+  function ledger(fills, lastPrices) {
+    lastPrices = lastPrices || {};
+    const shares = {}, basis = {}, realized = {}, trip = {}, trips = [], annotated = [];
+    for (const f of fills) {
+      const t = f.ticker, q = f.quantity, px = f.price, fee = f.fee, held = shares[t] || 0;
+      let pnl = 0;
+      if (q > 0) {
+        if (held <= 1e-12) trip[t] = { ticker: t, entry_date: f.date, cost: 0, pnl: 0 };
+        shares[t] = held + q; basis[t] = (basis[t] || 0) + q * px + fee; trip[t].cost += q * px + fee;
+      } else if (held > 1e-12) {
+        const sold = Math.min(-q, held), avg = basis[t] / held;
+        pnl = sold * px - fee - avg * sold;
+        shares[t] = held - sold; basis[t] -= avg * sold;
+        realized[t] = (realized[t] || 0) + pnl; trip[t].pnl += pnl;
+        if (shares[t] <= 1e-9 * Math.max(held, 1)) {
+          shares[t] = 0; basis[t] = 0;
+          const done = trip[t]; delete trip[t];
+          done.exit_date = f.date; done.exit_price = px; done.return_pct = done.cost > 0 ? done.pnl / done.cost : 0;
+          trips.push(done);
+        }
+      }
+      annotated.push(Object.assign({}, f, { realized_pnl: pnl }));
+    }
+    const names = [...new Set([...Object.keys(shares), ...Object.keys(realized)])].sort();
+    const byTicker = {}, positions = {};
+    let totalReal = 0, totalUnreal = 0;
+    for (const t of names) {
+      let unreal = 0;
+      if ((shares[t] || 0) > 1e-12) {
+        const px = lastPrices[t], value = px != null ? shares[t] * px : basis[t];
+        unreal = value - basis[t];
+        positions[t] = { shares: shares[t], avg_cost: basis[t] / shares[t], cost_basis: basis[t], price: px == null ? null : px,
+                         market_value: value, unrealized_pnl: unreal, unrealized_pct: basis[t] > 0 ? unreal / basis[t] : 0,
+                         since: trip[t].entry_date };
+      }
+      const r = realized[t] || 0;
+      byTicker[t] = { realized_pnl: r, unrealized_pnl: unreal, total_pnl: r + unreal };
+      totalReal += r; totalUnreal += unreal;
+    }
+    const wins = trips.filter(x => x.pnl > 0), losses = trips.filter(x => x.pnl <= 0);
+    return { fills: annotated, positions, by_ticker: byTicker, round_trips: trips,
+             realized_pnl: totalReal, unrealized_pnl: totalUnreal, total_pnl: totalReal + totalUnreal,
+             n_round_trips: trips.length, n_wins: wins.length, win_rate: trips.length ? wins.length / trips.length : null,
+             avg_win: wins.length ? wins.reduce((a, x) => a + x.pnl, 0) / wins.length : null,
+             avg_loss: losses.length ? losses.reduce((a, x) => a + x.pnl, 0) / losses.length : null };
+  }
+
   // ---- engine (quantum/live.py Engine) ----------------------------------
   class Engine {
     constructor(cfg) {
@@ -643,7 +696,7 @@ const QT = (function () {
     }
   }
 
-  return { Engine, PaperBroker, marketData, ledoitWolf, markowitz, cardinality, equalWeight };
+  return { Engine, PaperBroker, marketData, ledoitWolf, markowitz, cardinality, equalWeight, ledger };
 })();
 
 
@@ -658,6 +711,15 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
   const money = v => v == null ? "–" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   const money2 = v => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pct = (v, d = 1) => v == null || !isFinite(v) ? "–" : (v * 100).toFixed(d) + "%";
+  const usd = v => v == null || !isFinite(v) ? "–" : (v >= 0 ? "+" : "−") + "$" + Math.round(Math.abs(v)).toLocaleString("en-US");
+  const gl = v => v == null ? "num" : v > 0.005 ? "num gain" : v < -0.005 ? "num loss" : "num";
+  function pnlTile(id, L) {
+    const el = $(id), big = L && Math.abs(L.total_pnl) >= 1e5;
+    el.textContent = !L ? "–" : big ? (L.total_pnl >= 0 ? "+" : "−") + "$" + (Math.abs(L.total_pnl) / 1000).toFixed(1) + "k" : usd(L.total_pnl);
+    el.className = "value" + (L && L.total_pnl > 0.005 ? " gain" : L && L.total_pnl < -0.005 ? " loss" : "");
+    $(id + "Sub").textContent = !L ? "" : usd(L.realized_pnl) + " sold · " + usd(L.unrealized_pnl) + " open" +
+      (L.n_round_trips ? ` · won ${L.n_wins} of ${L.n_round_trips}` : "");
+  }
   const signed = (v, d = 1) => v == null || !isFinite(v) ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(d) + "%";
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
@@ -908,6 +970,8 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
     $("tDDSub").textContent = "worst " + pct(worst) + " · limit " + pct(r.cfg.limits.maxDrawdown, 0);
     $("tFills").textContent = e.fills.length.toLocaleString("en-US");
     $("tFillsSub").textContent = "fees " + money(fees);
+    const simBar = r.bars[Math.max(0, r.i - 1)], L = e.fills.length ? QT.ledger(e.fills, simBar.prices) : null;
+    pnlTile("tPnl", L);
 
     const lg = $("legend"); lg.textContent = "";
     [["--series-1", "Strategy", last], ["--series-2", "Equal weight", bLast]].forEach(([v, name, val]) => {
@@ -927,20 +991,22 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
     const names = Object.keys(pos).sort((a, c) => (w[c] || 0) - (w[a] || 0));
     names.forEach(t => {
       const tr = document.createElement("tr");
-      tr.append(td(t, "t"), td(pos[t].toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(bar.prices[t]), "num"), td(pct(w[t]), "num"));
-      const cell = document.createElement("td"); const wb = document.createElement("div"); wb.className = "wbar"; wb.style.width = Math.max(1, (w[t] || 0) * 100) + "%"; cell.appendChild(wb); tr.appendChild(cell);
+      const p = (L && L.positions[t]) || {};
+      tr.append(td(t, "t"), td(p.avg_cost == null ? "–" : money2(p.avg_cost), "num"),
+        td(money2(bar.prices[t]), "num"), td(p.unrealized_pnl == null ? "–" : usd(p.unrealized_pnl) + " (" + signed(p.unrealized_pct, 0) + ")", gl(p.unrealized_pnl)), td(pct(w[t]), "num"));
       tb.appendChild(tr);
     });
     if (!names.length) { const tr = document.createElement("tr"); const c = td(e.halted ? "All cash: the kill switch sold everything." : e.dates.length < r.cfg.window ? `Waiting for ${r.cfg.window} days of history before the first trade.` : "All cash.", "muted"); c.colSpan = 5; tr.appendChild(c); tb.appendChild(tr); }
     $("cashLine").textContent = "Cash " + money(e.broker.cash) + " · prices as of " + bar.date;
 
     const fb = $("fills"); fb.textContent = "";
-    e.fills.slice(-20).reverse().forEach(f => {
-      const tr = document.createElement("tr");
-      tr.append(td(f.date), td(f.ticker, "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num"));
+    (L ? L.fills : e.fills).slice(-20).reverse().forEach(f => {
+      const tr = document.createElement("tr"), sold = f.quantity < 0 && f.realized_pnl != null;
+      tr.append(td(f.date), td(f.ticker, "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num"),
+        td(sold ? usd(f.realized_pnl) : "", sold ? gl(f.realized_pnl) : "num"));
       fb.appendChild(tr);
     });
-    if (!e.fills.length) { const tr = document.createElement("tr"); const c = td("No trades yet.", "muted"); c.colSpan = 5; tr.appendChild(c); fb.appendChild(tr); }
+    if (!e.fills.length) { const tr = document.createElement("tr"); const c = td("No trades yet.", "muted"); c.colSpan = 6; tr.appendChild(c); fb.appendChild(tr); }
     $("log").textContent = e.log.slice(-40).reverse().join("\n");
   }
 
@@ -1083,18 +1149,22 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
     }
 
     const tb = $("lPositions"); tb.textContent = "";
-    const pos = st.positions || {}, lp = st.last_prices || {};
+    const pos = st.positions || {}, lp = st.last_prices || {}, LP = st.pnl || null;
+    pnlTile("lPnl", LP);
     const names = Object.keys(pos).sort((a, z) => pos[z] * lp[z] - pos[a] * lp[a]);
     names.forEach(t => { const w = pos[t] * lp[t] / last; const tr = document.createElement("tr");
-      tr.append(td(t, "t"), td(pos[t].toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(lp[t]), "num"), td(pct(w), "num"));
-      const cell = document.createElement("td"); const wb = document.createElement("div"); wb.className = "wbar"; wb.style.width = Math.max(1, w * 100) + "%"; cell.appendChild(wb); tr.appendChild(cell); tb.appendChild(tr); });
+      const p = (LP && LP.positions[t]) || {};
+      tr.append(td(t, "t"), td(p.avg_cost == null ? "–" : money2(p.avg_cost), "num"),
+        td(money2(lp[t]), "num"), td(p.unrealized_pnl == null ? "–" : usd(p.unrealized_pnl) + " (" + signed(p.unrealized_pct, 0) + ")", gl(p.unrealized_pnl)), td(pct(w), "num"));
+      tb.appendChild(tr); });
     if (!names.length) { const tr = document.createElement("tr"); const cc = td(st.halted ? "All cash: the kill switch sold everything." : `All cash until ${since}.`, "muted"); cc.colSpan = 5; tr.appendChild(cc); tb.appendChild(tr); }
     $("lCash").textContent = "Cash " + money(st.cash) + (st.last_date ? " · prices as of " + st.last_date : "");
 
     const fb = $("lFillsTable"); fb.textContent = "";
-    (st.fills || []).slice(-20).reverse().forEach(f => { const tr = document.createElement("tr");
-      tr.append(td(f.date), td(f.ticker, "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num")); fb.appendChild(tr); });
-    if (!(st.fills || []).length) { const tr = document.createElement("tr"); const cc = td("No trades yet.", "muted"); cc.colSpan = 5; tr.appendChild(cc); fb.appendChild(tr); }
+    (st.fills || []).slice(-20).reverse().forEach(f => { const tr = document.createElement("tr"), sold = f.quantity < 0 && f.realized_pnl != null;
+      tr.append(td(f.date), td(f.ticker, "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num"),
+        td(sold ? usd(f.realized_pnl) : "", sold ? gl(f.realized_pnl) : "num")); fb.appendChild(tr); });
+    if (!(st.fills || []).length) { const tr = document.createElement("tr"); const cc = td("No trades yet.", "muted"); cc.colSpan = 6; tr.appendChild(cc); fb.appendChild(tr); }
     $("lLog").textContent = (st.log || []).slice(-40).reverse().join("\n");
 
     $("lAsOf").textContent = st.last_date || "–";

@@ -45,6 +45,7 @@ from .live import (
     PriceFeed,
     ReplayFeed,
     RiskLimits,
+    trade_ledger,
 )
 
 __all__ = ["Controller", "DashboardServer", "serve", "DEFAULT_PORT"]
@@ -269,7 +270,7 @@ class Controller:
         out["default_file"] = next((f for f in files if "us_equities" in f), files[0] if files else "")
         if state is None or not state.equity_curve:
             out.update(bars=0, equity=None, curve=[], dates=[], drawdown=[], positions={}, weights={},
-                       target_weights={}, fills=[], n_fills=0, fees=0.0, log=[], halted=False,
+                       target_weights={}, fills=[], n_fills=0, fees=0.0, pnl=None, log=[], halted=False,
                        halt_reason="", cash=None, prices={}, tickers=[])
             return out
         eq = state.equity_curve
@@ -285,6 +286,7 @@ class Controller:
             dd.append(1.0 - v / peak if peak > 0 else 0.0)
         last_prices = dict(zip(state.tickers, state.prices[-1]))
         weights = {t: q * last_prices[t] / eq[-1] for t, q in state.positions.items()} if eq[-1] > 0 else {}
+        ledger = trade_ledger(state.fills, last_prices)
         total = eq[-1] / eq[0] - 1.0
         years = max(n / 252.0, 1e-9)
         out.update(
@@ -295,7 +297,8 @@ class Controller:
             curve=[eq[i] for i in idx], dates=[state.dates[i] for i in idx], drawdown=[dd[i] for i in idx],
             positions=state.positions, weights=weights, target_weights=state.target_weights,
             cash=state.cash, prices=last_prices,
-            fills=state.fills[-25:][::-1], n_fills=len(state.fills),
+            fills=ledger["fills"][-25:][::-1], n_fills=len(state.fills),
+            pnl={k: v for k, v in ledger.items() if k not in ("fills", "round_trips")},
             fees=sum(f.get("fee", 0.0) for f in state.fills),
             log=state.log[-30:][::-1], halted=state.halted, halt_reason=state.halt_reason,
             tickers=state.tickers,
@@ -568,6 +571,7 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
       <div class="tile"><div class="label">Drawdown now</div><div class="value" id="tDD">–</div><div class="sub" id="tDDSub"></div></div>
       <div class="tile"><div class="label">Bars</div><div class="value" id="tBars">–</div><div class="sub" id="tBarsSub"></div></div>
       <div class="tile"><div class="label">Fills</div><div class="value" id="tFills">–</div><div class="sub" id="tFillsSub"></div></div>
+      <div class="tile"><div class="label">Gains / losses</div><div class="value" id="tPnl">–</div><div class="sub" id="tPnlSub"></div></div>
     </div>
     <div class="card">
       <h2>Equity curve</h2>
@@ -578,13 +582,13 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
     <div class="two">
       <div class="card">
         <h2>Positions</h2>
-        <table><thead><tr><th>Ticker</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Weight</th><th style="width:30%"></th></tr></thead>
+        <table><thead><tr><th>Ticker</th><th class="num">Shares</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Gain/loss</th><th class="num">Weight</th><th style="width:20%"></th></tr></thead>
         <tbody id="positions"></tbody></table>
         <div class="note" id="cash"></div>
       </div>
       <div class="card">
         <h2>Recent fills</h2>
-        <table><thead><tr><th>Date</th><th>Ticker</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Fee</th></tr></thead>
+        <table><thead><tr><th>Date</th><th>Ticker</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Fee</th><th class="num">Realized</th></tr></thead>
         <tbody id="fills"></tbody></table>
       </div>
     </div>
@@ -599,6 +603,10 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
   const $ = id => document.getElementById(id);
   const fmtMoney = v => v == null ? '–' : v.toLocaleString(undefined, {maximumFractionDigits: 2, minimumFractionDigits: 2});
   const fmtPct = v => v == null ? '–' : (v * 100).toFixed(2) + '%';
+  const fmtSigned = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + fmtMoney(Math.abs(v));
+  const fmtSigned0 = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.round(Math.abs(v)).toLocaleString();
+  const fmtSignedPct = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v * 100).toFixed(1) + '%';
+  const signColor = v => v > 0 ? 'var(--good)' : v < 0 ? 'var(--critical)' : '';
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   let last = null;
 
@@ -685,6 +693,11 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
     setText('tBarsSub', s.bars ? s.first_date + ' → ' + s.last_date : '');
     setText('tFills', s.n_fills || 0);
     setText('tFillsSub', s.n_fills ? 'fees ' + fmtMoney(s.fees) : '');
+    const pl = s.pnl;
+    setText('tPnl', pl ? fmtSigned0(pl.total_pnl) : '–');
+    setText('tPnlSub', pl ? 'realized ' + fmtSigned0(pl.realized_pnl) + ' · open ' + fmtSigned0(pl.unrealized_pnl) +
+      (pl.n_round_trips ? ' · ' + pl.n_wins + '/' + pl.n_round_trips + ' round trips won' : '') : '');
+    $('tPnl').style.color = pl ? signColor(pl.total_pnl) : '';
 
     geom = drawLine($('cEquity'), s.dates || [], s.curve || [], {color: css('--series-1'), fmt: v => v.toLocaleString(undefined, {maximumFractionDigits: 0}), fill: true});
     drawLine($('cDD'), s.dates || [], (s.drawdown || []).map(v => -v), {color: css('--series-8'), fmt: v => (v * 100).toFixed(0) + '%', zeroTop: true, fill: true});
@@ -694,17 +707,26 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
     names.forEach(t => {
       const tr = document.createElement('tr');
       const w = s.weights[t] || 0;
-      [t, (s.positions[t]).toFixed(2), fmtMoney(s.prices[t]), fmtPct(w)].forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i) td.className = 'num'; tr.appendChild(td); });
+      const p = (s.pnl && s.pnl.positions[t]) || {};
+      [t, (s.positions[t]).toFixed(2), fmtMoney(p.avg_cost), fmtMoney(s.prices[t]),
+       p.unrealized_pnl == null ? '–' : fmtSigned0(p.unrealized_pnl) + ' (' + fmtSignedPct(p.unrealized_pct) + ')', fmtPct(w)].forEach((v, i) => {
+        const td = document.createElement('td'); td.textContent = v; if (i) td.className = 'num';
+        if (i === 4 && p.unrealized_pnl != null) td.style.color = signColor(p.unrealized_pnl);
+        tr.appendChild(td); });
       const td = document.createElement('td'); const bar = document.createElement('div'); bar.className = 'bar'; bar.style.width = Math.max(2, w * 100) + '%'; td.appendChild(bar); tr.appendChild(td);
       pos.appendChild(tr);
     });
-    if (!names.length) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 5; td.textContent = s.bars ? 'all cash' : 'no positions'; td.style.color = 'var(--text-muted)'; tr.appendChild(td); pos.appendChild(tr); }
+    if (!names.length) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 7; td.textContent = s.bars ? 'all cash' : 'no positions'; td.style.color = 'var(--text-muted)'; tr.appendChild(td); pos.appendChild(tr); }
     setText('cash', s.cash == null ? '' : 'cash ' + fmtMoney(s.cash) + (s.target_weights && Object.keys(s.target_weights).length ? ' · targets: ' + Object.entries(s.target_weights).map(([k, v]) => k + ' ' + fmtPct(v)).join(', ') : ''));
 
     const fills = $('fills'); fills.innerHTML = '';
     (s.fills || []).forEach(f => {
       const tr = document.createElement('tr');
-      [f.date, f.ticker, f.quantity.toFixed(2), fmtMoney(f.price), fmtMoney(f.fee)].forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num'; tr.appendChild(td); });
+      const sold = f.quantity < 0 && f.realized_pnl != null;
+      [f.date, f.ticker, f.quantity.toFixed(2), fmtMoney(f.price), fmtMoney(f.fee), sold ? fmtSigned(f.realized_pnl) : ''].forEach((v, i) => {
+        const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num';
+        if (i === 5 && sold) td.style.color = signColor(f.realized_pnl);
+        tr.appendChild(td); });
       fills.appendChild(tr);
     });
     setText('log', (s.log || []).join('\n'));

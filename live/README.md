@@ -10,6 +10,14 @@ runs the engine after each US market close on real prices:
 | `state.json` | The engine's book and history; the run resumes from it. |
 | `snapshot.json`, `snapshot_prices.json` | What the dashboard shows, and the prices it re-checks against. |
 
+`snapshot.json` carries a `pnl` block: gains and losses by average cost,
+rebuilt from every fill in `state.json` on each run. Each sale shows what it
+locked in (`realized_pnl` on the fill), each open holding its average cost
+and paper gain, and `round_trips` lists every position from entry to full
+exit with its result. A buy's fee is part of its cost and a sell's fee comes
+off its proceeds, so locked-in plus open always equals the account's change
+since the start.
+
 The bot is **paper only**: fills at the close, no broker, no real money.
 `trade_from` is the first day it may trade; the year of prices before it is
 warm-up for the estimates, so the book starts in cash on that day rather
