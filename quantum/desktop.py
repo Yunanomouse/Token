@@ -112,7 +112,7 @@ class Controller:
         found: list[str] = []
         for base in (self.workdir / "data" / "prices", self.workdir):
             if base.is_dir():
-                found.extend(str(p.relative_to(self.workdir)) for p in sorted(base.glob("*.csv")))
+                found.extend(p.relative_to(self.workdir).as_posix() for p in sorted(base.glob("*.csv")))
         return found
 
     @staticmethod
