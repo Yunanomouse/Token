@@ -1,0 +1,15 @@
+{
+ "tickers": ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"],
+ "strategy": "cardinality",
+ "cardinality": 4,
+ "risk_aversion": 2.0,
+ "solver": "exhaustive",
+ "window": 252,
+ "rebalance_every": 21,
+ "initial_cash": 100000.0,
+ "fee_rate": 0.0005,
+ "limits": {"max_weight": 0.4, "max_turnover": 0.5, "max_drawdown": 0.25, "min_history": 252, "min_cash_fraction": 0.0},
+ "state_path": "live/state.json",
+ "seed": 0,
+ "trade_from": "2026-09-23"
+}

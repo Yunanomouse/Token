@@ -435,7 +435,7 @@ def cmd_live(args) -> int:
             dates = EngineState.load(config.state_path).dates
             last = dates[-1] if dates else None
         feed = FileFeed(args.feed, config.tickers, poll_seconds=args.poll,
-                        after=last, max_polls=1 if args.once else None)
+                        after=last, max_polls=1 if (args.once or args.catch_up) else None)
         print(f"tailing {args.feed} every {args.poll:.0f}s (paper broker); Ctrl-C to stop")
     else:
         print("give --replay <csv> or --feed <csv>")
@@ -454,6 +454,15 @@ def cmd_live(args) -> int:
         return 0
     print(engine.summary())
     print(f"\nstate: {config.state_path}")
+    if args.snapshot:
+        from .live import snapshot
+        status, prices = snapshot(engine)
+        base = args.snapshot
+        with open(base, "w", encoding="utf-8") as fh:
+            json.dump(status, fh, separators=(",", ":"))
+        with open(base.replace(".json", "") + "_prices.json", "w", encoding="utf-8") as fh:
+            json.dump(prices, fh, separators=(",", ":"))
+        print(f"snapshot: {base} (+ prices)")
     print("Paper fills at the close with no slippage: an upper bound on a real venue.")
     return 0
 
@@ -616,6 +625,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--state", default="live_state.json", help="state file (resumed on restart)")
     p.add_argument("--poll", type=float, default=60.0, help="seconds between feed polls")
     p.add_argument("--once", action="store_true", help="process one bar and exit (cron mode)")
+    p.add_argument("--catch-up", action="store_true", dest="catch_up",
+                   help="process every new row in the feed once, then exit (scheduled-job mode)")
+    p.add_argument("--snapshot", help="also write the dashboard snapshot JSON here")
     p.add_argument("--fresh", action="store_true", help="ignore an existing state file")
     p.add_argument("--live", action="store_true", help="refused unless a Broker is supplied in code")
     p.add_argument("--write-config", dest="write_config", help="also write the effective config JSON here")

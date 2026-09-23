@@ -91,6 +91,7 @@ __all__ = [
     "build_strategy",
     "load_config",
     "run",
+    "snapshot",
 ]
 
 
@@ -310,6 +311,11 @@ class EngineConfig:
     limits: RiskLimits = field(default_factory=RiskLimits)
     state_path: str = "live_state.json"
     seed: int = 0
+    trade_from: str | None = None
+    """First date the engine may trade.  Earlier bars are warm-up: their
+    prices feed the estimates, but no order is placed and the book stays
+    in cash.  This is what keeps a bot started today from back-filling a
+    year of trades it never made."""
 
     def __post_init__(self) -> None:
         self.tickers = [str(t) for t in self.tickers]
@@ -442,6 +448,8 @@ class Engine:
             st.target_weights = {}
             st.halt_reason = f"drawdown {drawdown:.1%} >= limit {self.limits.max_drawdown:.1%} on {bar.date}"
             event.update(action="kill_switch", fills=fills)
+        elif self.config.trade_from and bar.date < self.config.trade_from:
+            event["action"] = "warmup"
         elif st.n_bars >= max(self.limits.min_history, self.config.window) and (
             st.last_rebalance_index < 0 or st.n_bars - st.last_rebalance_index >= self.config.rebalance_every
         ):
@@ -555,6 +563,60 @@ class Engine:
 # --------------------------------------------------------------------------
 # Entry points
 # --------------------------------------------------------------------------
+
+
+def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) -> tuple[dict, dict]:
+    """The bot's state as two JSON documents for the dashboard.
+
+    ``status`` is what a person looks at: the book, the equity curve from
+    the first tradable bar, recent fills and log.  ``prices`` is the price
+    history the engine has seen, so the dashboard can re-run the same
+    engine in the browser and check that it lands on the same number.
+    """
+    st, cfg = engine.state, engine.config
+    start = 0
+    if cfg.trade_from:
+        start = next((i for i, d in enumerate(st.dates) if d >= cfg.trade_from), len(st.dates))
+    dates, curve = st.dates[start:], st.equity_curve[start:]
+    step = max(1, len(curve) // max_points)
+    idx = list(range(0, len(curve), step))
+    if curve and idx[-1] != len(curve) - 1:
+        idx.append(len(curve) - 1)
+    last_prices = dict(zip(st.tickers, st.prices[-1])) if st.prices else {}
+    equity = st.equity_curve[-1] if st.equity_curve else cfg.initial_cash
+    status = {
+        "schema": 1,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "mode": "paper",
+        "config": cfg.to_dict(),
+        "last_date": st.dates[-1] if st.dates else None,
+        "bars_seen": st.n_bars,
+        "live_bars": len(dates),
+        "equity": equity,
+        "cash": st.cash,
+        "peak_equity": st.peak_equity,
+        "positions": st.positions,
+        "last_prices": last_prices,
+        "target_weights": st.target_weights,
+        "halted": st.halted,
+        "halt_reason": st.halt_reason,
+        "curve_dates": [dates[i] for i in idx],
+        "curve": [curve[i] for i in idx],
+        "fills": st.fills[-60:],
+        "n_fills": len(st.fills),
+        "fees": sum(f.get("fee", 0.0) for f in st.fills),
+        "log": st.log[-60:],
+    }
+    keep = max(0, st.n_bars - price_days)
+    prices = {
+        "schema": 1,
+        "tickers": st.tickers,
+        "dates": st.dates[keep:],
+        "prices": st.prices[keep:],
+        "offset": keep,
+        "full_history": keep == 0,
+    }
+    return status, prices
 
 
 def load_config(path: str | Path) -> EngineConfig:

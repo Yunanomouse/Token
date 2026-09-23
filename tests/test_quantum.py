@@ -2339,13 +2339,14 @@ class TestWebEngineParity(unittest.TestCase):
         rows = list(_csv.DictReader(open("data/prices/us_equities_1989_2018.csv")))
         tick = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
         rows = [r for r in rows if "2007-01-01" <= r["date"] <= "2012-12-31" and all(r[t] for t in tick)]
-        cases = [("equal_weight", 0.9), ("markowitz", 0.9), ("cardinality", 0.9), ("cardinality", 0.12)]
+        cases = [("equal_weight", 0.9, None), ("markowitz", 0.9, None), ("cardinality", 0.9, None),
+                 ("cardinality", 0.12, None), ("cardinality", 0.9, "2010-03-01")]
         expected = []
-        for strat, ks in cases:
+        for strat, ks, tf in cases:
             e = Engine(EngineConfig(tickers=tick, strategy=strat, cardinality=4, solver="exhaustive",
                                     window=252, rebalance_every=21, initial_cash=100000, fee_rate=0.0005,
                                     limits=RiskLimits(max_weight=0.4, max_turnover=0.5, max_drawdown=ks, min_history=252),
-                                    state_path="unused.json"))
+                                    state_path="unused.json", trade_from=tf))
             for r in rows:
                 e.on_bar(Bar(r["date"], {t: float(r[t]) for t in tick}))
             expected.append([e.state.equity_curve[-1], len(e.state.fills), e.state.halted])
@@ -2355,10 +2356,10 @@ class TestWebEngineParity(unittest.TestCase):
             (Path(d) / "in.json").write_text(json.dumps(payload))
             script = Path(d) / "run.js"
             script.write_text(
-                "const QT=require(%s);const p=require(%s);const out=p.cases.map(([s,ks])=>{"
+                "const QT=require(%s);const p=require(%s);const out=p.cases.map(([s,ks,tf])=>{"
                 "const e=new QT.Engine({tickers:p.tick,strategy:s,cardinality:4,riskAversion:2,window:252,"
                 "rebalanceEvery:21,initialCash:100000,feeRate:0.0005,limits:{maxWeight:0.4,maxTurnover:0.5,"
-                "maxDrawdown:ks,minHistory:252}});p.rows.forEach(r=>{const q={};p.tick.forEach((t,i)=>q[t]=r[i+1]);"
+                "maxDrawdown:ks,minHistory:252},tradeFrom:tf});p.rows.forEach(r=>{const q={};p.tick.forEach((t,i)=>q[t]=r[i+1]);"
                 "e.onBar({date:r[0],prices:q});});return [e.equity[e.equity.length-1],e.fills.length,e.halted];});"
                 "console.log(JSON.stringify(out));"
                 % (json.dumps(str(Path("web/engine.js").resolve())), json.dumps(str(Path(d) / "in.json"))))
@@ -2367,3 +2368,109 @@ class TestWebEngineParity(unittest.TestCase):
             self.assertAlmostEqual(pe, je, delta=1e-6 * pe)
             self.assertEqual(pf, jf)
             self.assertEqual(ph, jh)
+
+
+
+class TestLiveBot(unittest.TestCase):
+    """The scheduled paper bot: warm-up, catch-up runs, and the dashboard snapshot."""
+
+    TICK = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
+
+    def _write(self, path, rows):
+        import csv
+        with open(path, "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["date"] + self.TICK)
+            for r in rows:
+                w.writerow([r["date"]] + [r[t] for t in self.TICK])
+
+    def _rows(self):
+        import csv
+        return [r for r in csv.DictReader(open("data/prices/us_equities_1989_2018.csv"))
+                if r["date"] >= "2015-06-01" and all(r[t] for t in self.TICK)]
+
+    def test_warmup_never_trades_before_trade_from(self):
+        from quantum.live import Bar, Engine, EngineConfig, RiskLimits
+
+        rows = self._rows()[:320]
+        tf = rows[280]["date"]
+        e = Engine(EngineConfig(self.TICK, strategy="equal_weight", window=252, trade_from=tf,
+                                limits=RiskLimits(min_history=252), state_path="unused.json"))
+        for r in rows:
+            e.on_bar(Bar(r["date"], {t: float(r[t]) for t in self.TICK}))
+        self.assertTrue(all(f["date"] >= tf for f in e.state.fills))
+        self.assertEqual(e.state.fills[0]["date"], tf)
+        before = [v for d, v in zip(e.state.dates, e.state.equity_curve) if d < tf]
+        self.assertTrue(all(v == 100_000.0 for v in before))
+
+    def test_catch_up_runs_resume_and_are_idempotent(self):
+        import json
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        rows = self._rows()
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            cfg = json.load(open("live/config.json"))
+            cfg.update(state_path=str(d / "state.json"), trade_from=rows[270]["date"])
+            (d / "config.json").write_text(json.dumps(cfg))
+            cmd = [sys.executable, "-m", "quantum", "live", "--config", str(d / "config.json"),
+                   "--feed", str(d / "prices.csv"), "--catch-up", "--poll", "0",
+                   "--snapshot", str(d / "snapshot.json")]
+            self._write(d / "prices.csv", rows[:300])
+            subprocess.run(cmd, check=True, capture_output=True, timeout=300)
+            first = json.loads((d / "snapshot.json").read_text())
+            self.assertEqual(first["bars_seen"], 300)
+            self.assertEqual(first["live_bars"], 30)
+            self.assertEqual(first["curve_dates"][0], rows[270]["date"])
+            self.assertEqual(first["mode"], "paper")
+            self._write(d / "prices.csv", rows[:325])
+            subprocess.run(cmd, check=True, capture_output=True, timeout=300)
+            second = json.loads((d / "snapshot.json").read_text())
+            self.assertEqual(second["bars_seen"], 325)
+            self.assertGreaterEqual(second["n_fills"], first["n_fills"])
+            subprocess.run(cmd, check=True, capture_output=True, timeout=300)
+            third = json.loads((d / "snapshot.json").read_text())
+            self.assertEqual(third["bars_seen"], 325)
+            self.assertEqual(third["n_fills"], second["n_fills"])
+            prices = json.loads((d / "snapshot_prices.json").read_text())
+            self.assertTrue(prices["full_history"])
+            self.assertEqual(len(prices["dates"]), 325)
+            self.assertLess(len(json.dumps(second)), 256 * 1024)
+            self.assertLess(len(json.dumps(prices)), 256 * 1024)
+
+    def test_fetch_script_refuses_a_partial_market(self):
+        import importlib.util
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        spec = importlib.util.spec_from_file_location("fetch_prices", "scripts/fetch_prices.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        good = {"2026-09-21": 10.0, "2026-09-22": 11.0}
+        lagging = {"2026-09-21": 20.0}
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / "c.json"
+            cfg.write_text(json.dumps({"tickers": ["AAA", "BBB"]}))
+            out = Path(d) / "p.csv"
+            with mock.patch.object(mod, "fetch", side_effect=[(good, "stooq"), (lagging, "stooq")]), \
+                 mock.patch("sys.argv", ["x", "--config", str(cfg), "--out", str(out), "--days", "36500"]):
+                self.assertEqual(mod.main(), 2)
+            self.assertFalse(out.exists())
+            with mock.patch.object(mod, "fetch", side_effect=[(good, "stooq"), (dict(good), "yahoo")]), \
+                 mock.patch("sys.argv", ["x", "--config", str(cfg), "--out", str(out), "--days", "36500"]):
+                self.assertEqual(mod.main(), 0)
+            self.assertEqual(out.read_text().splitlines()[0], "date,AAA,BBB")
+            self.assertEqual(len(out.read_text().splitlines()), 3)
+
+    def test_bot_config_is_valid_and_paper(self):
+        from quantum.live import load_config
+
+        cfg = load_config("live/config.json")
+        self.assertEqual(cfg.state_path, "live/state.json")
+        self.assertTrue(cfg.trade_from)
+        self.assertEqual(cfg.solver, "exhaustive")

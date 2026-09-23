@@ -85,6 +85,11 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   same engine ported to JavaScript with 12 years of prices for 17 stocks built
   in; it matches the Python engine to the cent (tested). Open the file, or the
   published copy, and press Start.
+- **Live, on GitHub** — `.github/workflows/live-bot.yml` runs the paper bot
+  after every US close on real prices (Stooq, Yahoo fallback) and commits its
+  state to `live/`. The web page's **Live bot** tab shows that state and
+  re-runs the same engine in the browser to confirm it lands on the same
+  number. See [live/README.md](live/README.md).
 - **On the desktop** — double-click `Quantum Trading.bat` / `quantum_trading.command`
   / `quantum-trading.desktop` (or `python3 -m quantum desktop`) for a local
   point-and-click dashboard: watch the engine trade through history at any

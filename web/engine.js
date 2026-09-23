@@ -186,6 +186,8 @@ const QT = (function () {
         this.halted = true; this.targets = {};
         this.haltReason = `drawdown ${(dd * 100).toFixed(1)}% >= limit ${(L.maxDrawdown * 100).toFixed(1)}% on ${bar.date}`;
         action = "kill_switch";
+      } else if (this.cfg.tradeFrom && bar.date < this.cfg.tradeFrom) {
+        action = "warmup";
       } else if (n >= Math.max(L.minHistory, this.cfg.window) &&
                  (this.lastRebalance < 0 || n - this.lastRebalance >= this.cfg.rebalanceEvery)) {
         [fills, note] = this.rebalance(bar);

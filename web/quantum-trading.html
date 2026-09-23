@@ -129,6 +129,23 @@ td.muted { color: var(--ink-3); }
 pre.log { margin: 0; max-height: 240px; overflow: auto; font: 12px/1.55 var(--mono); color: var(--ink-2); white-space: pre; }
 .about { margin-top: 12px; color: var(--ink-2); font-size: 13px; }
 .about p { margin: 0 0 6px; max-width: 70ch; }
+.tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--sunken); }
+.tabs button { border: 0; border-radius: 0; background: transparent; padding: 6px 12px; font-weight: 500; color: var(--ink-2); }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--ink); }
+.livegrid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .livegrid { grid-template-columns: minmax(0, 1fr); } }
+.check { display: flex; gap: 10px; align-items: flex-start; }
+.check .mark { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font: 700 13px/1 var(--sans); color: var(--surface); background: var(--ink-3); }
+.check.ok .mark { background: var(--good); }
+.check.bad .mark { background: var(--critical); }
+.check p { margin: 0; }
+dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
+dl.kv dt { color: var(--ink-2); }
+dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.empty { padding: 28px 18px; text-align: left; }
+.empty h3 { margin: 0 0 6px; font-size: 16px; }
+.empty p { margin: 0 0 6px; color: var(--ink-2); max-width: 70ch; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
@@ -139,9 +156,80 @@ pre.log { margin: 0; max-height: 240px; overflow: auto; font: 12px/1.55 var(--mo
   <span class="pill" id="status"><span class="dot"></span><span id="statusText">Ready</span></span>
   <span id="runinfo"></span>
   <span class="grow"></span>
+  <div class="tabs" role="tablist" aria-label="View">
+    <button role="tab" id="tabLive" aria-selected="true" aria-controls="liveView">Live bot</button>
+    <button role="tab" id="tabSim" aria-selected="false" aria-controls="simView">Simulator</button>
+  </div>
 </header>
 
 <div class="wrap">
+  <section id="liveView" role="tabpanel" aria-labelledby="tabLive">
+    <div class="panel empty" id="liveEmpty">
+      <h3 id="liveEmptyTitle">Connecting to the bot…</h3>
+      <p id="liveEmptyText">Reading the bot's latest report.</p>
+    </div>
+    <div id="liveBody" hidden>
+      <div class="banner halt" id="liveHalt" hidden><span><b>The bot's kill switch has tripped.</b> <span id="liveHaltReason"></span>. It sold everything and is not trading.</span></div>
+      <div class="tiles">
+        <div class="tile"><div class="label">Bot account value</div><div class="value" id="lEquity">–</div><div class="sub" id="lEquitySub"></div></div>
+        <div class="tile"><div class="label">Return since it started</div><div class="value" id="lReturn">–</div><div class="sub" id="lReturnSub"></div></div>
+        <div class="tile"><div class="label">Versus equal weight</div><div class="value" id="lVs">–</div><div class="sub" id="lVsSub"></div></div>
+        <div class="tile"><div class="label">Fall from peak</div><div class="value" id="lDD">–</div><div class="sub" id="lDDSub"></div></div>
+        <div class="tile"><div class="label">Trades</div><div class="value" id="lFills">–</div><div class="sub" id="lFillsSub"></div></div>
+      </div>
+      <div class="livegrid">
+        <div>
+          <div class="panel">
+            <h2>Bot account value</h2>
+            <div class="legend" id="lLegend"></div>
+            <div class="chart" id="lWrap"><canvas id="lChart" aria-label="The live bot's account value since it started trading"></canvas>
+              <div class="cross" id="lCross" hidden></div><div class="tip" id="lTip" hidden></div></div>
+          </div>
+          <div class="two">
+            <div class="panel">
+              <h2>Bot holdings</h2>
+              <div class="scroll"><table>
+                <thead><tr><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Share of account</th><th style="width:28%"><span class="visually-hidden">Weight bar</span></th></tr></thead>
+                <tbody id="lPositions"></tbody>
+              </table></div>
+              <p class="hint" id="lCash"></p>
+            </div>
+            <div class="panel">
+              <h2>Bot's latest trades</h2>
+              <div class="scroll"><table>
+                <thead><tr><th>Date</th><th>Stock</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Fee</th></tr></thead>
+                <tbody id="lFillsTable"></tbody>
+              </table></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:12px"><h2>Bot log</h2><pre class="log" id="lLog"></pre></div>
+        </div>
+        <aside>
+          <div class="panel">
+            <h2>Same engine, run here</h2>
+            <div class="check" id="lCheck"><span class="mark" id="lCheckMark">…</span><div><p id="lCheckText">Re-running the bot's strategy in this browser on the bot's own prices.</p></div></div>
+          </div>
+          <div class="panel">
+            <h2>Status</h2>
+            <dl class="kv">
+              <dt>Mode</dt><dd>Paper (no real money)</dd>
+              <dt>Prices as of</dt><dd id="lAsOf">–</dd>
+              <dt>Last report</dt><dd id="lUpdated">–</dd>
+              <dt>Trading since</dt><dd id="lSince">–</dd>
+              <dt>Next run</dt><dd>after each US close</dd>
+            </dl>
+          </div>
+          <div class="panel">
+            <h2>Bot settings</h2>
+            <dl class="kv" id="lConfig"></dl>
+            <p class="hint">To change them, edit <span class="mono">live/config.json</span> in the repository.</p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section id="simView" role="tabpanel" aria-labelledby="tabSim" hidden>
   <div class="layout">
     <aside>
       <div class="panel">
@@ -281,6 +369,7 @@ pre.log { margin: 0; max-height: 240px; overflow: auto; font: 12px/1.55 var(--mo
       </div>
     </main>
   </div>
+  </section>
 </div>
 
 <script>
@@ -472,6 +561,8 @@ const QT = (function () {
         this.halted = true; this.targets = {};
         this.haltReason = `drawdown ${(dd * 100).toFixed(1)}% >= limit ${(L.maxDrawdown * 100).toFixed(1)}% on ${bar.date}`;
         action = "kill_switch";
+      } else if (this.cfg.tradeFrom && bar.date < this.cfg.tradeFrom) {
+        action = "warmup";
       } else if (n >= Math.max(L.minHistory, this.cfg.window) &&
                  (this.lastRebalance < 0 || n - this.lastRebalance >= this.cfg.rebalanceEvery)) {
         [fills, note] = this.rebalance(bar);
@@ -869,14 +960,179 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
   eqWrap.addEventListener("pointermove", showTip);
   eqWrap.addEventListener("pointerdown", showTip);
   eqWrap.addEventListener("pointerleave", hideTip);
-  let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 80); });
-  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", render);
-  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  const rerender = () => { $("liveView").hidden ? render() : renderLive(); };
+  let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(rerender, 80); });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", rerender);
+  new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  // ---- live bot -----------------------------------------------------------
+  const live = { status: null, prices: null, check: null, bench: null, geom: null };
+  function ago(iso) {
+    const t = Date.parse(iso); if (!isFinite(t)) return "–";
+    const m = Math.round((Date.now() - t) / 60000);
+    if (m < 2) return "just now"; if (m < 60) return m + " minutes ago";
+    const h = Math.round(m / 60); if (h < 36) return h + " hours ago";
+    return Math.round(h / 24) + " days ago";
+  }
+  function engineCfg(c, strategy) {
+    return { tickers: c.tickers, strategy: strategy || c.strategy, cardinality: c.cardinality, riskAversion: c.risk_aversion,
+      window: c.window, rebalanceEvery: c.rebalance_every, initialCash: c.initial_cash, feeRate: c.fee_rate, tradeFrom: c.trade_from || null,
+      limits: { maxWeight: c.limits.max_weight, maxTurnover: c.limits.max_turnover, maxDrawdown: c.limits.max_drawdown, minHistory: c.limits.min_history } };
+  }
+  // Re-run the bot on its own prices, in this browser.  Also runs equal
+  // weight from the same first trading day, as the benchmark line.
+  function recheck() {
+    const st = live.status, pr = live.prices;
+    live.check = null; live.bench = null;
+    if (!st || !pr || !pr.dates || !pr.dates.length) return;
+    const c = st.config;
+    const mine = new QT.Engine(engineCfg(c));
+    const bcfg = engineCfg(c, "equal_weight"); bcfg.limits = Object.assign({}, bcfg.limits, { maxDrawdown: 2, maxWeight: 1 });
+    const bench = new QT.Engine(bcfg);
+    pr.dates.forEach((d, i) => {
+      const p = {}; pr.tickers.forEach((t, j) => p[t] = pr.prices[i][j]);
+      const bar = { date: d, prices: p };
+      mine.onBar(bar); bench.onBar(bar);
+    });
+    live.bench = bench;
+    if (!pr.full_history) { live.check = { state: "partial" }; return; }
+    const got = mine.equity[mine.equity.length - 1], want = st.equity;
+    const same = Math.abs(got - want) <= Math.max(0.01, 1e-9 * Math.abs(want)) && mine.fills.length === st.n_fills && mine.halted === st.halted;
+    live.check = { state: same ? "ok" : "bad", got, want, fills: mine.fills.length };
+  }
+  function renderLive() {
+    const st = live.status;
+    $("liveEmpty").hidden = !!st; $("liveBody").hidden = !st;
+    if (!st) return;
+    const c = st.config, since = c.trade_from || (st.curve_dates[0] || "–");
+    const curve = st.curve, n = curve.length;
+    const first = n ? curve[0] : c.initial_cash, last = st.equity;
+    const total = last / c.initial_cash - 1;
+    let peak = 0, worst = 0; curve.forEach(v => { peak = Math.max(peak, v); worst = Math.max(worst, 1 - v / peak); });
+    const ddNow = st.peak_equity > 0 ? 1 - last / st.peak_equity : 0;
+    $("lEquity").textContent = money(last);
+    $("lEquitySub").textContent = "started with " + money(c.initial_cash);
+    $("lReturn").textContent = st.live_bars ? signed(total) : "–";
+    $("lReturnSub").textContent = st.live_bars ? `${st.live_bars} trading day${st.live_bars === 1 ? "" : "s"} live` : "starts trading " + since;
+    const b = live.bench;
+    let bVal = null;
+    if (b && b.equity.length) {
+      const i0 = b.dates.findIndex(d => d >= since);
+      if (i0 >= 0) { bVal = b.equity[b.equity.length - 1]; const bTot = bVal / b.equity[i0] - 1;
+        $("lVs").textContent = st.live_bars ? signed(total - bTot) : "–"; $("lVsSub").textContent = st.live_bars ? "equal weight made " + signed(bTot) : "compared once it trades"; }
+    } else { $("lVs").textContent = "–"; $("lVsSub").textContent = "needs the bot's prices"; }
+    $("lDD").textContent = pct(ddNow);
+    $("lDDSub").textContent = "worst " + pct(worst) + " · limit " + pct(c.limits.max_drawdown, 0);
+    $("lFills").textContent = (st.n_fills || 0).toLocaleString("en-US");
+    $("lFillsSub").textContent = "fees " + money(st.fees || 0);
+    $("liveHalt").hidden = !st.halted;
+    $("liveHaltReason").textContent = (st.halt_reason || "").replace(/^drawdown/, "The account fell").replace(">= limit", "against a limit of");
+
+    const lg = $("lLegend"); lg.textContent = "";
+    const series = [];
+    if (n >= 2) {
+      series.push({ values: curve, color: css("--series-1") });
+      const items = [["--series-1", "Bot", last]];
+      if (b) {
+        const map = {}; b.dates.forEach((d, i) => map[d] = b.equity[i]);
+        const i0 = st.curve_dates[0], scale = c.initial_cash / (map[i0] || c.initial_cash);
+        const bv = st.curve_dates.map(d => (map[d] || NaN) * scale);
+        if (bv.every(isFinite)) { series.push({ values: bv, color: css("--series-2") }); items.push(["--series-2", "Equal weight", bv[bv.length - 1]]); }
+      }
+      items.forEach(([v, name, val]) => { const s = document.createElement("span"); const k = document.createElement("span"); k.className = "key"; k.style.background = css(v);
+        const bb = document.createElement("b"); bb.textContent = money(val); s.append(k, document.createTextNode(name + " "), bb); lg.appendChild(s); });
+    }
+    const fmtAxis = v => "$" + (Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + "M" : (Math.abs(v) >= 1e4 ? Math.round(v / 1000) + "k" : Math.round(v)));
+    const cv = $("lChart");
+    if (n >= 2) { live.geom = drawChart(cv, st.curve_dates, series, { fmt: fmtAxis }); live.series = series; }
+    else {
+      live.geom = null; const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+      cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+      g.fillStyle = css("--ink-3"); g.font = "13px system-ui, sans-serif";
+      g.fillText(n === 1 ? "One trading day so far. The line starts after the second." : `Warming up. The bot places its first trades on ${since}.`, 16, h / 2);
+    }
+
+    const tb = $("lPositions"); tb.textContent = "";
+    const pos = st.positions || {}, lp = st.last_prices || {};
+    const names = Object.keys(pos).sort((a, z) => pos[z] * lp[z] - pos[a] * lp[a]);
+    names.forEach(t => { const w = pos[t] * lp[t] / last; const tr = document.createElement("tr");
+      tr.append(td(t, "t"), td(pos[t].toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(lp[t]), "num"), td(pct(w), "num"));
+      const cell = document.createElement("td"); const wb = document.createElement("div"); wb.className = "wbar"; wb.style.width = Math.max(1, w * 100) + "%"; cell.appendChild(wb); tr.appendChild(cell); tb.appendChild(tr); });
+    if (!names.length) { const tr = document.createElement("tr"); const cc = td(st.halted ? "All cash: the kill switch sold everything." : `All cash until ${since}.`, "muted"); cc.colSpan = 5; tr.appendChild(cc); tb.appendChild(tr); }
+    $("lCash").textContent = "Cash " + money(st.cash) + (st.last_date ? " · prices as of " + st.last_date : "");
+
+    const fb = $("lFillsTable"); fb.textContent = "";
+    (st.fills || []).slice(-20).reverse().forEach(f => { const tr = document.createElement("tr");
+      tr.append(td(f.date), td(f.ticker, "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num")); fb.appendChild(tr); });
+    if (!(st.fills || []).length) { const tr = document.createElement("tr"); const cc = td("No trades yet.", "muted"); cc.colSpan = 5; tr.appendChild(cc); fb.appendChild(tr); }
+    $("lLog").textContent = (st.log || []).slice(-40).reverse().join("\n");
+
+    $("lAsOf").textContent = st.last_date || "–";
+    $("lUpdated").textContent = ago(st.updated_at);
+    $("lSince").textContent = since;
+    const kv = $("lConfig"); kv.textContent = "";
+    const stratName = { cardinality: `Best ${c.cardinality} stocks (QUBO)`, markowitz: "Markowitz", equal_weight: "Equal weight" }[c.strategy] || c.strategy;
+    [["Stocks", c.tickers.join(", ")], ["Strategy", stratName], ["Look back", c.window + " days"], ["Rebalance", "every " + c.rebalance_every + " days"],
+     ["Max in one stock", pct(c.limits.max_weight, 0)], ["Kill switch", pct(c.limits.max_drawdown, 0) + " fall"], ["Fee per trade", pct(c.fee_rate, 2)]]
+      .forEach(([k, v]) => { const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; kv.append(dt, dd); });
+
+    const ck = live.check, box = $("lCheck"), mark = $("lCheckMark"), txt = $("lCheckText");
+    box.className = "check" + (ck && ck.state === "ok" ? " ok" : ck && ck.state === "bad" ? " bad" : "");
+    if (!live.prices) { mark.textContent = "…"; txt.textContent = "Waiting for the bot's price history."; }
+    else if (!ck || ck.state === "partial") { mark.textContent = "–"; txt.textContent = "The bot's full price history is too long to re-check here; the report is shown as the bot sent it."; }
+    else if (ck.state === "ok") { mark.textContent = "✓"; txt.textContent = `This browser re-ran the bot on the same ${live.prices.dates.length} days of prices and reached ${money2(ck.got)} with ${ck.fills} trades: exactly what the bot reported.`; }
+    else { mark.textContent = "!"; txt.textContent = `This browser reached ${money2(ck.got)} with ${ck.fills} trades, but the bot reported ${money2(ck.want)} with ${live.status.n_fills}. The two copies disagree; check the bot's run on GitHub.`; }
+  }
+  function liveTip(e) {
+    if (!live.geom || !live.status) return;
+    const rect = $("lWrap").getBoundingClientRect(), g = live.geom, x = e.clientX - rect.left;
+    const i = Math.max(0, Math.min(g.n - 1, Math.round((x - g.padL) / (g.w - g.padL - g.padR) * (g.n - 1))));
+    const cross = $("lCross"), tip = $("lTip"); cross.hidden = false; cross.style.left = g.X(i) + "px";
+    tip.hidden = false; tip.textContent = "";
+    const d = document.createElement("div"); d.className = "date"; d.textContent = live.status.curve_dates[i]; tip.appendChild(d);
+    live.series.forEach((s, k) => { const row = document.createElement("div"); row.className = "row"; const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = s.color;
+      const v = document.createElement("b"); v.textContent = money(s.values[i]); row.append(sw, v, document.createTextNode(k ? " Equal weight" : " Bot")); tip.appendChild(row); });
+    tip.style.left = Math.max(4, Math.min(g.X(i) + 12, g.w - tip.offsetWidth - 4)) + "px";
+  }
+  $("lWrap").addEventListener("pointermove", liveTip);
+  $("lWrap").addEventListener("pointerdown", liveTip);
+  $("lWrap").addEventListener("pointerleave", () => { $("lCross").hidden = true; $("lTip").hidden = true; });
+
+  function showView(which) {
+    const liveOn = which === "live";
+    $("liveView").hidden = !liveOn; $("simView").hidden = liveOn;
+    $("tabLive").setAttribute("aria-selected", String(liveOn)); $("tabSim").setAttribute("aria-selected", String(!liveOn));
+    $("status").hidden = liveOn; $("runinfo").hidden = liveOn;
+    try { localStorage.setItem("qt-view", which); } catch (e) { /* ignore */ }
+    liveOn ? renderLive() : render();
+  }
+  $("tabLive").addEventListener("click", () => showView("live"));
+  $("tabSim").addEventListener("click", () => showView("sim"));
+
+  function noBot(title, text) { $("liveEmptyTitle").textContent = title; $("liveEmptyText").textContent = text; }
+  (async function connect() {
+    const use = window.claude && typeof window.claude.use === "function" ? window.claude.use("db") : Promise.resolve(null);
+    let db = null;
+    try { db = await use; } catch (e) { db = null; }
+    if (!db) { noBot("The live bot can't be reached from here.", "Open this page on claude.ai to see the bot. The Simulator tab works anywhere."); return; }
+    noBot("Waiting for the bot's first report.", "The bot runs on GitHub after each US market close and reports here. Until then, try the Simulator tab.");
+    db.doc("bot/status").onSnapshot(snap => {
+      live.status = snap.exists ? snap.data() : null;
+      recheck(); if (!$("liveView").hidden) renderLive();
+    }, () => noBot("The bot's report could not be read.", "Reload the page to try again."));
+    db.doc("bot/prices").onSnapshot(snap => {
+      live.prices = snap.exists ? snap.data() : null;
+      recheck(); if (!$("liveView").hidden) renderLive();
+    }, () => {});
+  })();
+  setInterval(() => { if (live.status && !$("liveView").hidden) $("lUpdated").textContent = ago(live.status.updated_at); }, 60000);
 
   // ---- open in a working state: a finished example run --------------------
   loadSettings();
   buildUniverse();
   try { run = newRun(true); step(run, run.bars.length); } catch (e) { run = null; $("error").textContent = e.message; }
-  render();
+  let startView = "live";
+  try { startView = localStorage.getItem("qt-view") || "live"; } catch (e) { /* ignore */ }
+  showView(startView === "sim" ? "sim" : "live");
 })();
 </script>
