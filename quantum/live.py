@@ -700,7 +700,7 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
     status = {
         "schema": 1,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "mode": "paper",
+        "mode": getattr(engine.broker, "mode", "paper"),
         "config": cfg.to_dict(),
         "last_date": st.dates[-1] if st.dates else None,
         "bars_seen": st.n_bars,

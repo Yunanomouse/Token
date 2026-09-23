@@ -403,9 +403,12 @@ def cmd_live(args) -> int:
     import json
     from .live import EngineConfig, FileFeed, ReplayFeed, RiskLimits, load_config, run
 
-    if args.live:
-        print("--live needs a Broker implementation for your venue; none is bundled and")
-        print("none will be guessed. Subclass quantum.live.Broker and pass it to run().")
+    broker_name = (args.broker or os.environ.get("QT_BROKER") or "paper").strip().lower()
+    if args.live and broker_name == "paper":
+        print("--live needs a real broker: use --broker alpaca (see live/README.md)")
+        return 2
+    if broker_name not in ("paper", "alpaca"):
+        print(f"unknown broker {broker_name!r}: use paper or alpaca")
         return 2
     if args.config:
         config = load_config(args.config)
@@ -425,7 +428,7 @@ def cmd_live(args) -> int:
         )
     if args.replay:
         feed = ReplayFeed(args.replay, config.tickers, start=args.start, end=args.end)
-        print(f"replaying {len(feed)} bars from {args.replay} (paper broker)")
+        print(f"replaying {len(feed)} bars from {args.replay} ({broker_name} broker)")
     elif args.feed:
         # Resume from the last bar the state file knows, so the writer may
         # keep the whole history in the CSV and only new rows are delivered.
@@ -436,7 +439,7 @@ def cmd_live(args) -> int:
             last = dates[-1] if dates else None
         feed = FileFeed(args.feed, config.tickers, poll_seconds=args.poll,
                         after=last, max_polls=1 if (args.once or args.catch_up) else None)
-        print(f"tailing {args.feed} every {args.poll:.0f}s (paper broker); Ctrl-C to stop")
+        print(f"tailing {args.feed} every {args.poll:.0f}s ({broker_name} broker); Ctrl-C to stop")
     else:
         print("give --replay <csv> or --feed <csv>")
         return 2
@@ -445,9 +448,20 @@ def cmd_live(args) -> int:
             json.dump(config.to_dict(), fh, indent=1)
         print(f"wrote {args.write_config}")
 
+    broker = None
+    if broker_name == "alpaca":
+        from .alpaca import BrokerRefused, from_environment
+        try:
+            broker = from_environment(config.tickers, config.initial_cash, log=print)
+        except BrokerRefused as exc:
+            print(f"broker refused, nothing sent: {exc}")
+            return 2
+        where = "PAPER account (fake money)" if broker.is_paper else "REAL-MONEY account"
+        print(f"broker: Alpaca {where}; budget ${config.initial_cash:,.0f}")
+
     _rule(f"live engine: {config.strategy} on {', '.join(config.tickers)}")
     try:
-        engine = run(config, feed, once=args.once, resume=not args.fresh,
+        engine = run(config, feed, broker=broker, once=args.once, resume=not args.fresh,
                      log=(print if args.verbose else None))
     except KeyboardInterrupt:
         print("stopped; state is on disk and the next start resumes from it")
@@ -463,7 +477,12 @@ def cmd_live(args) -> int:
         with open(base.replace(".json", "") + "_prices.json", "w", encoding="utf-8") as fh:
             json.dump(prices, fh, separators=(",", ":"))
         print(f"snapshot: {base} (+ prices)")
-    print("Paper fills at the close with no slippage: an upper bound on a real venue.")
+    if broker is None:
+        print("Paper fills at the close with no slippage: an upper bound on a real venue.")
+    else:
+        for sent in broker.submitted:
+            print(f"sent to Alpaca: {sent['side']} {sent['qty']} {sent['symbol']} ({sent['status']})")
+        print("Orders sent after the close fill at the next open; the next run reads the real fills back.")
     return 0
 
 
@@ -629,7 +648,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="process every new row in the feed once, then exit (scheduled-job mode)")
     p.add_argument("--snapshot", help="also write the dashboard snapshot JSON here")
     p.add_argument("--fresh", action="store_true", help="ignore an existing state file")
-    p.add_argument("--live", action="store_true", help="refused unless a Broker is supplied in code")
+    p.add_argument("--broker", choices=["paper", "alpaca"], default=None,
+                   help="where orders go (default: $QT_BROKER, else paper); alpaca reads its keys from the environment")
+    p.add_argument("--live", action="store_true", help="insist on a real broker; refused with the paper broker")
     p.add_argument("--write-config", dest="write_config", help="also write the effective config JSON here")
     p.add_argument("--verbose", "-v", action="store_true", help="log every bar")
     p.set_defaults(func=cmd_live)

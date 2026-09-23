@@ -10,9 +10,13 @@ methods, that they can click on and watch, and that runs live. They have
 repeatedly been stuck installing things, so prefer anything that works from a
 link or a single download. Explain in plain words and give numbered steps.
 
-Everything is **paper trading**. There is no broker and no real money. Do not
-connect a real broker unless the owner explicitly decides to, and never ask
-for API keys in chat (they go in GitHub repository secrets).
+Everything is **paper trading** unless the owner switches it. The broker
+code exists (`quantum/alpaca.py`, `--broker alpaca`, repository variable
+`QT_BROKER`); it defaults to Alpaca's paper endpoint, and real money needs
+both `ALPACA_BASE_URL` set to the live endpoint and `QT_ALLOW_REAL_MONEY=yes`.
+Steps are in `live/README.md`. Never ask for API keys in chat (they go in
+GitHub repository secrets), and never flip the real-money settings for the
+owner.
 
 ## Where everything is
 
@@ -96,5 +100,5 @@ script is pushed.
    failed.
 4. Run the **larger QOBLIB instances** (up to 400 stocks).
 
-Checks before any push: `python -m pytest tests -q` (198 tests pass as of
+Checks before any push: `python -m pytest tests -q` (209 tests pass as of
 this note), and `python web/build.py` after changing `web/` or the engine.

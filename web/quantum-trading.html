@@ -1099,6 +1099,7 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
       mine.onBar(bar); bench.onBar(bar);
     });
     live.bench = bench;
+    if (st.mode && st.mode !== "paper") { live.check = { state: "broker" }; return; }
     if (!pr.full_history) { live.check = { state: "partial" }; return; }
     const got = mine.equity[mine.equity.length - 1], want = st.equity;
     const same = Math.abs(got - want) <= Math.max(0.01, 1e-9 * Math.abs(want)) && mine.fills.length === st.n_fills && mine.halted === st.halted;
@@ -1187,6 +1188,7 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
     const ck = live.check, box = $("lCheck"), mark = $("lCheckMark"), txt = $("lCheckText");
     box.className = "check" + (ck && ck.state === "ok" ? " ok" : ck && ck.state === "bad" ? " bad" : "");
     if (!live.prices) { mark.textContent = "…"; txt.textContent = "Waiting for the bot's price history."; }
+    else if (ck && ck.state === "broker") { mark.textContent = "–"; txt.textContent = (st.mode === "alpaca-live" ? "REAL MONEY: " : "Alpaca paper account: ") + "orders go to Alpaca and fill at the next open, so this browser's paper re-run cannot match to the cent. The numbers shown are the bot's own."; }
     else if (!ck || ck.state === "partial") { mark.textContent = "–"; txt.textContent = "The bot's full price history is too long to re-check here; the report is shown as the bot sent it."; }
     else if (ck.state === "ok") { mark.textContent = "✓"; txt.textContent = `This browser re-ran the bot on the same ${live.prices.dates.length} days of prices and reached ${money2(ck.got)} with ${ck.fills} trades: exactly what the bot reported.`; }
     else { mark.textContent = "!"; txt.textContent = `This browser reached ${money2(ck.got)} with ${ck.fills} trades, but the bot reported ${money2(ck.want)} with ${live.status.n_fills}. The two copies disagree; check the bot's run on GitHub.`; }

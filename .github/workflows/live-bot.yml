@@ -1,6 +1,10 @@
 name: live bot
 
-# Runs the paper-trading engine once per US trading day, after the close.
+# Runs the trading engine once per US trading day, after the close.
+# Paper by default. To send orders to Alpaca, set the repository variable
+# QT_BROKER=alpaca and the secrets ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY
+# (see live/README.md). Real money also needs the variables ALPACA_BASE_URL
+# and QT_ALLOW_REAL_MONEY=yes; either alone is refused.
 # 21:30 UTC is 17:30 New York in summer and 16:30 in winter; either way the
 # day's close is final. Scheduled runs happen only on the default branch.
 on:
@@ -34,6 +38,12 @@ jobs:
       - name: Fetch today's prices
         run: python scripts/fetch_prices.py --config live/config.json --out live/prices.csv
       - name: Run the engine on every new bar
+        env:
+          QT_BROKER: ${{ vars.QT_BROKER }}
+          ALPACA_BASE_URL: ${{ vars.ALPACA_BASE_URL }}
+          QT_ALLOW_REAL_MONEY: ${{ vars.QT_ALLOW_REAL_MONEY }}
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
         run: |
           python -m quantum live --config live/config.json --feed live/prices.csv \
             --catch-up --poll 0 --snapshot live/snapshot.json

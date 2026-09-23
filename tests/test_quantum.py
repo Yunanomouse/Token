@@ -2716,3 +2716,139 @@ class TestLiveBot(unittest.TestCase):
         self.assertTrue(cfg.trade_from)
         self.assertEqual(cfg.solver, "exhaustive")
         self.assertGreater(cfg.limits.rearm_after, 0)  # a halt must not park the unattended bot in cash for good
+
+
+class FakeAlpaca:
+    """Stands in for Alpaca's API: canned replies, and a record of every call."""
+
+    def __init__(self, account=None, positions=None, open_orders=None):
+        self.account = {"status": "ACTIVE", "cash": "100000"} if account is None else account
+        self.positions = positions or []
+        self.open_orders = open_orders or []
+        self.calls = []
+
+    def __call__(self, method, path, body=None):
+        self.calls.append((method, path, body))
+        if path == "/v2/account":
+            return self.account
+        if path == "/v2/positions":
+            return self.positions
+        if path.startswith("/v2/orders") and method == "GET":
+            return self.open_orders
+        if path == "/v2/orders" and method == "POST":
+            return {"id": f"o{len(self.calls)}", "status": "accepted"}
+        raise AssertionError(f"unexpected call {method} {path}")
+
+    def posted(self):
+        return [b for m, p, b in self.calls if m == "POST"]
+
+
+class TestAlpacaBroker(unittest.TestCase):
+    TODAY = __import__("datetime").date(2026, 9, 23)
+
+    def broker(self, fake, budget=100_000.0):
+        from quantum.alpaca import AlpacaBroker
+        return AlpacaBroker(["AAPL", "XOM"], budget, fake, today=lambda: self.TODAY)
+
+    def bar(self, date="2026-09-23"):
+        from quantum.live import Bar
+        return Bar(date, {"AAPL": 200.0, "XOM": 100.0})
+
+    def test_reads_only_its_own_tickers(self):
+        fake = FakeAlpaca(positions=[{"symbol": "AAPL", "qty": "10", "cost_basis": "1900"},
+                                     {"symbol": "TSLA", "qty": "5", "cost_basis": "1000"}])
+        b = self.broker(fake)
+        self.assertEqual(b.positions(), {"AAPL": 10.0})
+        self.assertAlmostEqual(b.cash(), 100_000 - 1900)
+
+    def test_budget_caps_cash(self):
+        fake = FakeAlpaca(account={"status": "ACTIVE", "cash": "1000000"})
+        self.assertEqual(self.broker(fake, budget=5000).cash(), 5000)
+        fake = FakeAlpaca(account={"status": "ACTIVE", "cash": "300"})
+        self.assertEqual(self.broker(fake, budget=5000).cash(), 300)
+
+    def test_orders_sells_first_with_exact_payload(self):
+        from quantum.live import Order
+        fake = FakeAlpaca(positions=[{"symbol": "XOM", "qty": "4", "cost_basis": "400"}])
+        b = self.broker(fake)
+        fills = b.submit([Order("AAPL", 2.5, "rebalance"), Order("XOM", -4, "rebalance")], self.bar())
+        sent = fake.posted()
+        self.assertEqual([s["side"] for s in sent], ["sell", "buy"])
+        self.assertEqual(sent[1], {"symbol": "AAPL", "qty": "2.5", "side": "buy", "type": "market",
+                                   "time_in_force": "day", "client_order_id": "qt-2026-09-23-AAPL-buy"})
+        self.assertEqual([(f.ticker, f.quantity) for f in fills], [("XOM", -4.0), ("AAPL", 2.5)])
+
+    def test_never_sells_more_than_held(self):
+        from quantum.live import Order
+        fake = FakeAlpaca(positions=[{"symbol": "XOM", "qty": "1", "cost_basis": "100"}])
+        self.broker(fake).submit([Order("XOM", -3, "x")], self.bar())
+        self.assertEqual(fake.posted()[0]["qty"], "1")
+
+    def test_old_bar_is_never_sent(self):
+        from quantum.live import Order
+        fake = FakeAlpaca()
+        self.assertEqual(self.broker(fake).submit([Order("AAPL", 1, "x")], self.bar("2026-09-10")), [])
+        self.assertEqual(fake.posted(), [])
+
+    def test_skips_ticker_with_open_order(self):
+        from quantum.live import Order
+        fake = FakeAlpaca(open_orders=[{"symbol": "AAPL"}])
+        self.broker(fake).submit([Order("AAPL", 1, "x"), Order("XOM", 1, "x")], self.bar())
+        self.assertEqual([s["symbol"] for s in fake.posted()], ["XOM"])
+
+    def test_refuses_foreign_ticker(self):
+        from quantum.alpaca import BrokerRefused
+        from quantum.live import Order
+        with self.assertRaises(BrokerRefused):
+            self.broker(FakeAlpaca()).submit([Order("TSLA", 1, "x")], self.bar())
+
+    def test_refuses_blocked_account(self):
+        from quantum.alpaca import BrokerRefused
+        for account in ({"status": "ACTIVE", "trading_blocked": True}, {"status": "ACCOUNT_CLOSED"}):
+            with self.assertRaises(BrokerRefused):
+                self.broker(FakeAlpaca(account=account))
+
+    def test_environment_locks(self):
+        from quantum.alpaca import LIVE_URL, BrokerRefused, from_environment
+        keys = {"ALPACA_API_KEY_ID": "k", "ALPACA_API_SECRET_KEY": "s"}
+        with self.assertRaises(BrokerRefused):
+            from_environment(["AAPL"], 1000, env={}, transport=FakeAlpaca())
+        b = from_environment(["AAPL"], 1000, env=keys, transport=FakeAlpaca())
+        self.assertTrue(b.is_paper)
+        self.assertEqual(b.mode, "alpaca-paper")
+        with self.assertRaises(BrokerRefused):  # live URL alone is not enough
+            from_environment(["AAPL"], 1000, env=keys | {"ALPACA_BASE_URL": LIVE_URL}, transport=FakeAlpaca())
+        with self.assertRaises(BrokerRefused):
+            from_environment(["AAPL"], 1000, env=keys | {"ALPACA_BASE_URL": "https://evil.example"},
+                             transport=FakeAlpaca())
+        b = from_environment(["AAPL"], 1000, env=keys | {"ALPACA_BASE_URL": LIVE_URL, "QT_ALLOW_REAL_MONEY": "yes"},
+                             transport=FakeAlpaca())
+        self.assertEqual(b.mode, "alpaca-live")
+
+    def test_engine_runs_on_alpaca(self):
+        import tempfile
+        from quantum.live import EngineConfig, RiskLimits, snapshot, run
+        from quantum.live import Bar
+        fake = FakeAlpaca()
+        b = self.broker(fake)
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = EngineConfig(tickers=["AAPL", "XOM"], strategy="equal_weight", window=3, rebalance_every=5,
+                               state_path=f"{tmp}/s.json", limits=RiskLimits(min_history=3))
+            days = ["2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23"]
+            bars = [Bar(d, {"AAPL": 200.0 + i, "XOM": 100.0 - i}) for i, d in enumerate(days)]
+            feed = type("Feed", (), {"bars": lambda self: iter(bars)})()
+            engine = run(cfg, feed, broker=b)
+        self.assertEqual({s["symbol"] for s in fake.posted()}, {"AAPL", "XOM"})
+        self.assertTrue(all(s["client_order_id"].startswith("qt-2026-09-2") for s in fake.posted()))
+        self.assertEqual(snapshot(engine)[0]["mode"], "alpaca-paper")
+
+    def test_cli_refuses_without_keys(self):
+        import contextlib, io, os
+        import unittest.mock
+        from quantum.cli import main
+        env = {k: v for k, v in os.environ.items() if not k.startswith("ALPACA_")}
+        out = io.StringIO()
+        with unittest.mock.patch.dict(os.environ, env, clear=True), contextlib.redirect_stdout(out):
+            code = main(["live", "--config", "live/config.json", "--replay", "live/prices.csv", "--broker", "alpaca"])
+        self.assertEqual(code, 2)
+        self.assertIn("nothing sent", out.getvalue())
