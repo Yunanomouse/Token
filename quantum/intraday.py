@@ -251,6 +251,9 @@ class IntradayConfig:
     top_n: int = 5
     screen_days: int = 1
     """Prior sessions averaged for the volatility ranking."""
+    trade_from: str | None = None
+    """First session (``YYYY-MM-DD``) the account trades.  Earlier sessions
+    only warm up the KAMA and feed the volatility screen."""
 
     def __post_init__(self) -> None:
         if self.cash <= 0:
@@ -381,7 +384,7 @@ class _RandomPolicy:
         return i - pos["entry_idx"] >= pos["meta"]["hold"] - 1
 
 
-def _simulate(bars, config: IntradayConfig, policy) -> dict:
+def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) -> dict:
     cfg = config
     slip = cfg.slippage_bps / 1e4
     ranges = daily_ranges(bars)
@@ -425,7 +428,9 @@ def _simulate(bars, config: IntradayConfig, policy) -> dict:
             "bars_held": int(i - p["entry_idx"]),
         })
 
-    for date in sorted(by_date):
+    dates = [d for d in sorted(by_date) if not cfg.trade_from or d >= cfg.trade_from]
+    for date in dates:
+        still_open = open_session and date == dates[-1]
         settled += unsettled
         unsettled = 0.0
         times = sorted(by_date[date])
@@ -483,13 +488,13 @@ def _simulate(bars, config: IntradayConfig, policy) -> dict:
                         close_pos(t, i, min(p["stop"], b["open"][i]), "stop")
                         continue
                     p["last"] = float(b["close"][i])
-                    if i == last_of_day[t][date]:
+                    if i == last_of_day[t][date] and not still_open:
                         pending.pop(t, None)
                         close_pos(t, i, b["close"][i], "eod")
                         continue
                     if t not in pending and hm < cfg.flat_by and policy.want_exit(t, i, p):
                         pending[t] = ("sell", {})
-                elif (t not in pending and hm < cfg.no_entry_after and i != last_of_day[t][date]
+                elif (t not in pending and hm < cfg.no_entry_after and (still_open or i != last_of_day[t][date])
                       and entries + sum(1 for v in pending.values() if v[0] == "buy") < cfg.max_trades_per_day
                       and len(positions) + sum(1 for v in pending.values() if v[0] == "buy") < cfg.max_positions):
                     want, meta = policy.want_entry(t, i, now)
@@ -502,9 +507,22 @@ def _simulate(bars, config: IntradayConfig, policy) -> dict:
                 in_use_dollars.append(val)
                 in_use_frac.append(val / equity_now())
 
+        if still_open:
+            break
         for t in list(positions):  # safety net: never hold overnight
             close_pos(t, last_of_day[t][date], bars[t]["close"][last_of_day[t][date]], "eod")
         equity_curve.append({"date": date, "equity": float(equity_now())})
+
+    open_positions = []
+    if open_session and dates:
+        for t, p in positions.items():
+            open_positions.append({
+                "ticker": t, "shares": p["shares"], "entry_time": p["entry_time"],
+                "entry_price": p["entry_price"], "last": p["last"],
+                "unrealized": float(p["shares"] * p["last"] * (1 - slip) - p["cost"]),
+                "exit_pending": pending.get(t, ("",))[0] == "sell",
+            })
+        equity_curve.append({"date": dates[-1], "equity": float(equity_now())})
 
     summary = summarize(trades, equity_curve, cfg.cash)
     summary.update({
@@ -512,7 +530,16 @@ def _simulate(bars, config: IntradayConfig, policy) -> dict:
         "avg_capital_in_use_dollars": float(np.mean(in_use_dollars)) if in_use_dollars else 0.0,
         "time_invested_fraction": invested_steps / total_steps if total_steps else 0.0,
     })
-    return {"trades": trades, "equity": equity_curve, "summary": summary, "config": cfg.to_dict()}
+    result = {"trades": trades, "equity": equity_curve, "summary": summary, "config": cfg.to_dict()}
+    if open_session:
+        result["open"] = {
+            "positions": open_positions,
+            "pending_buys": [t for t, v in pending.items() if v[0] == "buy"],
+            "cash_settled": float(settled), "cash_unsettled": float(unsettled),
+            "entries_today": entries if dates else 0,
+            "screen": list(screen) if dates else [],
+        }
+    return result
 
 
 def _max_drawdown(values: Sequence[float]) -> float:
@@ -549,7 +576,8 @@ def summarize(trades: Sequence[dict], equity_curve: Sequence[dict], cash: float)
     }
 
 
-def backtest(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig | None = None) -> dict:
+def backtest(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig | None = None,
+             open_session: bool = False) -> dict:
     """Run Kaufman's KAMA filter strategy over minute bars.
 
     Returns ``{"trades": [...], "equity": [{"date", "equity"}], "summary": {...},
@@ -557,9 +585,14 @@ def backtest(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig | No
     exit_time, exit_price, shares, pnl, pnl_pct, reason`` (``signal``,
     ``stop`` or ``eod``) and ``bars_held``.  See the module docstring for the
     execution rules.
+
+    ``open_session=True`` treats the newest session as still trading: its
+    last bar is not the close, so a position stays open and is reported,
+    with the day's pending orders and cash, under ``result["open"]``.  This
+    is how a live paper run re-evaluates the day so far.
     """
     config = config or IntradayConfig()
-    return _simulate(bars, config, _KamaPolicy(bars, config))
+    return _simulate(bars, config, _KamaPolicy(bars, config), open_session=open_session)
 
 
 def random_baseline(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig,

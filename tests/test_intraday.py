@@ -289,3 +289,46 @@ class TestScreen(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLiveSession(unittest.TestCase):
+    """trade_from and open_session: what a live paper run sees mid-day."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bars = _universe()
+        cls.last = sorted({d[:10] for d in cls.bars["T0"]["datetime"]})[-1]
+
+    def _cut(self, until):
+        return {t: {k: v[b["datetime"] <= until] for k, v in b.items()} for t, b in self.bars.items()}
+
+    def test_trade_from_starts_fresh_on_that_day(self):
+        cfg = IntradayConfig(trade_from=self.last)
+        res = backtest(self.bars, cfg)
+        self.assertEqual([e["date"] for e in res["equity"]], [self.last])
+        self.assertTrue(all(t["entry_time"][:10] == self.last for t in res["trades"]))
+        self.assertEqual(res["summary"]["initial_equity"], cfg.cash)
+
+    def test_mid_session_run_is_a_prefix_of_the_full_day(self):
+        cfg = IntradayConfig(trade_from=self.last, settled_cash_only=False)
+        full = backtest(self.bars, cfg)["trades"]
+        self.assertGreaterEqual(len(full), 2)
+        checked_open = False
+        for until in (f"{self.last} 10:30:00", f"{self.last} 12:00:00", f"{self.last} 14:45:00"):
+            part = backtest(self._cut(until), cfg, open_session=True)
+            done = [t for t in full if t["exit_time"] <= until]
+            self.assertEqual(part["trades"], done)
+            running = [t for t in full if t["entry_time"] <= until < t["exit_time"]]
+            got = part["open"]["positions"]
+            self.assertEqual([p["ticker"] for p in got], [t["ticker"] for t in running])
+            for p, t in zip(got, running):
+                checked_open = True
+                self.assertEqual(p["entry_time"], t["entry_time"])
+                self.assertEqual(p["shares"], t["shares"])
+                self.assertAlmostEqual(p["entry_price"], t["entry_price"])
+        self.assertTrue(checked_open)
+
+    def test_open_session_never_closes_on_the_partial_last_bar(self):
+        cfg = IntradayConfig(trade_from=self.last)
+        part = backtest(self._cut(f"{self.last} 13:00:00"), cfg, open_session=True)
+        self.assertFalse([t for t in part["trades"] if t["reason"] == "eod"])
