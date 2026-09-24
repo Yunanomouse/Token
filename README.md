@@ -1,3 +1,203 @@
+# Token
+
+Two independent workstreams live in this repository:
+
+1. **[Quantum methods for trading](#quantum-methods-for-trading)** — `quantum/`
+2. **[Canada tax system data (2026)](#canada-tax-system-data-2026)** — `data/`, `docs/`, `examples/`
+
+---
+
+# Quantum methods for trading
+
+A working, tested implementation of the four applications where quantum
+mechanics has a defensible role in finance — with the classical baseline printed
+beside every result.
+
+```bash
+python3 -m quantum demo                 # everything, end to end
+python3 -m quantum portfolio --cardinality 4 --solver simulated_bifurcation
+python3 -m quantum price --spot 100 --strike 105 --volatility 0.2
+python3 -m quantum risk --confidence 0.95
+python3 -m quantum arbitrage --fee 0.0005
+python3 -m quantum benchmark --vars 10 --trials 10
+```
+
+Requires **numpy only**. No Qiskit, no Cirq, no cloud account — the statevector
+simulator, Grover operator and amplitude estimation are implemented from the
+postulates up in `quantum/statevector.py` and `quantum/amplitude.py`.
+
+## Download and run it on your computer
+
+The standalone app needs nothing installed: Python and numpy are inside.
+Download the zip for your system from the
+[desktop-latest release](https://github.com/Yunanomouse/Token/releases/tag/desktop-latest),
+unzip it, and double-click:
+
+| System | Zip | Double-click |
+|---|---|---|
+| Windows (installer) | `Quantum Trading Setup.exe` | the installer, once; then Quantum Trading in the Start menu |
+| Windows (no install) | `quantum-trading-windows-x64.zip` | `Quantum Trading.exe` |
+| Mac (Apple Silicon) | `quantum-trading-macos-arm64.zip` | `Open Quantum Trading.command` (right-click > Open the first time) |
+| Mac (Intel) | `quantum-trading-macos-x64.zip` | same |
+| Linux | `quantum-trading-linux-x64.zip` | `Quantum Trading` |
+
+A terminal window opens (the engine) and the dashboard opens in the browser.
+The same program runs every command-line engine command, e.g.
+`"Quantum Trading" live --replay data/prices/us_equities_1989_2018.csv ...`.
+`README.txt` in the zip has the details.  The release is rebuilt by the
+**desktop app** workflow on every push that changes the app;
+`python packaging/build.py` builds it locally for the machine you are on.
+
+## What it does
+
+| Module | Application | Status today |
+|---|---|---|
+| `quantum/portfolio.py` | Cardinality, lot-size and sector-cap constrained optimisation → QUBO | Strongest case |
+| `quantum/risk.py` | VaR / CVaR by amplitude estimation | Proven theory, hardware-limited |
+| `quantum/pricing.py` | European and multi-asset basket options | Same |
+| `quantum/arbitrage.py` | Cyclic arbitrage as an Ising ground state | Deployable now, quantum-*inspired* |
+
+Six solvers consume the same `QUBO`: `exact` (proves the optimum below ~22
+variables), `simulated_annealing`, `simulated_bifurcation` (the Toshiba SQBM+
+algorithm — quantum-derived, runs on classical silicon), `qaoa` on the built-in
+simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
+`grover` (Grover adaptive search over the feasible set).
+
+## Verified results
+
+- **Portfolio** — all four solvers match the `C(n,K)`-exhaustive proven optimum.
+- **Amplitude estimation** — the Grover rotation law `P = sin²((2k+1)θ)` holds
+  exactly; MLAE reaches 1.3×10⁻⁴ error where classical Monte Carlo at the same
+  shot count gives 9.5×10⁻³.
+- **Pricing** — within **0.03%** of Black–Scholes; put-call parity exact.
+- **Risk** — VaR matches the exact quantile at 90/95/99% confidence.
+- **Arbitrage** — no false positives on an arbitrage-free market; planted
+  mispricings recovered; opportunities correctly vanish once fees are applied.
+
+- **Out of sample** — walk-forward on eight assets over six years: the
+  cardinality optimiser's in-sample Sharpe of 0.91 realises 0.19, and nothing
+  beats equal weight with |t| > 2. The solver reaches the true optimum at every
+  rebalance; the optimum is what does not hold up.
+- **Under noise** — the amplitude-estimation speedup survives depolarising
+  error up to ε ≈ 1e-4 per gate on the smallest pricing circuit, then falls off
+  a cliff to an estimate of ½. Current hardware sits an order of magnitude above
+  that.
+- **On hardware** — every circuit exports to OpenQASM 3 and round-trips through
+  the simulator at 1e-15; the 4-qubit call with two Grover powers is 1,036
+  gates, 928 of them two-qubit.
+
+- **On real prices** — 17 US names, 2006–2018: the cardinality optimiser
+  returned 23.3% a year against 11.1% for equal weight (t = +2.14), with the
+  in-sample Sharpe of 2.05 realising 1.06. The universe was picked in 2018,
+  so treat the excess as an upper bound.
+- **On a certified benchmark** — QOBLIB's smallest portfolio instance (710
+  variables, Gurobi-proven optimum): simulated annealing reaches a sixth of the
+  optimum, simulated bifurcation never reaches feasibility. The first test at
+  scale, and the heuristics do not pass it.
+- **Against published hardware** — Quantinuum Helios and IBM Nighthawk both
+  lose to classical Monte Carlo on the smallest pricing circuit; only IonQ's
+  two-qubit 99.99% demonstration clears the bar, by 20%.
+
+- **As a program** — `python3 -m quantum live` runs the optimiser as a
+  restart-safe loop over a replayed or tailed price CSV with a paper broker,
+  per-name and turnover caps, and a drawdown kill switch. `--live` refuses to
+  run until you supply a broker adapter in code.
+
+- **In the browser, nothing to install** — `web/quantum-trading.html` is the
+  same engine ported to JavaScript with 12 years of prices for 17 stocks built
+  in; it matches the Python engine to the cent (tested). Open the file, or the
+  published copy, and press Start.
+- **Live, on GitHub** — `.github/workflows/live-bot.yml` runs the paper bot
+  after every US close on real prices (Stooq, Yahoo fallback) and commits its
+  state to `live/`. The web page's **Live bot** tab shows that state and
+  re-runs the same engine in the browser to confirm it lands on the same
+  number. See [live/README.md](live/README.md).
+- **On the desktop** — double-click `Quantum Trading.bat` / `quantum_trading.command`
+  / `quantum-trading.desktop` (or `python3 -m quantum desktop`) for a local
+  point-and-click dashboard: watch the engine trade through history at any
+  speed, tail a CSV live, set every risk limit, stop, reset, and clear the
+  kill switch. Paper only, loopback only.
+
+181 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
+
+## Memory
+
+Simulating `n` qubits costs `2ⁿ` amplitudes and nothing changes that — but a
+large avoidable constant sat on top. Profiling found three hotspots; all are
+measured, and no numerical result changed.
+
+| Hotspot | Before | After | Gain |
+|---|---|---|---|
+| `energies_all` (n=16) | 18.9 MB | 1.05 MB | **18×**, 42× faster |
+| Statevector, `complex64` (n=20) | 50 MB | 17 MB | **3×** |
+| Distribution loading (n=12) | 4095 ops | 12 ops | **11×**, 30× faster |
+
+The one that changes the asymptotics is **constraint-preserving subspaces**. A
+cardinality mandate is normally a soft penalty; an XY mixer started from a Dicke
+state simply cannot leave the feasible set, so the register carries only the
+`C(n,K)` valid portfolios:
+
+| n | K | full 2ⁿ | C(n,K) | saving |
+|---|---|---|---|---|
+| 20 | 5 | 1,048,576 | 15,504 | 68× |
+| 32 | 4 | 4,294,967,296 | 35,960 | **119,437×** |
+
+Verified exact against a full-register simulation to `1.3×10⁻¹⁵` with zero
+leakage, and *more* accurate than the penalty formulation — 25/25 proven optima
+against 18/25 at K=5.
+
+Two well-known techniques were measured and rejected: **light cones** need a
+sparse coupling graph, and **MPS** loses below ~24 qubits and saturates its bond
+dimension on dense couplings. The light-cone case, and `quantum/locality.py`
+ships the measurement that shows why: a covariance matrix couples every asset to
+every other, so the coupling graph is complete (density 0.92–1.00) and the
+radius-1 cone is already the whole problem.
+
+`python3 -m quantum memory` prints every limit for your own configuration.
+
+## What it will not do
+
+Predict prices, generate signals, or make money on a day trade. Nothing here
+runs faster than its classical equivalent on current hardware, and the module
+docstrings say exactly where each limit bites — the `O(2ⁿ)` input problem,
+circuit depth, and the ~six-order-of-magnitude latency gap that rules gate-based
+hardware out of high-frequency execution.
+
+Three findings from building it that are easy to get wrong:
+
+- **Penalty weights must scale as `1/c_min²`** against the constraint's own
+  coefficients. With portfolio weights near 0.05, the naive choice
+  under-penalises by ~400× and the solver silently ignores its budget.
+- **Option-price convergence is limited by domain truncation, not resolution.**
+  At `n_sigma=3` the error plateaus at ~0.10 from 5 qubits to 8; at `n_sigma=5`
+  the same sweep converges to 5×10⁻⁴.
+- **The payoff linearisation bias is systematic and scales as `c²`**, so more
+  shots cannot remove it — but Richardson extrapolation cancels it exactly
+  (335× improvement at `c=0.25`).
+
+Full write-up, including the two solver bugs found by testing against proven
+optima and the out-of-sample, noise and export results:
+**[docs/quantum_trading.md](docs/quantum_trading.md)**.
+
+```bash
+pip install -e ".[test]"
+python3 -m quantum backtest --assets 8 --days 1512   # walk-forward vs equal weight
+python3 -m quantum noise --trials 6                  # gate-error threshold sweep
+python3 -m quantum export --qubits 4 --powers 2 -o call.qasm
+python3 -m quantum backtest --csv data/prices/us_equities_1989_2018.csv   # real prices
+python3 -m quantum qoblib --risk-weight l0                                 # certified benchmark
+python3 -m quantum noise --hardware                                        # published error rates
+python3 -m quantum live --replay data/prices/us_equities_1989_2018.csv \
+    --tickers AAPL,XOM,JPM,WMT,PFE --start 2010-01-01                      # paper engine on history
+python3 -m quantum live --config live.json --feed prices.csv               # tail a CSV, live
+python3 -m quantum desktop                                                 # the clickable dashboard
+```
+
+Datasets and their licences: [data/README.md](data/README.md).
+Worked walkthrough: `python3 examples/quantum_trading_demo.py`.
+
+---
+
 # Canada Tax System Data (2026)
 
 Machine-readable dataset of Canada's tax system for the **2026 tax year**: personal income tax for all 14 jurisdictions (federal + 10 provinces + 3 territories), payroll contributions, sales taxes, corporate income tax, and key credits/limits.

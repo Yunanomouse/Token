@@ -1,0 +1,81 @@
+name: live bot
+
+# Runs the trading engine once per US trading day, after the close.
+# Paper by default. To send orders to Alpaca, set the repository variable
+# QT_BROKER=alpaca and the secrets ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY
+# (see live/README.md). Real money also needs the variables ALPACA_BASE_URL
+# and QT_ALLOW_REAL_MONEY=yes; either alone is refused.
+# 21:30 UTC is 17:30 New York in summer and 16:30 in winter; either way the
+# day's close is final. Scheduled runs happen only on the default branch.
+on:
+  schedule:
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch:
+  push:
+    paths:
+      - "live/config.json"
+      - "live/real/config.json"
+      - ".github/workflows/live-bot.yml"
+      - "scripts/fetch_prices.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-bot-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e .
+      - name: Fetch today's prices
+        run: python scripts/fetch_prices.py --config live/config.json --out live/prices.csv
+      - name: Run the engine on every new bar
+        env:
+          QT_BROKER: ${{ vars.QT_BROKER }}
+          ALPACA_BASE_URL: ${{ vars.ALPACA_BASE_URL }}
+          QT_ALLOW_REAL_MONEY: ${{ vars.QT_ALLOW_REAL_MONEY }}
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+        run: |
+          python -m quantum live --config live/config.json --feed live/prices.csv \
+            --catch-up --poll 0 --snapshot live/snapshot.json
+      # The $40 whole-share bot (live/real/). Same engine and rules as the
+      # main bot, on cheaper stocks. Its "mode" line in live/real/config.json
+      # is the paper/live switch; in live mode live/real/orders.json lists
+      # the day's orders for a person to place (tools/tradingview_orders.py).
+      # A failure here must not stop the main bot's state from being saved.
+      - name: Fetch prices for the $40 bot
+        id: real_fetch
+        continue-on-error: true
+        run: python scripts/fetch_prices.py --config live/real/config.json --out live/real/prices.csv
+      - name: Run the $40 bot and write today's orders
+        if: steps.real_fetch.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python -m quantum live --config live/real/config.json --feed live/real/prices.csv \
+            --catch-up --poll 0 --orders live/real/orders.json
+      - name: Save the bot's state
+        run: |
+          git config user.name "quantum-trading-bot"
+          git config user.email "quantum-trading-bot@users.noreply.github.com"
+          git add live/
+          if git diff --cached --quiet; then
+            echo "nothing new to save"
+            exit 0
+          fi
+          git commit -m "live bot: state as of $(python -c 'import json;print(json.load(open("live/snapshot.json"))["last_date"])')"
+          for i in 1 2 3 4; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((i * 5))
+          done
+          echo "could not push the bot state" >&2
+          exit 1

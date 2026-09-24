@@ -1,2 +1,18 @@
 __pycache__/
 *.pyc
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Scratch clones from research (reference only, never vendored)
+/quest/
+/QOKit/
+/QTensor/
+*.egg-info/
+live_state.json
+
+# Standalone app builds (packaging/build.py)
+/build/
+/dist/

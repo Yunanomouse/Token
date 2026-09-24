@@ -1,0 +1,703 @@
+"""Command-line interface: ``python3 -m quantum <command>``.
+
+Every subcommand prints the quantum result next to its classical baseline. That
+side-by-side is deliberate -- it is the only way to see what these methods do and
+do not buy you.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import math
+import sys
+
+import numpy as np
+
+from .amplitude import classical_monte_carlo_error
+from .arbitrage import build_rate_matrix, cycle_profit, find_arbitrage
+from .locality import locality_report
+from .market import load_price_csv, synthetic_prices
+from .portfolio import (
+    PortfolioConstraints,
+    PortfolioProblem,
+    exhaustive_cardinality,
+    solve_portfolio,
+    unconstrained_mean_variance,
+)
+from .pricing import OptionSpec, classical_monte_carlo_price, price_european_option
+from .qubo import QUBO
+from .risk import (
+    parametric_var,
+    portfolio_loss_distribution,
+    quantum_expected_shortfall,
+    quantum_value_at_risk,
+)
+from .solvers import available_solvers, get_solver
+from .backtest import cardinality_strategy, equal_weight, markowitz_long_only, walk_forward
+from .export import elementary_gate_count, to_qasm
+from .noise import HARDWARE_PROFILES, hardware_survey, noise_threshold_sweep, survival_probability
+from .pricing import build_european_payoff_circuit
+from .statevector import probability_of_one
+
+DEMO_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CHF"]
+DEMO_RATES = {
+    ("USD", "EUR"): 0.9200, ("EUR", "USD"): 1.0870,
+    ("USD", "GBP"): 0.7900, ("GBP", "USD"): 1.2658,
+    ("EUR", "GBP"): 0.8600, ("GBP", "EUR"): 1.1650,
+    ("USD", "JPY"): 151.00, ("JPY", "USD"): 1 / 151.2,
+    ("EUR", "JPY"): 164.50, ("JPY", "EUR"): 1 / 164.9,
+    ("GBP", "JPY"): 191.00, ("JPY", "GBP"): 1 / 191.5,
+    ("USD", "CHF"): 0.8800, ("CHF", "USD"): 1.1364,
+    ("EUR", "CHF"): 0.9560, ("CHF", "EUR"): 1.0460,
+    ("GBP", "CHF"): 1.1120, ("CHF", "GBP"): 0.8990,
+}
+
+
+def _rule(title: str) -> None:
+    print(f"\n{title}\n{'=' * len(title)}")
+
+
+def _load_market(args):
+    if args.csv:
+        return load_price_csv(args.csv)
+    return synthetic_prices(n_assets=args.assets, n_days=args.days, seed=args.seed)
+
+
+# --------------------------------------------------------------------------
+
+
+def cmd_portfolio(args) -> int:
+    market = _load_market(args)
+    _rule("Market")
+    print(market.summary())
+
+    constraints = PortfolioConstraints(cardinality=args.cardinality)
+    problem = PortfolioProblem(
+        market.expected_returns,
+        market.covariance,
+        market.tickers,
+        risk_aversion=args.risk_aversion,
+        constraints=constraints,
+        encoding=args.encoding,
+        n_lot_bits=args.lot_bits,
+    )
+
+    _rule(f"Constrained portfolio ({args.solver})")
+    kwargs = {"rng": np.random.default_rng(args.seed)}
+    if args.solver in ("qaoa",):
+        kwargs.update(p=args.qaoa_layers, n_starts=4)
+    result = solve_portfolio(problem, solver=args.solver, **kwargs)
+    print(f"QUBO variables : {result.detail['n_qubo_vars']}")
+    print(result.report())
+
+    _rule("Classical baselines")
+    w = unconstrained_mean_variance(
+        market.expected_returns, market.covariance, args.risk_aversion, long_only=True
+    )
+    ret = float(market.expected_returns @ w)
+    vol = math.sqrt(max(float(w @ market.covariance @ w), 0.0))
+    print(f"unconstrained mean-variance : return {ret:7.2%}  vol {vol:7.2%}  "
+          f"sharpe {ret/vol if vol else float('nan'):5.2f}  (closed form, milliseconds)")
+
+    if args.cardinality and market.n_assets <= 20 and args.encoding == "select":
+        mask, value = exhaustive_cardinality(
+            market.expected_returns, market.covariance, args.cardinality, args.risk_aversion
+        )
+        picks = [market.tickers[i] for i in np.nonzero(mask)[0]]
+        matched = set(picks) == set(result.holdings)
+        print(f"exhaustive optimum          : objective {value:.6f}  picks {picks}")
+        print(f"solver objective            : {result.objective:.6f}  "
+              f"{'MATCHES the proven optimum' if matched else 'DIFFERS from the optimum'}")
+    return 0
+
+
+def cmd_price(args) -> int:
+    spec = OptionSpec(
+        spot=args.spot, strike=args.strike, rate=args.rate,
+        volatility=args.volatility, maturity=args.maturity, option=args.option,
+    )
+    _rule(f"European {args.option} by amplitude estimation")
+    result = price_european_option(
+        spec, n_qubits=args.qubits, c_approx=args.c_approx,
+        n_powers=args.powers, shots_per_power=args.shots,
+        rng=np.random.default_rng(args.seed),
+    )
+    res = result.detail["circuit_resources"]
+    print(f"quantum price        : {result.price:.6f}")
+    print(f"Black-Scholes        : {result.analytic_price:.6f}")
+    print(f"exact on this grid   : {result.discretised_price:.6f}")
+    print(f"  discretisation err : {result.discretisation_error:.6f}  (finite price grid)")
+    print(f"  estimation err     : {result.estimation_error:.6f}  (amplitude est. + payoff linearisation)")
+    print(f"relative error       : {result.relative_error:.4%}")
+    print(f"\ncircuit  : {res['qubits']} qubits, {res['logical_gates']} logical gates, "
+          f"~{res['estimated_elementary_gates']} elementary after decomposition")
+    print(f"AE       : {result.amplitude.method}, {result.amplitude.oracle_calls} oracle calls, "
+          f"{result.amplitude.shots} shots")
+
+    mc_price, mc_err = classical_monte_carlo_price(
+        args.spot, args.strike, args.rate, args.volatility, args.maturity,
+        samples=args.shots * args.powers, option=args.option,
+        rng=np.random.default_rng(args.seed),
+    )
+    print(f"\nclassical Monte Carlo at the same shot budget: {mc_price:.6f} +/- {mc_err:.6f}")
+    print("(the quadratic advantage is in oracle calls, not wall-clock -- a CPU wins today)")
+    return 0
+
+
+def cmd_risk(args) -> int:
+    market = _load_market(args)
+    weights = np.full(market.n_assets, 1.0 / market.n_assets)
+    dist = portfolio_loss_distribution(
+        weights, market.expected_returns, market.covariance,
+        n_qubits=args.qubits, horizon=1.0 / 252.0,
+    )
+
+    _rule(f"Daily risk, equal-weighted book ({market.n_assets} assets)")
+    var = quantum_value_at_risk(
+        dist, args.confidence, n_powers=args.powers,
+        shots_per_power=args.shots, rng=np.random.default_rng(args.seed),
+    )
+    cvar = quantum_expected_shortfall(
+        dist, args.confidence, var_index=var.detail["grid_index"],
+        n_powers=args.powers, shots_per_power=args.shots,
+        rng=np.random.default_rng(args.seed),
+    )
+    print(f"VaR  {args.confidence:.0%}  quantum {var.value:8.5f}   exact {var.classical_value:8.5f}"
+          f"   err {var.absolute_error:.6f}")
+    print(f"CVaR {args.confidence:.0%}  quantum {cvar.value:8.5f}   exact {cvar.classical_value:8.5f}"
+          f"   err {cvar.absolute_error:.6f}")
+    print(f"\nparametric Gaussian VaR: "
+          f"{parametric_var(weights, market.expected_returns, market.covariance, args.confidence):.5f}")
+    print(f"grid spacing           : {var.detail['grid_spacing']:.6f} "
+          f"({2**args.qubits} points) -- the floor on quantile accuracy")
+    print(f"oracle calls           : VaR {var.oracle_calls:,} over "
+          f"{var.detail['bisection_steps']} bisection steps")
+    return 0
+
+
+def cmd_arbitrage(args) -> int:
+    rates = build_rate_matrix(DEMO_RATES, DEMO_CURRENCIES, fee=args.fee)
+    _rule(f"Cyclic arbitrage, length {args.cycle_length}, {args.fee:.2%} fee per leg")
+    result = find_arbitrage(
+        rates, DEMO_CURRENCIES, cycle_length=args.cycle_length,
+        solver=args.solver, rng=np.random.default_rng(args.seed),
+    )
+    if result.path:
+        route = " -> ".join(result.named_path + [result.named_path[0]])
+        print(f"best cycle    : {route}")
+        print(f"gross multiple: {result.gross_multiple:.8f}")
+        print(f"net profit    : {result.profit:+.4%}  "
+              f"{'TRADEABLE' if result.profitable else '(not profitable after fees)'}")
+    else:
+        print("no feasible cycle decoded")
+
+    classical = result.detail.get("classical_cycle_named")
+    print(f"\nBellman-Ford (exact, polynomial): "
+          f"{' -> '.join(classical + [classical[0]]) if classical else 'no negative cycle'}"
+          f"   profit {result.detail.get('classical_profit', 0.0):+.4%}")
+    print("Use Bellman-Ford for the unconstrained problem; the QUBO earns its keep")
+    print("only once cycle length, capacity or multi-cycle selection are constrained.")
+    return 0
+
+
+def cmd_benchmark(args) -> int:
+    _rule(f"Solver comparison on random {args.vars}-variable QUBOs")
+    rng = np.random.default_rng(args.seed)
+    names = [s for s in available_solvers() if s != "exact"]
+    stats = {n: {"gap": [], "time": [], "hits": 0} for n in names}
+
+    for trial in range(args.trials):
+        problem = QUBO(Q=rng.normal(size=(args.vars, args.vars)))
+        optimal = get_solver("exact").solve(problem).energy
+        for name in names:
+            kwargs = {"rng": np.random.default_rng(trial)}
+            if name == "qaoa":
+                kwargs.update(p=2, n_starts=3, max_iter=120)
+            result = get_solver(name).solve(problem, **kwargs)
+            gap = result.gap_to(optimal)
+            stats[name]["gap"].append(gap)
+            stats[name]["time"].append(result.runtime_seconds)
+            if abs(gap) < 1e-6:
+                stats[name]["hits"] += 1
+
+    print(f"{'solver':<26}{'optimum found':>15}{'mean gap':>12}{'mean time':>12}")
+    print("-" * 65)
+    for name in names:
+        s = stats[name]
+        print(f"{name:<26}{s['hits']}/{args.trials:<13}"
+              f"{np.mean(s['gap']):>12.5f}{np.mean(s['time']):>11.3f}s")
+    print("\nAll three are heuristics; 'exact' proves the optimum but costs 2^n.")
+    return 0
+
+
+def cmd_memory(args) -> int:
+    """Report what each part of the package costs in memory, and where it stops."""
+    from .statevector import estimate_memory
+    from .storage import compare_codecs
+
+    _rule("Statevector simulation")
+    print("Peak is the statevector plus one half-state scratch pair -- 2x the")
+    print("statevector, flat in circuit depth. Every qubit added doubles it.\n")
+    print(f"{'qubits':>8}{'complex128':>14}{'complex64':>14}   fits in 16 GB?")
+    print("-" * 56)
+    for n in (10, 16, 20, 24, 26, 28, 30, 32):
+        double = estimate_memory(n)["peak_mb"]
+        single = estimate_memory(n, np.complex64)["peak_mb"]
+        verdict = "yes" if single < 16_000 else "no"
+        print(f"{n:>8}{double:>12.1f}MB{single:>12.1f}MB   {verdict}")
+
+    _rule("QUBO energy landscape")
+    print("Built by recursive doubling: peak is 2x the result, not n x.\n")
+    print(f"{'variables':>10}{'landscape':>14}{'peak':>12}")
+    print("-" * 36)
+    for n in (12, 16, 20, 24, 26):
+        landscape = (2**n) * 8 / 1e6
+        print(f"{n:>10}{landscape:>12.1f}MB{2 * landscape:>10.1f}MB")
+    print("\nBeyond that, iter_energy_chunks() streams the landscape in fixed-size")
+    print("blocks, so an argmin stays possible at flat memory -- the work is still")
+    print("2**n, only the memory is bounded.")
+
+    _rule("Constraint-preserving subspace (cardinality mandates)")
+    print("An XY mixer started from a Dicke state never leaves the feasible set,")
+    print("so the register only carries the C(n,K) portfolios that satisfy the")
+    print("mandate -- and no cardinality penalty is needed at all.\n")
+    print(f"{'n':>5}{'K':>5}{'full 2**n':>16}{'C(n,K)':>14}{'saving':>12}{'MB':>10}")
+    print("-" * 62)
+    for n, k in ((14, 4), (20, 5), (24, 6), (28, 4), (32, 4)):
+        feasible = math.comb(n, k)
+        print(f"{n:>5}{k:>5}{2**n:>16,}{feasible:>14,}"
+              f"{2**n / feasible:>11,.0f}x{feasible * 16 / 1e6:>10.2f}")
+
+    _rule("Light cones (why they are not used here)")
+    market = synthetic_prices(n_assets=12, n_days=500, seed=1)
+    dense = PortfolioProblem(
+        market.expected_returns, market.covariance, market.tickers,
+        constraints=PortfolioConstraints(cardinality=4),
+    ).to_qubo()
+    print(locality_report(dense).summary())
+
+    _rule("Compression, measured on real price data")
+    market = synthetic_prices(n_assets=args.assets, n_days=args.days, seed=args.seed)
+    print(f"input: {market.prices.shape[0]} x {market.prices.shape[1]} float64 "
+          f"({market.prices.nbytes/1e6:.2f} MB)\n")
+    print(f"{'codec':<8}{'precision':<16}{'ratio':>9}{'stored':>11}{'rel error':>13}")
+    print("-" * 58)
+    for report in compare_codecs(market.prices)[: args.top]:
+        print(f"{report.codec:<8}{report.dtype:<16}{report.ratio:>8.2f}x"
+              f"{report.stored_bytes/1e6:>9.2f}MB{report.max_relative_error:>13.1e}")
+    print("\nCompression saves disk, not RAM -- a decompressed array is full size.")
+    print("For RAM use load_mmap() + iter_chunks(), which cannot be combined with")
+    print("compression: random access and compression are mutually exclusive.")
+    return 0
+
+
+def cmd_backtest(args) -> int:
+    """Walk-forward validation of the optimiser against equal weight."""
+    _rule("Out-of-sample walk-forward")
+    market = _load_market(args)
+    strategies = {
+        "equal_weight": equal_weight,
+        "markowitz_long_only": markowitz_long_only(args.risk_aversion),
+        f"cardinality{args.cardinality}_{args.solver}": cardinality_strategy(
+            args.cardinality, args.risk_aversion, args.solver, seed=args.seed
+        ),
+    }
+    if math.comb(market.n_assets, args.cardinality) <= 50_000:
+        strategies[f"cardinality{args.cardinality}_exhaustive"] = cardinality_strategy(
+            args.cardinality, args.risk_aversion, "exhaustive"
+        )
+    result = walk_forward(
+        market.prices, market.tickers, strategies, window=args.window, horizon=args.horizon
+    )
+    print(result.report())
+    if args.csv is None:
+        print("\nSynthetic prices have a constant, real drift -- the friendliest possible")
+        print("world for mean-variance. Expect worse on live data, not better.")
+    return 0
+
+
+def cmd_noise(args) -> int:
+    """How much gate error the amplitude-estimation speedup survives."""
+    _rule("Noise threshold for amplitude estimation (option pricing circuit)")
+    spec = OptionSpec(args.spot, args.strike, args.rate, args.volatility, args.maturity)
+    circuit, objective, _grid, _scale, _k = build_european_payoff_circuit(spec, args.qubits)
+    true_value = probability_of_one(circuit.run(), circuit.n_qubits, objective)
+    counts = elementary_gate_count(circuit)
+    print(f"state preparation: {counts['qubits']} qubits, {counts['one_qubit']} one-qubit "
+          f"and {counts['two_qubit']} two-qubit gates after compilation")
+    print(f"survival of one preparation at eps=1e-3: {survival_probability(circuit, 1e-3):.3f}\n")
+    epsilons = [float(e) for e in args.epsilons.split(",")]
+    result = noise_threshold_sweep(
+        circuit, objective, true_value, epsilons=epsilons,
+        n_powers=args.powers, shots_per_power=args.shots,
+        trajectories=args.trajectories, trials=args.trials, readout=args.readout,
+        rng=np.random.default_rng(args.seed),
+    )
+    print(result.report())
+    if args.hardware:
+        print()
+        _rule("Published hardware profiles")
+        rows = hardware_survey(
+            circuit, objective, true_value, n_powers=args.powers,
+            shots_per_power=args.shots, trajectories=args.trajectories,
+            trials=args.trials, rng=np.random.default_rng(args.seed),
+        )
+        print(f"{'profile':<20}{'2q err':>9}{'1q err':>9}{'readout':>9}{'abs err':>10}"
+              f"{'classical':>11}{'survival':>10}  beats classical")
+        print("-" * 92)
+        for r in rows:
+            print(f"{r['profile']:<20}{r['two_qubit_error']:>9.1e}{r['one_qubit_error']:>9.1e}"
+                  f"{r['readout_error']:>9.1e}{r['abs_error']:>10.4f}{r['classical_error']:>11.4f}"
+                  f"{r['survival_deepest']:>10.1e}  {'yes' if r['beats_classical'] else 'no'}")
+        print()
+        for r in rows:
+            print(f"  {r['profile']}: {r['source']}")
+    print("\nDepolarising noise only. Coherent and correlated errors are worse for")
+    print("phase estimation, so this is an upper bound on tolerable error.")
+    return 0
+
+
+def cmd_qoblib(args) -> int:
+    """Score the package's solvers against a certified QOBLIB optimum."""
+    from pathlib import Path
+    from .qoblib import decode_bits, load_instance, load_qs, load_solution, qubo_offset
+
+    _rule("QOBLIB 06-portfolio: solvers vs certified optimum")
+    root = Path(args.root)
+    instance = load_instance(root / "instance")
+    instance.name = root.name
+    lam = args.risk_weight
+    qs = next(iter((root / "qubo").glob(f"uqo_*_{lam}.qs*")), None)
+    sol = next(iter((root / "solutions").glob(f"*_{lam}.*.sol")), None)
+    if qs is None or sol is None:
+        print(f"no QUBO or solution for risk weight {lam!r} under {root}")
+        return 1
+    qubo = load_qs(qs)
+    reference = load_solution(sol)
+    offset = qubo_offset(qubo, instance, reference)
+    kind = "proven optimal" if reference.proven_optimal else "best known"
+    print(f"instance {instance.name}: {instance.n_assets} assets x {instance.n_periods} periods, "
+          f"{instance.n_variables} binary variables, budget {reference.budget}, lambda {lam}")
+    print(f"reference objective: {reference.objective:.0f} ({kind}); QUBO constant omitted by "
+          f"the file: {offset:.4g}\n")
+    print(f"{'solver':<24}{'objective':>12}{'gap':>12}{'feasible':>10}{'time':>9}")
+    print("-" * 67)
+    for name in args.solvers.split(","):
+        kwargs = {"rng": np.random.default_rng(args.seed)}
+        if name == "simulated_annealing":
+            kwargs.update(n_sweeps=args.sweeps, n_restarts=args.restarts)
+        result = get_solver(name).solve(qubo, **kwargs)
+        objective = result.energy + offset
+        check = decode_bits(instance, result.assignment, reference.budget)
+        print(f"{name:<24}{objective:>12.0f}{objective - reference.objective:>12.0f}"
+              f"{str(check['feasible']):>10}{result.runtime_seconds:>8.1f}s")
+    print("\nThe gap is in the library's objective units (cash units of 100,000). A")
+    print("feasible solution with a positive gap is a worse portfolio than the optimum;")
+    print("an infeasible one violates a per-period capital or cardinality limit.")
+    return 0
+
+
+def cmd_live(args) -> int:
+    """Run the trading engine: paper by default, over a replay or a tailed CSV."""
+    import json
+    from .live import EngineConfig, FileFeed, ReplayFeed, RiskLimits, load_config, run
+
+    broker_name = (args.broker or os.environ.get("QT_BROKER") or "paper").strip().lower()
+    if args.live and broker_name == "paper":
+        print("--live needs a real broker: use --broker alpaca (see live/README.md)")
+        return 2
+    if broker_name not in ("paper", "alpaca"):
+        print(f"unknown broker {broker_name!r}: use paper or alpaca")
+        return 2
+    if args.config:
+        config = load_config(args.config)
+    else:
+        if not args.tickers:
+            print("give --config, or --tickers with --replay/--feed")
+            return 2
+        config = EngineConfig(
+            tickers=[t.strip() for t in args.tickers.split(",") if t.strip()],
+            strategy=args.strategy, cardinality=args.cardinality,
+            risk_aversion=args.risk_aversion, solver=args.solver,
+            window=args.window, rebalance_every=args.rebalance_every,
+            initial_cash=args.cash, fee_rate=args.fee, state_path=args.state,
+            limits=RiskLimits(max_drawdown=args.max_drawdown, max_weight=args.max_weight,
+                              min_history=args.window),
+            seed=args.seed,
+        )
+    if args.replay:
+        feed = ReplayFeed(args.replay, config.tickers, start=args.start, end=args.end)
+        print(f"replaying {len(feed)} bars from {args.replay} ({broker_name} broker)")
+    elif args.feed:
+        # Resume from the last bar the state file knows, so the writer may
+        # keep the whole history in the CSV and only new rows are delivered.
+        last = None
+        if not args.fresh and os.path.exists(config.state_path):
+            from .live import EngineState
+            dates = EngineState.load(config.state_path).dates
+            last = dates[-1] if dates else None
+        feed = FileFeed(args.feed, config.tickers, poll_seconds=args.poll,
+                        after=last, max_polls=1 if (args.once or args.catch_up) else None)
+        print(f"tailing {args.feed} every {args.poll:.0f}s ({broker_name} broker); Ctrl-C to stop")
+    else:
+        print("give --replay <csv> or --feed <csv>")
+        return 2
+    if args.write_config:
+        with open(args.write_config, "w", encoding="utf-8") as fh:
+            json.dump(config.to_dict(), fh, indent=1)
+        print(f"wrote {args.write_config}")
+
+    broker = None
+    if broker_name == "alpaca":
+        from .alpaca import BrokerRefused, from_environment
+        try:
+            broker = from_environment(config.tickers, config.initial_cash, log=print)
+        except BrokerRefused as exc:
+            print(f"broker refused, nothing sent: {exc}")
+            return 2
+        where = "PAPER account (fake money)" if broker.is_paper else "REAL-MONEY account"
+        print(f"broker: Alpaca {where}; budget ${config.initial_cash:,.0f}")
+
+    _rule(f"live engine: {config.strategy} on {', '.join(config.tickers)}")
+    try:
+        engine = run(config, feed, broker=broker, once=args.once, resume=not args.fresh,
+                     log=(print if args.verbose else None))
+    except KeyboardInterrupt:
+        print("stopped; state is on disk and the next start resumes from it")
+        return 0
+    print(engine.summary())
+    print(f"\nstate: {config.state_path}")
+    if args.snapshot:
+        from .live import snapshot
+        status, prices = snapshot(engine)
+        base = args.snapshot
+        with open(base, "w", encoding="utf-8") as fh:
+            json.dump(status, fh, separators=(",", ":"))
+        with open(base.replace(".json", "") + "_prices.json", "w", encoding="utf-8") as fh:
+            json.dump(prices, fh, separators=(",", ":"))
+        print(f"snapshot: {base} (+ prices)")
+    if args.orders:
+        from .live import todays_orders
+        doc = todays_orders(engine)
+        with open(args.orders, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=1)
+        label = "LIVE: place these at your broker" if doc["mode"] == "live" else "paper: for information only"
+        print(f"orders for {doc['date']} ({label}): {args.orders}")
+        for o in doc["orders"]:
+            print(f"  {o['side'].upper():4} {o['shares']:g} {o['ticker']} limit ${o['limit']:.2f}")
+        if not doc["orders"]:
+            print("  none today")
+    if broker is None:
+        print("Paper fills at the close with no slippage: an upper bound on a real venue.")
+    else:
+        for sent in broker.submitted:
+            print(f"sent to Alpaca: {sent['side']} {sent['qty']} {sent['symbol']} ({sent['status']})")
+        print("Orders sent after the close fill at the next open; the next run reads the real fills back.")
+    return 0
+
+
+def cmd_desktop(args) -> int:
+    """Open the dashboard in the browser and serve it until stopped."""
+    from .desktop import serve
+
+    serve(port=args.port, open_browser=not args.no_browser, workdir=args.workdir)
+    return 0
+
+
+def cmd_export(args) -> int:
+    """Emit an OpenQASM 3 program for a pricing circuit (state prep + Q^k)."""
+    from .amplitude import grover_operator
+    from .statevector import Circuit
+
+    spec = OptionSpec(args.spot, args.strike, args.rate, args.volatility, args.maturity)
+    prep, objective, _grid, _scale, _k = build_european_payoff_circuit(spec, args.qubits)
+    circuit = Circuit(prep.n_qubits, name=f"european_{spec.option}_Q{args.powers}")
+    circuit.compose(prep)
+    grover = grover_operator(prep, objective)
+    for _ in range(args.powers):
+        circuit.compose(grover)
+    text = to_qasm(circuit)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        counts = elementary_gate_count(circuit)
+        print(f"wrote {args.output}: {counts['qubits']} qubits, {counts['total']} gates "
+              f"({counts['two_qubit']} two-qubit); objective qubit q[{objective}]")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_demo(args) -> int:
+    print("Quantum methods for trading -- end-to-end demonstration")
+    for fn, sub in (
+        (cmd_portfolio, "portfolio"), (cmd_price, "price"),
+        (cmd_risk, "risk"), (cmd_arbitrage, "arbitrage"),
+    ):
+        parser = build_parser()
+        sub_args = parser.parse_args([sub])
+        sub_args.seed = args.seed
+        fn(sub_args)
+    print("\n" + "=" * 60)
+    print("Every number above has its classical baseline beside it. On today's")
+    print("hardware the classical column wins on wall-clock in every case.")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python3 -m quantum",
+        description="Quantum optimisation, pricing and risk for trading.",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="random seed")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    def add_market_args(p):
+        p.add_argument("--csv", help="wide price CSV (date column + one column per ticker)")
+        p.add_argument("--assets", type=int, default=8, help="synthetic universe size")
+        p.add_argument("--days", type=int, default=756, help="synthetic history length")
+
+    p = sub.add_parser("portfolio", help="constrained portfolio optimisation")
+    add_market_args(p)
+    p.add_argument("--cardinality", type=int, default=4, help="hold exactly this many names")
+    p.add_argument("--risk-aversion", type=float, default=2.0, dest="risk_aversion")
+    p.add_argument("--solver", default="simulated_bifurcation", choices=available_solvers())
+    p.add_argument("--encoding", default="select", choices=["select", "lots"])
+    p.add_argument("--lot-bits", type=int, default=2, dest="lot_bits")
+    p.add_argument("--qaoa-layers", type=int, default=2, dest="qaoa_layers")
+    p.set_defaults(func=cmd_portfolio)
+
+    p = sub.add_parser("price", help="price a European option by amplitude estimation")
+    p.add_argument("--spot", type=float, default=100.0)
+    p.add_argument("--strike", type=float, default=105.0)
+    p.add_argument("--rate", type=float, default=0.03)
+    p.add_argument("--volatility", type=float, default=0.20)
+    p.add_argument("--maturity", type=float, default=1.0)
+    p.add_argument("--option", default="call", choices=["call", "put"])
+    p.add_argument("--qubits", type=int, default=6)
+    p.add_argument("--c-approx", type=float, default=0.15, dest="c_approx")
+    p.add_argument("--powers", type=int, default=6)
+    p.add_argument("--shots", type=int, default=1024)
+    p.set_defaults(func=cmd_price)
+
+    p = sub.add_parser("risk", help="VaR and CVaR by amplitude estimation")
+    add_market_args(p)
+    p.add_argument("--confidence", type=float, default=0.95)
+    p.add_argument("--qubits", type=int, default=6)
+    p.add_argument("--powers", type=int, default=5)
+    p.add_argument("--shots", type=int, default=512)
+    p.set_defaults(func=cmd_risk)
+
+    p = sub.add_parser("arbitrage", help="cyclic arbitrage detection")
+    p.add_argument("--cycle-length", type=int, default=3, dest="cycle_length")
+    p.add_argument("--fee", type=float, default=0.0, help="proportional fee per leg")
+    p.add_argument("--solver", default="simulated_bifurcation", choices=available_solvers())
+    p.set_defaults(func=cmd_arbitrage)
+
+    p = sub.add_parser("benchmark", help="compare solvers against the proven optimum")
+    p.add_argument("--vars", type=int, default=10)
+    p.add_argument("--trials", type=int, default=10)
+    p.set_defaults(func=cmd_benchmark)
+
+    p = sub.add_parser("memory", help="report memory limits and compression options")
+    p.add_argument("--assets", type=int, default=50)
+    p.add_argument("--days", type=int, default=5040)
+    p.add_argument("--top", type=int, default=8)
+    p.set_defaults(func=cmd_memory)
+
+    p = sub.add_parser("backtest", help="walk-forward validation against equal weight")
+    add_market_args(p)
+    p.add_argument("--cardinality", type=int, default=4)
+    p.add_argument("--risk-aversion", type=float, default=2.0, dest="risk_aversion")
+    p.add_argument("--solver", default="simulated_annealing", choices=available_solvers())
+    p.add_argument("--window", type=int, default=252, help="fitting window in trading days")
+    p.add_argument("--horizon", type=int, default=21, help="holding period in trading days")
+    p.set_defaults(func=cmd_backtest)
+
+    def add_option_args(p):
+        p.add_argument("--spot", type=float, default=100.0)
+        p.add_argument("--strike", type=float, default=100.0)
+        p.add_argument("--rate", type=float, default=0.05)
+        p.add_argument("--volatility", type=float, default=0.20)
+        p.add_argument("--maturity", type=float, default=1.0)
+        p.add_argument("--qubits", type=int, default=3)
+
+    p = sub.add_parser("noise", help="gate-error threshold for the amplitude-estimation speedup")
+    add_option_args(p)
+    p.add_argument("--epsilons", default="0,1e-5,3e-5,1e-4,3e-4,1e-3,1e-2",
+                   help="comma-separated per-gate depolarising rates")
+    p.add_argument("--readout", type=float, default=0.0, help="symmetric readout flip rate")
+    p.add_argument("--powers", type=int, default=5)
+    p.add_argument("--shots", type=int, default=256)
+    p.add_argument("--trajectories", type=int, default=32)
+    p.add_argument("--trials", type=int, default=3)
+    p.add_argument("--hardware", action="store_true",
+                   help="also run under the published hardware profiles")
+    p.set_defaults(func=cmd_noise)
+
+    p = sub.add_parser("live", help="run the trading engine (paper) over a replay or a tailed CSV")
+    p.add_argument("--config", help="JSON EngineConfig; overrides the flags below")
+    p.add_argument("--replay", help="wide price CSV to replay bar by bar")
+    p.add_argument("--feed", help="wide price CSV another process appends to; tailed live")
+    p.add_argument("--tickers", help="comma-separated tickers (when no --config)")
+    p.add_argument("--start"), p.add_argument("--end")
+    p.add_argument("--strategy", default="cardinality", choices=["cardinality", "markowitz", "equal_weight"])
+    p.add_argument("--cardinality", type=int, default=4)
+    p.add_argument("--risk-aversion", type=float, default=2.0, dest="risk_aversion")
+    p.add_argument("--solver", default="simulated_annealing")
+    p.add_argument("--window", type=int, default=252)
+    p.add_argument("--rebalance-every", type=int, default=21, dest="rebalance_every")
+    p.add_argument("--cash", type=float, default=100_000.0)
+    p.add_argument("--fee", type=float, default=0.0005, help="proportional fee per fill")
+    p.add_argument("--max-drawdown", type=float, default=0.25, dest="max_drawdown")
+    p.add_argument("--max-weight", type=float, default=0.40, dest="max_weight")
+    p.add_argument("--state", default="live_state.json", help="state file (resumed on restart)")
+    p.add_argument("--poll", type=float, default=60.0, help="seconds between feed polls")
+    p.add_argument("--once", action="store_true", help="process one bar and exit (cron mode)")
+    p.add_argument("--catch-up", action="store_true", dest="catch_up",
+                   help="process every new row in the feed once, then exit (scheduled-job mode)")
+    p.add_argument("--snapshot", help="also write the dashboard snapshot JSON here")
+    p.add_argument("--fresh", action="store_true", help="ignore an existing state file")
+    p.add_argument("--broker", choices=["paper", "alpaca"], default=None,
+                   help="where orders go (default: $QT_BROKER, else paper); alpaca reads its keys from the environment")
+    p.add_argument("--live", action="store_true", help="insist on a real broker; refused with the paper broker")
+    p.add_argument("--orders", help="also write the newest bar's orders (for placing by hand) as JSON here")
+    p.add_argument("--write-config", dest="write_config", help="also write the effective config JSON here")
+    p.add_argument("--verbose", "-v", action="store_true", help="log every bar")
+    p.set_defaults(func=cmd_live)
+
+    p = sub.add_parser("desktop", help="open the point-and-click dashboard (paper trading)")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-browser", action="store_true", dest="no_browser", help="do not open a browser window")
+    p.add_argument("--workdir", default=None, help="folder holding data/ and the state file (default: current)")
+    p.set_defaults(func=cmd_desktop)
+
+    p = sub.add_parser("qoblib", help="score the solvers on a certified QOBLIB portfolio instance")
+    p.add_argument("--root", default="data/qoblib/po_a010_t10_orig",
+                   help="instance directory holding instance/, qubo/, solutions/")
+    p.add_argument("--risk-weight", default="l0", dest="risk_weight",
+                   help="lambda tag in the file names: l0, l1e-6, l1e-5, ... (l0, l1e-5, l1e-6 are proven optimal)")
+    p.add_argument("--solvers", default="simulated_annealing,simulated_bifurcation")
+    p.add_argument("--sweeps", type=int, default=2000)
+    p.add_argument("--restarts", type=int, default=8)
+    p.set_defaults(func=cmd_qoblib)
+
+    p = sub.add_parser("export", help="write a pricing circuit as OpenQASM 3")
+    add_option_args(p)
+    p.add_argument("--powers", type=int, default=1, help="Grover powers to append")
+    p.add_argument("--output", "-o", help="file to write (default: stdout)")
+    p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("demo", help="run every application end to end")
+    p.set_defaults(func=cmd_demo)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())
