@@ -9,6 +9,7 @@ Run:  python3 -m unittest discover -s tests -v
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 import unittest
 from datetime import date
@@ -365,6 +366,26 @@ class RegistryTests(unittest.TestCase):
     def test_backwards_date_range_is_rejected(self):
         with self.assertRaises(ProviderError):
             core.fetch_history("AAPL", "nasdaq", start="2026-09-20", end="2026-01-01")
+
+    def test_default_start_survives_a_leap_day(self):
+        """29 February minus two calendar years is not a date."""
+        captured = {}
+
+        def fake_fetch(symbol, start, end):
+            captured["start"] = start
+            return []
+
+        class FrozenDateTime(core.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return core.datetime(2028, 2, 29, 12, 0, tzinfo=tz)
+
+        stub = dataclasses.replace(core.PROVIDERS["nasdaq"], fetch=fake_fetch)
+        with mock.patch.object(core, "datetime", FrozenDateTime), \
+             mock.patch.dict(core.PROVIDERS, {"nasdaq": stub}):
+            core.fetch_history("AAPL", "nasdaq")
+
+        self.assertEqual(captured["start"], date(2026, 3, 1))
 
 
 if __name__ == "__main__":

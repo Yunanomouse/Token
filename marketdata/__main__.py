@@ -34,11 +34,13 @@ def cmd_history(args: argparse.Namespace) -> int:
         print(f"{len(bars)} bars -> {path}")
         return 0
 
-    print(f"{'date':<12}{'open':>12}{'high':>12}{'low':>12}{'close':>12}{'volume':>16}")
+    print(
+        f"{'date':<12}{'open':>15}{'high':>15}{'low':>15}{'close':>15}{'volume':>18}"
+    )
     for bar in bars[-args.tail :]:
         print(
-            f"{bar.date.isoformat():<12}{bar.open:>12,.4f}{bar.high:>12,.4f}"
-            f"{bar.low:>12,.4f}{bar.close:>12,.4f}{bar.volume:>16,.2f}"
+            f"{bar.date.isoformat():<12}{bar.open:>15,.4f}{bar.high:>15,.4f}"
+            f"{bar.low:>15,.4f}{bar.close:>15,.4f}{bar.volume:>18,.2f}"
         )
     print(
         f"\n{len(bars)} bars from {args.provider} "

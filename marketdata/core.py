@@ -14,7 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Sequence
 
 # A descriptive User-Agent is not optional politeness: SEC EDGAR rejects
@@ -256,7 +256,9 @@ def fetch_history(
         ) from None
 
     today = datetime.now(timezone.utc).date()
-    start_date = parse_date(start, default=date(today.year - 2, today.month, today.day))
+    # Two years back as a day count, not year arithmetic: 29 February minus
+    # two years is not a date.
+    start_date = parse_date(start, default=today - timedelta(days=730))
     end_date = parse_date(end, default=today)
     if start_date > end_date:
         raise ProviderError(f"start {start_date} is after end {end_date}")

@@ -96,9 +96,10 @@ That opens the OpenBB command line — try
 Most OpenBB tutorials reach for `provider="yfinance"`. This repo does not,
 and neither should you if the numbers are going anywhere near a tax return.
 
-Yahoo has no public API — `yfinance` works by calling the endpoints behind
-Yahoo's own web pages. There is no terms of service permitting that, no
-stability commitment, and the crypto and TSX series are re-published
+Yahoo retired its official finance API in 2017. `yfinance` works by calling
+the endpoints behind Yahoo's own web pages; it is not affiliated with or
+endorsed by Yahoo, what remains is intended for personal use, and there is no
+stability commitment. The crypto and TSX series are also re-published
 aggregates rather than exchange prints. It usually works. The problem is that
 when it doesn't, it fails quietly.
 

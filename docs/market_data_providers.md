@@ -13,10 +13,14 @@ Yahoo Finance has no public API. `yfinance` works by calling the endpoints
 that back Yahoo's own web pages, with a browser-shaped request. That gives it
 four problems that matter for anything you file a tax return on:
 
-1. **No agreement to rely on.** Yahoo's terms of service do not grant
-   programmatic access to the data. There is no rate limit to design around
-   because there is no documented contract at all, which means there is also
-   no commitment that tomorrow's response looks like today's.
+1. **No agreement to rely on.** Yahoo retired its official finance API in
+   2017. What remains is intended for personal use, and yfinance's own
+   documentation says it is "not affiliated, endorsed, or vetted by Yahoo"
+   and is "intended for research and educational purposes". Commercial use
+   or redistribution is squarely in grey-area territory. There is no
+   documented rate limit to design around because there is no documented
+   contract at all — and so no commitment that tomorrow's response looks
+   like today's.
 2. **It breaks without warning.** The library's issue tracker is a running
    log of endpoint changes, cookie/crumb authentication being added, and
    sudden 401/429 storms. Those breakages land on whatever you built on top.
@@ -129,7 +133,20 @@ run in CI or a cron job as a data-quality gate.
   contact address. It is a sensible next addition but is not wired up here.
 - **No real-time quotes.** These are end-of-day sources.
 
-## Useful things deliberately left out
+## Worth a look, not wired up
+
+These are reasonable and were left out only because a key could not be
+obtained to verify the response format from the development machine. Adding
+one is a ~30-line provider function — see the last section.
+
+| Source | Free tier | Why you might want it |
+|---|---|---|
+| **Twelve Data** | 800 requests/day | Covers TSX and TSXV directly, so it can serve both sides of a Canadian portfolio from one feed |
+| **Finnhub** | 60 requests/min | Fundamentals and earnings alongside prices |
+| **Financial Modeling Prep** | limited | Has a documented TSX prices endpoint |
+| **`yahooquery`** | n/a | Sometimes suggested as a "stabler yfinance" — it is still Yahoo, so it inherits every problem in the first section |
+
+## Deliberately left out
 
 | Considered | Why not |
 |---|---|
@@ -138,6 +155,12 @@ run in CI or a cron job as a data-quality gate.
 | `pandas-datareader` | Its Stooq backend raises `NotImplementedError` as of 0.11.1 |
 | IEX Cloud | Retired |
 | Polygon / Databento | Genuinely better data, but no meaningful free tier for history |
+
+There is no perfect free market-data source in 2026. Yahoo is unreliable, IEX
+Cloud is gone, and everything remaining trades off coverage, latency or rate
+limits. The response to that is not to pick a favourite and trust it — it is
+to use sources that publish their own data, and to check two of them against
+each other. That is what the `crosscheck` command is for.
 
 ## Adding a provider
 
