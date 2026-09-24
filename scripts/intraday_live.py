@@ -2,9 +2,10 @@
 """Run the KAMA intraday strategy on today's session so far, on paper.
 
     python3 scripts/intraday_live.py --out live/intraday/status.json
+    python3 scripts/intraday_live.py --interval 1m --out live/intraday/status.json
     python3 scripts/intraday_live.py --bars-csv bars_5m.csv --date 2026-09-23 --out status.json
 
-Each run fetches the last few sessions of 5-minute bars for the universe
+Each run fetches the last few sessions of 1- or 5-minute bars for the universe
 (earlier sessions warm up the KAMA and feed the volatility screen), drops
 the bar still forming, and replays today from a fresh $50 with
 quantum.intraday.backtest.  The strategy is causal and fills at the next
@@ -34,13 +35,12 @@ from fetch_intraday import yahoo_intraday  # noqa: E402
 from quantum.intraday import IntradayConfig, backtest, kama_signals, load_bars  # noqa: E402
 
 NY = ZoneInfo("America/New_York")
-BAR_MINUTES = 5
 
 
-def fetch(tickers: list[str], rng: str = "5d") -> tuple[list[tuple], list[str]]:
+def fetch(tickers: list[str], minutes: int, rng: str = "5d") -> tuple[list[tuple], list[str]]:
     def one(t):
         try:
-            return t, yahoo_intraday(t, f"{BAR_MINUTES}m", rng)
+            return t, yahoo_intraday(t, f"{minutes}m", rng)
         except Exception as exc:  # skip a ticker that fails
             print(f"{t:6} FAILED: {exc}", file=sys.stderr)
             return t, []
@@ -53,9 +53,9 @@ def fetch(tickers: list[str], rng: str = "5d") -> tuple[list[tuple], list[str]]:
     return rows, failed
 
 
-def write_csv(rows: list[tuple], path: Path, now_ny: datetime) -> None:
+def write_csv(rows: list[tuple], path: Path, now_ny: datetime, minutes: int) -> None:
     """Keep only bars that have finished by ``now_ny``."""
-    done = now_ny.replace(tzinfo=None) - timedelta(minutes=BAR_MINUTES)
+    done = now_ny.replace(tzinfo=None) - timedelta(minutes=minutes)
     rows = sorted((r for r in rows if r[0] <= done), key=lambda r: (r[0], r[1]))
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("datetime,ticker,open,high,low,close,volume\n")
@@ -63,7 +63,8 @@ def write_csv(rows: list[tuple], path: Path, now_ny: datetime) -> None:
             fh.write(f"{dt:%Y-%m-%d %H:%M:%S},{t},{o:.4f},{h:.4f},{l:.4f},{c:.4f},{v}\n")
 
 
-def status(bars: dict, date: str, cfg: IntradayConfig, open_session: bool, mode: str) -> dict:
+def status(bars: dict, date: str, cfg: IntradayConfig, open_session: bool, mode: str,
+           minutes: int) -> dict:
     res = backtest(bars, cfg, open_session=True)
     op = res["open"]
     equity = res["equity"][-1]["equity"] if res["equity"] else cfg.cash
@@ -84,6 +85,7 @@ def status(bars: dict, date: str, cfg: IntradayConfig, open_session: bool, mode:
         "schema": 1,
         "mode": mode,
         "session_open": open_session,
+        "bar_minutes": minutes,
         "date": date,
         "last_bar": last_bar,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -106,22 +108,24 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--universe", default=str(ROOT / "live/intraday/universe.txt"))
     ap.add_argument("--bars-csv", help="use this bar file instead of fetching (a replay)")
+    ap.add_argument("--interval", choices=("1m", "5m"), default="5m", help="bar length")
     ap.add_argument("--date", help="session to trade (default: the newest in the data)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     now_ny = datetime.now(NY)
+    minutes = int(args.interval[:-1])
     if args.bars_csv:
         bars, mode = load_bars(args.bars_csv), "replay"
     else:
         tickers = [ln.split("#")[0].strip().upper() for ln in Path(args.universe).read_text().splitlines()]
-        rows, failed = fetch([t for t in tickers if t])
+        rows, failed = fetch([t for t in tickers if t], minutes)
         if not rows:
             print("ERROR: no bars fetched", file=sys.stderr)
             return 1
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bars.csv"
-            write_csv(rows, path, now_ny)
+            write_csv(rows, path, now_ny, minutes)
             bars = load_bars(path)
         mode = "live"
     dates = sorted({str(d)[:10] for b in bars.values() for d in b["datetime"]})
@@ -129,7 +133,7 @@ def main() -> int:
     bars = {t: {k: v[b["datetime"] < f"{date}~"] for k, v in b.items()} for t, b in bars.items()}
     open_session = (mode == "live" and date == now_ny.strftime("%Y-%m-%d")
                     and now_ny.strftime("%H:%M") < "16:00")
-    doc = status(bars, date, IntradayConfig(trade_from=date), open_session, mode)
+    doc = status(bars, date, IntradayConfig(trade_from=date), open_session, mode, minutes)
     Path(args.out).write_text(json.dumps(doc, indent=1), encoding="utf-8")
     pos = ", ".join(f"{p['ticker']} x{p['shares']:g}" for p in doc["positions"]) or "none"
     print(f"{mode} {date} to {doc['last_bar'][11:16]}: equity {doc['equity']:.2f}, "
