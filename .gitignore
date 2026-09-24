@@ -1,2 +1,7 @@
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
+
+# Downloaded market data - regenerate with examples/market_data_quickstart.py
+examples/market_data/
