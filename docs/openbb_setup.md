@@ -34,6 +34,16 @@ pip install openbb
 If `pip` isn't recognized on Windows, try `py -m pip install openbb`.
 On Mac, try `pip3 install openbb`.
 
+Then add two data providers that need no account:
+
+```
+pip install openbb-cboe openbb-tmx
+```
+
+- **cboe** — Cboe's own market data: US equities, ETFs and indices.
+- **tmx** — TMX Group, the operator of the Toronto Stock Exchange. TSX
+  listings priced in Canadian dollars, straight from the exchange.
+
 ## 3. Try it
 
 Start Python by typing `python` (Windows) or `python3` (Mac), then paste:
@@ -41,29 +51,33 @@ Start Python by typing `python` (Windows) or `python3` (Mac), then paste:
 ```python
 from openbb import obb
 
-data = obb.equity.price.historical("AAPL", provider="yfinance")
-df = data.to_df()
-print(df.tail())
+# US listing, from Cboe
+print(obb.equity.price.historical("AAPL", provider="cboe").to_df().tail())
+
+# Toronto listing, in CAD, from the TSX operator itself
+print(obb.equity.price.historical("SHOP", provider="tmx").to_df().tail())
 ```
 
 The very first `from openbb import obb` takes a minute — it builds its
-interface on first run. After that it's fast. You should see a table of
-Apple's recent daily prices. Swap `"AAPL"` for any ticker
-(`"SHOP.TO"` for Toronto-listed Shopify, `"BTC-USD"` for Bitcoin, etc.).
+interface on first run. After that it's fast.
+
+Note the symbols: `cboe` wants the plain US ticker, and `tmx` wants the TSX
+root with **no** `.TO` suffix. The `.TO` convention is a Yahoo one.
 
 Type `exit()` to leave Python.
 
 ## 4. Or use the ready-made script in this repo
 
 `examples/openbb_quickstart.py` fetches a year of prices for a few tickers
-and saves them to CSV files you can open in Excel. Run it from the repo
-folder with:
+from Cboe and TMX and saves them to CSV files you can open in Excel. Run it
+from the repo folder with:
 
 ```
 python examples/openbb_quickstart.py
 ```
 
-Edit the `TICKERS` list at the top of the script to track your own symbols.
+Edit the `WATCHLIST` at the top of the script to track your own symbols.
+Each entry is a `(provider, symbol)` pair.
 
 ## 5. Optional: the interactive OpenBB terminal
 
@@ -74,15 +88,31 @@ pip install openbb-cli
 openbb
 ```
 
-That opens the OpenBB command line — try `/equity/price/historical --symbol AAPL`.
+That opens the OpenBB command line — try
+`/equity/price/historical --symbol AAPL --provider cboe`.
 
-## Free data, no keys needed
+## A note on Yahoo Finance
 
-The `yfinance` provider (Yahoo Finance) works with no signup and covers
-stocks, ETFs, indices, currencies, and crypto. Other providers (FMP, FRED,
-Intrinio, ...) unlock more data but need free-or-paid API keys — see
-https://docs.openbb.co/platform/settings/user_settings/api_keys if you ever
-want those.
+Most OpenBB tutorials reach for `provider="yfinance"`. This repo does not,
+and neither should you if the numbers are going anywhere near a tax return.
+
+Yahoo retired its official finance API in 2017. `yfinance` works by calling
+the endpoints behind Yahoo's own web pages; it is not affiliated with or
+endorsed by Yahoo, what remains is intended for personal use, and there is no
+stability commitment. The crypto and TSX series are also re-published
+aggregates rather than exchange prints. It usually works. The problem is that
+when it doesn't, it fails quietly.
+
+`cboe` and `tmx` need no key either, and both are the venues publishing their
+own data. For US history with a proper split- and dividend-adjusted close,
+`pip install openbb-tiingo` or `openbb-alpha-vantage` and get a free key —
+both have a published terms of service that permits what you're doing. See
+https://docs.openbb.co/platform/settings/user_settings/api_keys for where to
+put keys.
+
+`docs/market_data_providers.md` in this repo covers the full comparison, and
+`marketdata/` gives you the same data with **no dependencies at all** if you
+would rather skip the OpenBB install.
 
 ## Troubleshooting
 
@@ -91,6 +121,10 @@ want those.
 - **"No module named openbb"** — you may have multiple Pythons installed.
   Use the same command for installing and running (`python -m pip install
   openbb`, then `python`).
-- **Empty results / download errors** — usually a network hiccup or an
-  invalid ticker; try again or double-check the symbol on
-  https://finance.yahoo.com.
+- **Empty results / download errors** — usually a network hiccup or a symbol
+  in the wrong format for that provider. Check a TSX symbol at
+  https://money.tmx.com and a US one at https://www.cboe.com/us/equities/.
+  Remember: no `.TO` suffix for the `tmx` provider.
+- **Not sure which sources your network can reach** — run
+  `python3 scripts/check_providers.py`. It tests each one and prints what
+  came back.
