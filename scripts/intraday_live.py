@@ -3,6 +3,9 @@
 
     python3 scripts/intraday_live.py --out live/intraday/status.json
     python3 scripts/intraday_live.py --interval 1m --out live/intraday/status.json
+
+Settings, including ``"interval": "5m"`` or ``"1m"``, come from
+live/intraday/config.json; ``--interval`` overrides the file for one run.
     python3 scripts/intraday_live.py --bars-csv bars_5m.csv --date 2026-09-23 --out status.json
 
 Each run fetches the last few sessions of 1- or 5-minute bars for the universe
@@ -108,13 +111,20 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--universe", default=str(ROOT / "live/intraday/universe.txt"))
     ap.add_argument("--bars-csv", help="use this bar file instead of fetching (a replay)")
-    ap.add_argument("--interval", choices=("1m", "5m"), default="5m", help="bar length")
+    ap.add_argument("--config", default=str(ROOT / "live/intraday/config.json"),
+                    help="JSON with 'interval' (1m or 5m) and any IntradayConfig fields")
+    ap.add_argument("--interval", choices=("1m", "5m"), help="bar length (overrides the config)")
     ap.add_argument("--date", help="session to trade (default: the newest in the data)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     now_ny = datetime.now(NY)
-    minutes = int(args.interval[:-1])
+    settings = json.loads(Path(args.config).read_text()) if Path(args.config).exists() else {}
+    interval = args.interval or settings.pop("interval", "5m")
+    settings.pop("interval", None)
+    if interval not in ("1m", "5m"):
+        ap.error(f"interval must be 1m or 5m, not {interval!r}")
+    minutes = int(interval[:-1])
     if args.bars_csv:
         bars, mode = load_bars(args.bars_csv), "replay"
     else:
@@ -133,7 +143,7 @@ def main() -> int:
     bars = {t: {k: v[b["datetime"] < f"{date}~"] for k, v in b.items()} for t, b in bars.items()}
     open_session = (mode == "live" and date == now_ny.strftime("%Y-%m-%d")
                     and now_ny.strftime("%H:%M") < "16:00")
-    doc = status(bars, date, IntradayConfig(trade_from=date), open_session, mode, minutes)
+    doc = status(bars, date, IntradayConfig(**settings, trade_from=date), open_session, mode, minutes)
     Path(args.out).write_text(json.dumps(doc, indent=1), encoding="utf-8")
     pos = ", ".join(f"{p['ticker']} x{p['shares']:g}" for p in doc["positions"]) or "none"
     print(f"{mode} {date} to {doc['last_bar'][11:16]}: equity {doc['equity']:.2f}, "
