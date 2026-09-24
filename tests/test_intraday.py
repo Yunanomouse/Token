@@ -332,3 +332,86 @@ class TestLiveSession(unittest.TestCase):
         cfg = IntradayConfig(trade_from=self.last)
         part = backtest(self._cut(f"{self.last} 13:00:00"), cfg, open_session=True)
         self.assertFalse([t for t in part["trades"] if t["reason"] == "eod"])
+
+
+def _flat_days(prices_by_day, vols_by_day):
+    """Minute bars with explicit per-bar closes and volumes (open = previous close)."""
+    dts, o, h, l, c, v = [], [], [], [], [], []
+    prev = None
+    for (date, closes), vols in zip(prices_by_day, vols_by_day):
+        dts += _times(date, len(closes))
+        for x, vol in zip(closes, vols):
+            op = x if prev is None else prev
+            o.append(op); h.append(max(op, x)); l.append(min(op, x)); c.append(x); v.append(vol)
+            prev = x
+    return {"datetime": np.array(dts), "open": np.array(o, float), "high": np.array(h, float),
+            "low": np.array(l, float), "close": np.array(c, float), "volume": np.array(v, float)}
+
+
+class TestStocksInPlay(unittest.TestCase):
+    """Relative-volume screen, the opening-range breakout, ATR stops, VWAP, resampling."""
+
+    def _days(self, n):
+        return [f"2026-08-{d:02d}" for d in range(3, 3 + n)]
+
+    def test_rvol_uses_only_the_first_bar_and_prior_days(self):
+        from quantum.intraday import daily_stats, rvol_screen
+        days = self._days(4)
+        bars = {}
+        for t, today_first in (("HOT", 5000.0), ("COLD", 500.0)):
+            prices = [(d, [10.0] * 30) for d in days]
+            vols = [[1000.0] + [100.0] * 29 for _ in days[:-1]] + [[today_first] + [1e6] * 29]
+            bars[t] = _flat_days(prices, vols)
+        stats = daily_stats(bars, days=3)
+        self.assertAlmostEqual(stats["HOT"][days[-1]]["rvol"], 5.0)
+        self.assertAlmostEqual(stats["COLD"][days[-1]]["rvol"], 0.5)   # later huge volume ignored
+        cfg = IntradayConfig(screen="rvol", rvol_days=3, min_rvol=1.0)
+        self.assertEqual(rvol_screen(stats, days[-1], 100.0, cfg), ["HOT"])
+        self.assertEqual(rvol_screen(stats, days[1], 100.0, cfg), [])    # not enough history
+
+    def test_orb_buys_after_a_close_above_the_first_bar_and_stops_on_atr(self):
+        days = self._days(4)
+        wiggle = [10.0, 10.2] * 15                                   # prior days: range 0.2
+        today = [10.3] + [10.2, 10.25, 10.4, 10.45, 10.5, 9.0] + [9.0] * 23   # green first bar, breakout at bar 3
+        prices = [(d, wiggle) for d in days[:-1]] + [(days[-1], today)]
+        vols = [[1000.0] * 30 for _ in days]
+        b = _flat_days(prices, vols)
+        cfg = IntradayConfig(strategy="orb", screen="rvol", rvol_days=3, min_rvol=0.5, stop_atr_mult=0.5,
+                             slippage_bps=0, trade_from=days[-1], deploy_fraction=1.0)
+        res = backtest({"X": b}, cfg)
+        self.assertEqual(len(res["trades"]), 1)
+        t = res["trades"][0]
+        i_break = int(np.flatnonzero(b["datetime"] == f"{days[-1]} 09:33:00")[0])
+        self.assertEqual(t["entry_time"], str(b["datetime"][i_break + 1]))       # next bar's open
+        self.assertAlmostEqual(t["entry_price"], b["open"][i_break + 1])
+        self.assertEqual(t["reason"], "stop")
+        # The stop sits 0.5 daily ATR under the fill; the drop to 9.00 opens
+        # above it, so the fill is the stop price itself.
+        from quantum.intraday import daily_stats
+        atr = daily_stats({"X": b}, days=3)["X"][days[-1]]["atr"]
+        self.assertGreater(atr, 0.1)
+        self.assertAlmostEqual(t["exit_price"], t["entry_price"] - 0.5 * atr)
+
+    def test_orb_skips_a_red_first_bar(self):
+        days = self._days(4)
+        flat = [10.0] * 30
+        today = [9.8, 10.5, 10.6] + [10.6] * 27      # first bar closes down from 10.0
+        b = _flat_days([(d, flat) for d in days[:-1]] + [(days[-1], today)], [[1000.0] * 30 for _ in days])
+        cfg = IntradayConfig(strategy="orb", screen="rvol", rvol_days=3, min_rvol=0.5, trade_from=days[-1])
+        self.assertEqual(backtest({"X": b}, cfg)["trades"], [])
+
+    def test_vwap_and_resample(self):
+        from quantum.intraday import resample, session_vwap
+        days = self._days(2)
+        b = _flat_days([(days[0], [10.0, 12.0, 11.0, 13.0]), (days[1], [20.0, 22.0])],
+                       [[1.0, 3.0, 1.0, 1.0], [2.0, 2.0]])
+        vw = session_vwap(b)
+        tp = (b["high"] + b["low"] + b["close"]) / 3
+        self.assertAlmostEqual(vw[1], (tp[0] * 1 + tp[1] * 3) / 4)
+        self.assertAlmostEqual(vw[4], tp[4])                                  # resets each session
+        r = resample({"X": b}, 2)["X"]
+        self.assertEqual(list(r["datetime"]), [f"{days[0]} 09:30:00", f"{days[0]} 09:32:00",
+                                               f"{days[1]} 09:30:00"])
+        self.assertEqual(list(r["close"]), [12.0, 13.0, 22.0])
+        self.assertEqual(list(r["volume"]), [4.0, 2.0, 4.0])
+        self.assertEqual(r["high"][0], max(b["high"][:2]))

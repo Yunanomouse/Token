@@ -251,6 +251,29 @@ class IntradayConfig:
     top_n: int = 5
     screen_days: int = 1
     """Prior sessions averaged for the volatility ranking."""
+    strategy: str = "kama"
+    """``kama``: Kaufman's filter rule.  ``orb``: opening-range breakout
+    (Zarattini, Barbon & Aziz 2024): buy when a bar closes above the first
+    bar's high, if the first bar closed up; exit on the stop or at the end
+    of the day."""
+    screen: str = "range"
+    """``range``: prior-day (high - low) / close.  ``rvol``: relative volume
+    of today's first bar against its average over ``rvol_days`` prior
+    sessions ("stocks in play"); needs the first bar to have closed."""
+    rvol_days: int = 14
+    min_rvol: float = 1.0
+    min_price: float = 0.0
+    """Prior close at least this (the ORB paper uses $5)."""
+    min_atr: float = 0.0
+    """Daily ATR over ``rvol_days`` sessions at least this, in dollars."""
+    min_avg_volume: float = 0.0
+    """Average daily shares over ``rvol_days`` sessions at least this."""
+    stop_atr_mult: float | None = None
+    """Stop this many daily ATRs below the entry fill (the ORB paper: 0.10)."""
+    er_min: float | None = None
+    """KAMA entries only when the efficiency ratio is above this."""
+    vwap_filter: bool = False
+    """KAMA entries only above the session VWAP; exit on a close below it."""
     trade_from: str | None = None
     """First session (``YYYY-MM-DD``) the account trades.  Earlier sessions
     only warm up the KAMA and feed the volatility screen."""
@@ -270,6 +293,10 @@ class IntradayConfig:
             raise ValueError("entry_lookback >= 1, filter_n >= 2, screen_days >= 1")
         if not 1 <= self.kama_fast < self.kama_slow or self.kama_n < 1:
             raise ValueError("need kama_n >= 1 and 1 <= kama_fast < kama_slow")
+        if self.strategy not in ("kama", "orb") or self.screen not in ("range", "rvol"):
+            raise ValueError("strategy must be kama or orb; screen must be range or rvol")
+        if self.stop_atr_mult is not None and self.stop_atr_mult <= 0:
+            raise ValueError("stop_atr_mult must be positive")
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -324,6 +351,108 @@ def volatility_screen(ranges: dict[str, dict[str, tuple[float, float]]], date: s
     return [t for _, t in scored[:top_n]]
 
 
+def daily_stats(bars: dict[str, dict[str, np.ndarray]], days: int = 14) -> dict[str, dict[str, dict]]:
+    """Per ticker and session: the first bar (``first_open``, ``first_high``,
+    ``first_close``, ``first_volume``), and from the ``days`` sessions strictly
+    before it, ``atr`` (mean true range), ``avg_volume`` (daily shares),
+    ``avg_first_volume``, ``prev_close`` and ``rvol`` (today's first-bar
+    volume over ``avg_first_volume``)."""
+    out: dict[str, dict[str, dict]] = {}
+    for t, b in bars.items():
+        dates = np.array([d[:10] for d in b["datetime"]])
+        per: dict[str, dict] = {}
+        if not dates.size:
+            out[t] = per
+            continue
+        starts = np.flatnonzero(np.r_[True, dates[1:] != dates[:-1]])
+        ends = np.r_[starts[1:], dates.size]
+        rows = []
+        for s, e in zip(starts, ends):
+            rows.append((str(dates[s]), float(b["open"][s]), float(b["high"][s]), float(b["close"][s]),
+                         float(b["volume"][s]), float(b["high"][s:e].max()), float(b["low"][s:e].min()),
+                         float(b["close"][e - 1]), float(b["volume"][s:e].sum())))
+        for k, (d, fo, fh, fc, fv, hi, lo, cl, vol) in enumerate(rows):
+            prior = rows[max(0, k - days):k]
+            info = {"first_open": fo, "first_high": fh, "first_close": fc, "first_volume": fv}
+            if prior:
+                trs = []
+                for j, r in enumerate(prior):
+                    pc = rows[k - len(prior) + j - 1][7] if k - len(prior) + j - 1 >= 0 else r[7]
+                    trs.append(max(r[5] - r[6], abs(r[5] - pc), abs(r[6] - pc)))
+                afv = float(np.mean([r[4] for r in prior]))
+                info.update(atr=float(np.mean(trs)), avg_volume=float(np.mean([r[8] for r in prior])),
+                            avg_first_volume=afv, prev_close=prior[-1][7],
+                            rvol=fv / afv if afv > 0 else 0.0, n_prior=len(prior))
+            per[d] = info
+        out[t] = per
+    return out
+
+
+def rvol_screen(stats: dict[str, dict[str, dict]], date: str, budget: float, config: "IntradayConfig",
+                tradable: set[str] | None = None) -> list[str]:
+    """"Stocks in play" for ``date``: highest relative volume of the first bar,
+    among names with a full ``rvol_days`` history, ``rvol >= min_rvol``, a
+    prior close >= ``min_price``, ATR >= ``min_atr``, average volume >=
+    ``min_avg_volume``, and one whole share affordable in ``budget``."""
+    c = config
+    scored = []
+    for t, per in stats.items():
+        if tradable is not None and t not in tradable:
+            continue
+        s = per.get(date)
+        if not s or s.get("n_prior", 0) < c.rvol_days:
+            continue
+        if (s["rvol"] < c.min_rvol or s["prev_close"] < c.min_price or s["atr"] < c.min_atr
+                or s["avg_volume"] < c.min_avg_volume):
+            continue
+        if s["prev_close"] * (1 + c.slippage_bps / 1e4) + c.commission > budget:
+            continue
+        scored.append((-s["rvol"], t))
+    scored.sort()
+    return [t for _, t in scored[:c.top_n]]
+
+
+def session_vwap(b: dict[str, np.ndarray]) -> np.ndarray:
+    """Volume-weighted average of the typical price, reset each session."""
+    tp = (b["high"] + b["low"] + b["close"]) / 3.0
+    v = b["volume"].astype(float)
+    out = np.empty(tp.size)
+    dates = np.array([d[:10] for d in b["datetime"]])
+    if not dates.size:
+        return out
+    starts = np.flatnonzero(np.r_[True, dates[1:] != dates[:-1]])
+    for s, e in zip(starts, np.r_[starts[1:], dates.size]):
+        cv = np.cumsum(v[s:e])
+        ctp = np.cumsum(tp[s:e] * v[s:e])
+        out[s:e] = np.where(cv > 0, ctp / np.where(cv > 0, cv, 1), tp[s:e])
+    return out
+
+
+def resample(bars: dict[str, dict[str, np.ndarray]], minutes: int) -> dict[str, dict[str, np.ndarray]]:
+    """Aggregate bars into ``minutes``-long bars, labelled by their start time."""
+    out = {}
+    for t, b in bars.items():
+        keys = []
+        for d in b["datetime"]:
+            m = (int(d[11:13]) * 60 + int(d[14:16]) - 570) // minutes * minutes + 570
+            keys.append(f"{d[:10]} {m // 60:02d}:{m % 60:02d}:00")
+        keys = np.array(keys)
+        if not keys.size:
+            out[t] = {k: v[:0] for k, v in b.items()}
+            continue
+        starts = np.flatnonzero(np.r_[True, keys[1:] != keys[:-1]])
+        ends = np.r_[starts[1:], keys.size]
+        out[t] = {
+            "datetime": keys[starts],
+            "open": b["open"][starts],
+            "high": np.maximum.reduceat(b["high"], starts),
+            "low": np.minimum.reduceat(b["low"], starts),
+            "close": b["close"][ends - 1],
+            "volume": np.add.reduceat(b["volume"], starts),
+        }
+    return out
+
+
 # --------------------------------------------------------------------------
 # Engine
 # --------------------------------------------------------------------------
@@ -334,20 +463,63 @@ class _KamaPolicy:
 
     def __init__(self, bars, config):
         self.sig = {t: kama_signals(b["close"], config) for t, b in bars.items()}
+        self.close = {t: b["close"] for t, b in bars.items()}
+        self.er = ({t: efficiency_ratio(b["close"], config.kama_n) for t, b in bars.items()}
+                   if config.er_min is not None else None)
+        self.vwap = {t: session_vwap(b) for t, b in bars.items()} if config.vwap_filter else None
+        self.er_min = config.er_min
 
     def start_day(self, date, screen, times, trades_today_cap):
         pass
 
     def want_entry(self, ticker, i, time):
-        return bool(self.sig[ticker]["entry"][i]), {}
+        ok = bool(self.sig[ticker]["entry"][i])
+        if ok and self.er is not None:
+            ok = bool(self.er[ticker][i] > self.er_min)
+        if ok and self.vwap is not None:
+            ok = bool(self.close[ticker][i] > self.vwap[ticker][i])
+        return ok, {}
 
     def want_exit(self, ticker, i, pos):
+        if self.vwap is not None and self.close[ticker][i] < self.vwap[ticker][i]:
+            return True
         s = self.sig[ticker]
         a, f = s["kama"][i], s["filter"][i]
         if np.isnan(a):
             return False
         pos["peak"] = a if pos.get("peak") is None else max(pos["peak"], a)
         return not np.isnan(f) and pos["peak"] - a > f
+
+
+class _OrbPolicy:
+    """Opening-range breakout, long only: the first bar of the session is the
+    range; if it closed up, buy after a later bar closes above its high.
+    Once per ticker per day.  Exits come from the stop and the end of day."""
+
+    def __init__(self, bars, config):
+        self.bars = bars
+        self.day: dict[str, tuple[int, float, bool]] = {}
+        self.done: set[str] = set()
+
+    def start_day(self, date, screen, times, trades_today_cap):
+        self.day, self.done = {}, set()
+        for t, b in self.bars.items():
+            idx = np.flatnonzero(np.char.startswith(b["datetime"].astype(str), date))
+            if idx.size:
+                s = int(idx[0])
+                self.day[t] = (s, float(b["high"][s]), bool(b["close"][s] > b["open"][s]))
+
+    def want_entry(self, ticker, i, time):
+        if ticker in self.done or ticker not in self.day:
+            return False, {}
+        s, hi, up = self.day[ticker]
+        if i > s and up and self.bars[ticker]["close"][i] > hi:
+            self.done.add(ticker)
+            return True, {}
+        return False, {}
+
+    def want_exit(self, ticker, i, pos):
+        return False
 
 
 class _RandomPolicy:
@@ -388,6 +560,7 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
     cfg = config
     slip = cfg.slippage_bps / 1e4
     ranges = daily_ranges(bars)
+    stats = daily_stats(bars, cfg.rvol_days) if (cfg.screen == "rvol" or cfg.stop_atr_mult) else {}
     index = {t: {d: i for i, d in enumerate(b["datetime"])} for t, b in bars.items()}
     by_date: dict[str, set[str]] = {}
     for t, b in bars.items():
@@ -435,9 +608,12 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
         unsettled = 0.0
         times = sorted(by_date[date])
         eq0 = equity_now()
-        screen = volatility_screen(ranges, date, cfg.deploy_fraction * eq0, cfg.top_n, cfg.screen_days,
-                                   cfg.slippage_bps, cfg.commission,
-                                   tradable={t for t in bars if date in last_of_day[t]})
+        tradable = {t for t in bars if date in last_of_day[t]}
+        if cfg.screen == "rvol":
+            screen = rvol_screen(stats, date, cfg.deploy_fraction * eq0, cfg, tradable)
+        else:
+            screen = volatility_screen(ranges, date, cfg.deploy_fraction * eq0, cfg.top_n, cfg.screen_days,
+                                       cfg.slippage_bps, cfg.commission, tradable=tradable)
         policy.start_day(date, screen, times, cfg.max_trades_per_day)
         pending: dict[str, tuple[str, dict]] = {}
         entries = 0
@@ -476,7 +652,7 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
                 positions[t] = {
                     "shares": shares, "entry_price": fill, "cost": cost, "entry_idx": i,
                     "entry_time": now, "last": float(bars[t]["close"][i]), "peak": None, "meta": meta,
-                    "stop": fill * (1 - cfg.stop_loss_pct) if cfg.stop_loss_pct else None,
+                    "stop": _stop_price(cfg, stats, t, date, fill),
                 }
             # 3. intrabar stop, forced close on the last bar, signals on the close.
             for t, i in live:
@@ -542,6 +718,16 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
     return result
 
 
+def _stop_price(cfg: IntradayConfig, stats: dict, ticker: str, date: str, fill: float) -> float | None:
+    stops = []
+    if cfg.stop_loss_pct:
+        stops.append(fill * (1 - cfg.stop_loss_pct))
+    atr = stats.get(ticker, {}).get(date, {}).get("atr") if cfg.stop_atr_mult else None
+    if atr:
+        stops.append(fill - cfg.stop_atr_mult * atr)
+    return max(stops) if stops else None
+
+
 def _max_drawdown(values: Sequence[float]) -> float:
     v = np.asarray(values, dtype=float)
     if v.size == 0:
@@ -592,7 +778,8 @@ def backtest(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig | No
     is how a live paper run re-evaluates the day so far.
     """
     config = config or IntradayConfig()
-    return _simulate(bars, config, _KamaPolicy(bars, config), open_session=open_session)
+    policy = _OrbPolicy(bars, config) if config.strategy == "orb" else _KamaPolicy(bars, config)
+    return _simulate(bars, config, policy, open_session=open_session)
 
 
 def random_baseline(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig,
