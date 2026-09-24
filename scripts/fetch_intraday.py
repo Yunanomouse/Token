@@ -32,7 +32,7 @@ ALT_UAS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
     "Mozilla/5.0",
 ]
-INTERVALS = ("1m", "2m", "5m", "15m")
+INTERVALS = ("1m", "2m", "5m", "15m", "30m", "60m")
 SESSION_OPEN, SESSION_CLOSE = dtime(9, 30), dtime(16, 0)
 DEFAULT_TZ = "America/New_York"
 
