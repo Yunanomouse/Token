@@ -707,14 +707,19 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
         "time_invested_fraction": invested_steps / total_steps if total_steps else 0.0,
     })
     result = {"trades": trades, "equity": equity_curve, "summary": summary, "config": cfg.to_dict()}
-    if open_session:
-        result["open"] = {
-            "positions": open_positions,
-            "pending_buys": [t for t, v in pending.items() if v[0] == "buy"],
-            "cash_settled": float(settled), "cash_unsettled": float(unsettled),
-            "entries_today": entries if dates else 0,
-            "screen": list(screen) if dates else [],
-        }
+    # The newest session as it stands.  With open_session the position and
+    # the pending orders are live; on a finished session both are empty, the
+    # day's proceeds sit unsettled until the next one, and the screen and
+    # entry count are that day's.
+    live_now = bool(open_session and dates)
+    result["open"] = {
+        "session_open": live_now,
+        "positions": open_positions,
+        "pending_buys": [t for t, v in pending.items() if v[0] == "buy"] if live_now else [],
+        "cash_settled": float(settled), "cash_unsettled": float(unsettled),
+        "entries_today": entries if dates else 0,
+        "screen": list(screen) if dates else [],
+    }
     return result
 
 
@@ -775,7 +780,9 @@ def backtest(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig | No
     ``open_session=True`` treats the newest session as still trading: its
     last bar is not the close, so a position stays open and is reported,
     with the day's pending orders and cash, under ``result["open"]``.  This
-    is how a live paper run re-evaluates the day so far.
+    is how a live paper run re-evaluates the day so far.  ``result["open"]``
+    is always present; on a finished session it holds no positions or
+    pending orders, and its ``session_open`` flag is false.
     """
     config = config or IntradayConfig()
     policy = _OrbPolicy(bars, config) if config.strategy == "orb" else _KamaPolicy(bars, config)

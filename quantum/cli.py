@@ -14,8 +14,7 @@ import sys
 
 import numpy as np
 
-from .amplitude import classical_monte_carlo_error
-from .arbitrage import build_rate_matrix, cycle_profit, find_arbitrage
+from .arbitrage import build_rate_matrix, find_arbitrage
 from .locality import locality_report
 from .market import load_price_csv, synthetic_prices
 from .portfolio import (
@@ -36,7 +35,7 @@ from .risk import (
 from .solvers import available_solvers, get_solver
 from .backtest import cardinality_strategy, equal_weight, markowitz_long_only, walk_forward
 from .export import elementary_gate_count, to_qasm
-from .noise import HARDWARE_PROFILES, hardware_survey, noise_threshold_sweep, survival_probability
+from .noise import hardware_survey, noise_threshold_sweep, survival_probability
 from .pricing import build_european_payoff_circuit
 from .statevector import probability_of_one
 

@@ -30,7 +30,6 @@ import os
 import threading
 import time
 import webbrowser
-from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
@@ -67,6 +66,9 @@ class _Stoppable(PriceFeed):
         self.stop = stop
         self.delay = (1.0 / bars_per_second) if bars_per_second and bars_per_second > 0 else 0.0
         self.tickers = inner.tickers
+
+    def history(self) -> list[Bar]:
+        return self.inner.history()
 
     def bars(self) -> Iterator[Bar]:
         for bar in self.inner.bars():
@@ -726,7 +728,7 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
     (s.fills || []).forEach(f => {
       const tr = document.createElement('tr');
       const sold = f.quantity < 0 && f.realized_pnl != null;
-      [f.date, f.ticker, f.quantity.toFixed(2), fmtMoney(f.price), fmtMoney(f.fee), sold ? fmtSigned(f.realized_pnl) : ''].forEach((v, i) => {
+      [f.date, f.ticker + (f.note ? ' · ' + f.note : ''), f.quantity.toFixed(2), fmtMoney(f.price), fmtMoney(f.fee), sold ? fmtSigned(f.realized_pnl) : ''].forEach((v, i) => {
         const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num';
         if (i === 5 && sold) td.style.color = signColor(f.realized_pnl);
         tr.appendChild(td); });

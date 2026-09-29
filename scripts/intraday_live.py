@@ -26,6 +26,7 @@ import json
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -34,13 +35,19 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from fetch_intraday import yahoo_intraday  # noqa: E402
+from fetch_intraday import INTERVALS, yahoo_intraday  # noqa: E402
 from quantum.intraday import IntradayConfig, backtest, kama_signals, load_bars  # noqa: E402
 
 NY = ZoneInfo("America/New_York")
 
 
-def fetch(tickers: list[str], minutes: int, rng: str = "5d") -> tuple[list[tuple], list[str]]:
+def fetch(tickers: list[str], minutes: int, rng: str | None = None) -> tuple[list[tuple], list[str]]:
+    """Bars for every ticker (a ticker that fails is skipped and listed).
+
+    A few sessions warm up the KAMA and feed the screen; longer bars need
+    a longer range to give the same number of bars."""
+    rng = rng or ("5d" if minutes <= 15 else "1mo")
+
     def one(t):
         try:
             return t, yahoo_intraday(t, f"{minutes}m", rng)
@@ -67,8 +74,10 @@ def write_csv(rows: list[tuple], path: Path, now_ny: datetime, minutes: int) -> 
 
 
 def status(bars: dict, date: str, cfg: IntradayConfig, open_session: bool, mode: str,
-           minutes: int) -> dict:
-    res = backtest(bars, cfg, open_session=True)
+           minutes: int, failed: list[str] | None = None) -> dict:
+    # A session that has ended is replayed to its close, so nothing is left
+    # "open" on a finished day; only a session still trading keeps a position.
+    res = backtest(bars, cfg, open_session=open_session)
     op = res["open"]
     equity = res["equity"][-1]["equity"] if res["equity"] else cfg.cash
     last_bar = max((str(b["datetime"][-1]) for b in bars.values() if b["datetime"].size), default="")
@@ -103,6 +112,7 @@ def status(bars: dict, date: str, cfg: IntradayConfig, open_session: bool, mode:
         "pending_buys": op["pending_buys"],
         "trades": res["trades"],
         "charts": charts,
+        "failed_tickers": list(failed or []),
         "config": {k: v for k, v in cfg.to_dict().items() if k not in ("trade_from",)},
     }
 
@@ -113,7 +123,8 @@ def main() -> int:
     ap.add_argument("--bars-csv", help="use this bar file instead of fetching (a replay)")
     ap.add_argument("--config", default=str(ROOT / "live/intraday/config.json"),
                     help="JSON with 'interval' (1m or 5m) and any IntradayConfig fields")
-    ap.add_argument("--interval", choices=("1m", "5m"), help="bar length (overrides the config)")
+    ap.add_argument("--interval", choices=INTERVALS,
+                    help="bar length (overrides the config); 1m or 5m for day trading")
     ap.add_argument("--date", help="session to trade (default: the newest in the data)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
@@ -122,9 +133,14 @@ def main() -> int:
     settings = json.loads(Path(args.config).read_text()) if Path(args.config).exists() else {}
     interval = args.interval or settings.pop("interval", "5m")
     settings.pop("interval", None)
-    if interval not in ("1m", "5m"):
-        ap.error(f"interval must be 1m or 5m, not {interval!r}")
+    settings.pop("trade_from", None)  # the session traded is chosen below
+    if interval not in INTERVALS:
+        ap.error(f"interval must be one of {', '.join(INTERVALS)}, not {interval!r}")
+    unknown = sorted(set(settings) - {f.name for f in fields(IntradayConfig)})
+    if unknown:
+        ap.error(f"{args.config}: unknown settings {unknown}")
     minutes = int(interval[:-1])
+    failed: list[str] = []
     if args.bars_csv:
         bars, mode = load_bars(args.bars_csv), "replay"
     else:
@@ -139,15 +155,25 @@ def main() -> int:
             bars = load_bars(path)
         mode = "live"
     dates = sorted({str(d)[:10] for b in bars.values() for d in b["datetime"]})
+    if not dates:
+        print("ERROR: no finished bars to trade on", file=sys.stderr)
+        return 1
     date = args.date or dates[-1]
+    if date not in dates:
+        ap.error(f"no bars for {date}; sessions in the data run {dates[0]} to {dates[-1]}")
     bars = {t: {k: v[b["datetime"] < f"{date}~"] for k, v in b.items()} for t, b in bars.items()}
     open_session = (mode == "live" and date == now_ny.strftime("%Y-%m-%d")
                     and now_ny.strftime("%H:%M") < "16:00")
-    doc = status(bars, date, IntradayConfig(**settings, trade_from=date), open_session, mode, minutes)
+    try:
+        cfg = IntradayConfig(**settings, trade_from=date)
+    except (TypeError, ValueError) as exc:
+        ap.error(f"{args.config}: {exc}")
+    doc = status(bars, date, cfg, open_session, mode, minutes, failed)
     Path(args.out).write_text(json.dumps(doc, indent=1), encoding="utf-8")
     pos = ", ".join(f"{p['ticker']} x{p['shares']:g}" for p in doc["positions"]) or "none"
     print(f"{mode} {date} to {doc['last_bar'][11:16]}: equity {doc['equity']:.2f}, "
-          f"{len(doc['trades'])} closed trades, open: {pos}, pending buys: {doc['pending_buys'] or 'none'}")
+          f"{len(doc['trades'])} closed trades, open: {pos}, pending buys: {doc['pending_buys'] or 'none'}"
+          + (f"; {len(failed)} tickers not fetched: {', '.join(failed)}" if failed else ""))
     return 0
 
 

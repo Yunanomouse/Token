@@ -74,18 +74,20 @@ BANNER_JS = """
 
 def fetch_orders() -> dict:
     """The newest orders.json across the default and working branches."""
-    best = None
+    best, problems = None, []
     for branch in BRANCHES:
         url = f"https://raw.githubusercontent.com/{REPO}/{branch}/{ORDERS_PATH}"
         try:
             with urllib.request.urlopen(url, timeout=30) as r:
                 doc = json.loads(r.read())
-        except Exception:
+        except Exception as exc:  # no file on that branch, no network, or bad JSON: say which
+            problems.append(f"{branch}: {exc}")
             continue
         if best is None or (doc.get("date") or "") > (best.get("date") or ""):
             best = doc
     if best is None:
-        sys.exit("Could not download the bot's orders from GitHub. Has the $40 bot run yet?")
+        sys.exit("Could not download the bot's orders from GitHub. Has the $40 bot run yet?\n  "
+                 + "\n  ".join(problems))
     return best
 
 

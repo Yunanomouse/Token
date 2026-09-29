@@ -108,7 +108,7 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   in; it matches the Python engine to the cent (tested). Open the file, or the
   published copy, and press Start.
 - **Live, on GitHub** — `.github/workflows/live-bot.yml` runs the paper bot
-  after every US close on real prices (Stooq, Yahoo fallback) and commits its
+  after every US close on real prices (Yahoo, Stooq fallback) and commits its
   state to `live/`. The web page's **Live bot** tab shows that state and
   re-runs the same engine in the browser to confirm it lands on the same
   number. See [live/README.md](live/README.md).
@@ -118,7 +118,7 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   speed, tail a CSV live, set every risk limit, stop, reset, and clear the
   kill switch. Paper only, loopback only.
 
-181 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
+241 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
 
 ## Memory
 

@@ -6,7 +6,7 @@ runs the engine after each US market close on real prices:
 | File | What it is |
 |---|---|
 | `config.json` | The bot's settings. Edit this to change what it trades. |
-| `prices.csv` | Daily adjusted closes, re-fetched every run (Stooq, Yahoo fallback). |
+| `prices.csv` | Daily adjusted closes, re-fetched every run (Yahoo, Stooq fallback; one source per run, never mixed). When a stock splits or goes ex-dividend the file's past changes; the engine re-bases its stored history to match and scales its paper shares the other way, so equity is unchanged and the bookkeeping shows up as noted, zero-price fills. |
 | `state.json` | The engine's book and history; the run resumes from it. |
 | `snapshot.json`, `snapshot_prices.json` | What the dashboard shows, and the prices it re-checks against. |
 

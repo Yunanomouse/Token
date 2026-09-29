@@ -333,6 +333,50 @@ class TestLiveSession(unittest.TestCase):
         part = backtest(self._cut(f"{self.last} 13:00:00"), cfg, open_session=True)
         self.assertFalse([t for t in part["trades"] if t["reason"] == "eod"])
 
+    def test_finished_session_is_replayed_to_its_close(self):
+        """A day that has ended holds nothing open, whatever time its last bar
+        starts; only a session still trading keeps a position."""
+        import importlib.util
+        import json
+        import subprocess
+        import sys
+
+        rng = np.random.default_rng(6)
+        rising = 20.0 * (1 + 0.002 * np.arange(300))  # 09:30 to 14:29, up every bar: no exit signal
+        bars = {"AAA": make_ticker([(DATES[0], noisy_day(rng, 20.0)), (DATES[1], rising)])}
+        cfg = IntradayConfig(trade_from=DATES[1])
+        closed, still = backtest(bars, cfg), backtest(bars, cfg, open_session=True)
+        self.assertEqual(len(still["open"]["positions"]), 1)
+        self.assertEqual(still["trades"], [])
+        self.assertEqual([t["reason"] for t in closed["trades"]], ["eod"])
+        self.assertEqual(closed["trades"][0]["exit_time"], str(bars["AAA"]["datetime"][-1]))
+        self.assertEqual(closed["open"]["positions"], [])
+        self.assertEqual((closed["open"]["session_open"], still["open"]["session_open"]), (False, True))
+        self.assertEqual((closed["open"]["screen"], closed["open"]["entries_today"]), (["AAA"], 1))
+        # The live runner reports the same, and refuses a session it has no bars for.
+        spec = importlib.util.spec_from_file_location("intraday_live", "scripts/intraday_live.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        done = mod.status(bars, DATES[1], cfg, False, "replay", 1)
+        live = mod.status(bars, DATES[1], cfg, True, "replay", 1)
+        self.assertEqual((done["positions"], done["session_open"], len(done["trades"])), ([], False, 1))
+        self.assertEqual((len(live["positions"]), live["session_open"], live["trades"]), (1, True, []))
+        with tempfile.TemporaryDirectory() as d:
+            src, out = Path(d) / "bars.csv", Path(d) / "status.json"
+            b = bars["AAA"]
+            with src.open("w") as fh:
+                fh.write("datetime,ticker,open,high,low,close,volume\n")
+                for i in range(len(b["datetime"])):
+                    fh.write(f"{b['datetime'][i]},AAA,{b['open'][i]},{b['high'][i]},{b['low'][i]},{b['close'][i]},1000\n")
+            cmd = [sys.executable, "scripts/intraday_live.py", "--bars-csv", str(src), "--out", str(out)]
+            subprocess.run(cmd + ["--date", DATES[1]], check=True, capture_output=True, timeout=120)
+            doc = json.loads(out.read_text())
+            self.assertEqual((doc["mode"], doc["session_open"], doc["positions"]), ("replay", False, []))
+            self.assertEqual([t["reason"] for t in doc["trades"]], ["eod"])
+            bad = subprocess.run(cmd + ["--date", "1999-01-04"], capture_output=True, text=True, timeout=120)
+            self.assertNotEqual(bad.returncode, 0)
+            self.assertIn("no bars for 1999-01-04", bad.stderr)
+
 
 def _flat_days(prices_by_day, vols_by_day):
     """Minute bars with explicit per-bar closes and volumes (open = previous close)."""

@@ -55,9 +55,11 @@ ticket but never clicks Buy/Sell. Keep the person-clicks-the-button step.
 ## How the live bot works
 
 1. After each US close (21:30 UTC weekdays) the `live bot` workflow fetches
-   real adjusted closes (Stooq, then Yahoo), runs the engine over new bars,
-   and commits `live/state.json`, `live/snapshot.json` and
-   `live/snapshot_prices.json`. Commits come from `quantum-trading-bot` and
+   real adjusted closes (Yahoo, then Stooq; one source per run), re-bases
+   its stored history if the feed re-adjusted for a split or dividend, runs
+   the engine over new bars, and commits `live/state.json`,
+   `live/snapshot.json` and `live/snapshot_prices.json`. Commits come from
+   `quantum-trading-bot` and
    only touch `live/`; pull them before pushing.
 2. A routine on the owner's account, "Sync live bot to dashboard"
    (weekdays 22:15 UTC, fresh session), copies those two snapshot files into
@@ -107,5 +109,5 @@ script is pushed.
    failed.
 4. Run the **larger QOBLIB instances** (up to 400 stocks).
 
-Checks before any push: `python -m pytest tests -q` (213 tests pass as of
+Checks before any push: `python -m pytest tests -q` (241 tests pass as of
 this note), and `python web/build.py` after changing `web/` or the engine.
