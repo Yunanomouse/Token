@@ -1,0 +1,27 @@
+// Claude's entry in the indicator duel (docs/indicator_duel.md). MIT, like the rest of this repository.
+// Same formula as indicators/claude.py (TradingView's ta.supertrend), so the two agree bar for bar.
+// Signals are on the bar's close; the duel's engine fills at the NEXT bar's open, 0.1% against you,
+// and is flat by 15:55 New York time. PAPER research only: this indicator places no orders.
+//@version=5
+indicator("Claude Supertrend (duel entry)", shorttitle="Claude ST", overlay=true)
+
+atrPeriod = input.int(10, "ATR length", minval=1)
+factor    = input.float(3.0, "ATR factor", minval=0.1, step=0.1)
+entryHours = input.session("0930-1530", "New entries allowed (New York)")
+
+[st, dir] = ta.supertrend(factor, atrPeriod)   // dir == -1: uptrend (long), dir == 1: downtrend
+inWindow  = not na(time(timeframe.period, entryHours, "America/New_York"))
+
+entry = dir == -1 and inWindow                  // Python: signals()["entry"]
+exit_ = dir == 1                                // Python: signals()["exit"]
+flipUp   = dir == -1 and dir[1] == 1
+flipDown = dir == 1 and dir[1] == -1
+
+plot(dir == -1 ? st : na, "Up trend",   color=color.new(color.green, 0), style=plot.style_linebr, linewidth=2)
+plot(dir == 1  ? st : na, "Down trend", color=color.new(color.red, 0),   style=plot.style_linebr, linewidth=2)
+plotshape(flipUp and inWindow, "Buy", shape.triangleup,   location.belowbar, color.green, size=size.small, text="BUY")
+plotshape(flipDown,            "Sell", shape.triangledown, location.abovebar, color.red,   size=size.small, text="SELL")
+bgcolor(entry ? color.new(color.green, 92) : na, title="Long zone")
+
+alertcondition(flipUp and inWindow, "Claude ST: buy",  "Supertrend turned up on {{ticker}} at {{close}}")
+alertcondition(flipDown,            "Claude ST: sell", "Supertrend turned down on {{ticker}} at {{close}}")
