@@ -8,6 +8,10 @@ Settings, including ``"interval": "5m"`` or ``"1m"``, come from
 live/intraday/config.json; ``--interval`` overrides the file for one run.
     python3 scripts/intraday_live.py --bars-csv bars_5m.csv --date 2026-09-23 --out status.json
 
+A replay treats the newest session in the file as still trading when its
+last bar starts before 15:55 (a file saved mid-session); any other session
+is replayed to its close (see ``session_is_open``).
+
 Each run fetches the last few sessions of 1- or 5-minute bars for the universe
 (earlier sessions warm up the KAMA and feed the volatility screen), drops
 the bar still forming, and replays today from a fresh $50 with
@@ -40,12 +44,78 @@ from quantum.intraday import IntradayConfig, backtest, kama_signals, load_bars  
 
 NY = ZoneInfo("America/New_York")
 
+# NYSE early closes (13:00) in 2026-2027.  The rules: the day after
+# Thanksgiving closes early, and so does Christmas Eve when it is a weekday
+# and not itself the observed Christmas holiday; the day before Independence
+# Day closes early only when July 3 is a regular weekday session.
+#   2026: Nov 27 (after Thanksgiving) and Thu Dec 24.  July 4 is a Saturday,
+#         so Fri Jul 3 is the holiday and Thu Jul 2 is a full day.
+#   2027: Nov 26 (after Thanksgiving).  Christmas is a Saturday, so Fri Dec 24
+#         is the holiday (closed) and Dec 23 is a full day; July 4 is a
+#         Sunday, observed Mon Jul 5, and Fri Jul 2 is a full day.
+# A date missing here is caught by the staleness check in session_is_open.
+EARLY_CLOSE = {"2026-11-27", "2026-12-24", "2027-11-26"}
+STALE_MINUTES = 15
+
+
+def session_close(date: str) -> str:
+    """The regular session's closing time (HH:MM) on ``date``."""
+    return "13:00" if date in EARLY_CLOSE else "16:00"
+
+
+def session_is_open(mode: str, date: str, newest: str, last_bar: str, now_ny: datetime,
+                    minutes: int) -> bool:
+    """Whether ``date`` is to be treated as a session still trading.
+
+    Live: it is today, the clock is before that day's close, and the newest
+    finished bar is recent (it ended less than ``STALE_MINUTES`` ago; a
+    session whose bars have stopped coming is over, e.g. an early close not
+    in ``EARLY_CLOSE``).
+
+    Replay (``--bars-csv``): it is the newest session in the file and its
+    last bar starts before the last bar of a full day (five minutes before
+    the close, 15:55 on a normal day).  A file saved mid-session is then
+    replayed as that session so far, with the position kept open, not
+    force-closed on its last bar as if the day had ended; any earlier or
+    complete session is replayed to its close."""
+    close = session_close(date)
+    h, m = map(int, close.split(":"))
+    last_full = f"{(h * 60 + m - 5) // 60:02d}:{(h * 60 + m - 5) % 60:02d}"
+    if mode == "replay":
+        return date == newest and bool(last_bar) and last_bar[11:16] < last_full
+    if date != now_ny.strftime("%Y-%m-%d") or now_ny.strftime("%H:%M") >= close or not last_bar:
+        return False
+    ended = datetime.strptime(last_bar[:19], "%Y-%m-%d %H:%M:%S") + timedelta(minutes=minutes)
+    return now_ny.replace(tzinfo=None) - ended < timedelta(minutes=STALE_MINUTES)
+
+
+def fetch_range(cfg: IntradayConfig, minutes: int) -> str:
+    """Yahoo range to fetch: a few sessions warm up the KAMA and feed the
+    range screen; the rvol screen and the ATR stop need ``rvol_days`` prior
+    sessions (plus today and a spare), so they get a longer range.  Yahoo
+    serves 1m bars for about 7 days, and 2m-15m bars for 60 days."""
+    if cfg.screen != "rvol" and not cfg.stop_atr_mult:
+        return "5d" if minutes <= 15 else "1mo"
+    sessions = cfg.rvol_days + 2
+    if minutes < 2:
+        print(f"WARNING: the rvol screen / ATR stop need {sessions} sessions; Yahoo serves "
+              "1m bars for about 7 days, so they will find too little history", file=sys.stderr)
+        return "7d"
+    if sessions <= 19:  # 1mo is about 21 sessions
+        return "1mo"
+    days = sessions * 7 // 5 + 7  # calendar days, with room for holidays
+    if days > 60:
+        print(f"WARNING: {sessions} sessions need more than Yahoo's 60 days of intraday bars",
+              file=sys.stderr)
+    return f"{min(days, 60)}d"
+
 
 def fetch(tickers: list[str], minutes: int, rng: str | None = None) -> tuple[list[tuple], list[str]]:
     """Bars for every ticker (a ticker that fails is skipped and listed).
 
-    A few sessions warm up the KAMA and feed the screen; longer bars need
-    a longer range to give the same number of bars."""
+    ``rng`` defaults to a few sessions, which warm up the KAMA and feed
+    the range screen; longer bars need a longer range to give the same
+    number of bars (see :func:`fetch_range`)."""
     rng = rng or ("5d" if minutes <= 15 else "1mo")
 
     def one(t):
@@ -140,12 +210,16 @@ def main() -> int:
     if unknown:
         ap.error(f"{args.config}: unknown settings {unknown}")
     minutes = int(interval[:-1])
+    try:
+        cfg = IntradayConfig(**settings)
+    except (TypeError, ValueError) as exc:
+        ap.error(f"{args.config}: {exc}")
     failed: list[str] = []
     if args.bars_csv:
         bars, mode = load_bars(args.bars_csv), "replay"
     else:
         tickers = [ln.split("#")[0].strip().upper() for ln in Path(args.universe).read_text().splitlines()]
-        rows, failed = fetch([t for t in tickers if t], minutes)
+        rows, failed = fetch([t for t in tickers if t], minutes, fetch_range(cfg, minutes))
         if not rows:
             print("ERROR: no bars fetched", file=sys.stderr)
             return 1
@@ -162,12 +236,9 @@ def main() -> int:
     if date not in dates:
         ap.error(f"no bars for {date}; sessions in the data run {dates[0]} to {dates[-1]}")
     bars = {t: {k: v[b["datetime"] < f"{date}~"] for k, v in b.items()} for t, b in bars.items()}
-    open_session = (mode == "live" and date == now_ny.strftime("%Y-%m-%d")
-                    and now_ny.strftime("%H:%M") < "16:00")
-    try:
-        cfg = IntradayConfig(**settings, trade_from=date)
-    except (TypeError, ValueError) as exc:
-        ap.error(f"{args.config}: {exc}")
+    last_bar = max((str(b["datetime"][-1]) for b in bars.values() if b["datetime"].size), default="")
+    open_session = session_is_open(mode, date, dates[-1], last_bar, now_ny, minutes)
+    cfg = IntradayConfig(**settings, trade_from=date)
     doc = status(bars, date, cfg, open_session, mode, minutes, failed)
     Path(args.out).write_text(json.dumps(doc, indent=1), encoding="utf-8")
     pos = ", ".join(f"{p['ticker']} x{p['shares']:g}" for p in doc["positions"]) or "none"

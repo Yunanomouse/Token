@@ -190,6 +190,21 @@ const QT = (function () {
     for (const f of fills) {
       const t = f.ticker, q = f.quantity, px = f.price, fee = f.fee, held = shares[t] || 0;
       let pnl = 0;
+      if (f.note && px === 0) {
+        // A split or dividend re-base: the share count changes, the cost does not.
+        if (held > 1e-12) {
+          shares[t] = held + q;
+          if (shares[t] <= 1e-9 * Math.max(held, 1)) {
+            pnl = -(basis[t] || 0); realized[t] = (realized[t] || 0) + pnl;
+            shares[t] = 0; basis[t] = 0;
+            const done = trip[t]; delete trip[t]; done.pnl += pnl;
+            done.exit_date = f.date; done.exit_price = 0; done.return_pct = done.cost > 0 ? done.pnl / done.cost : 0;
+            trips.push(done);
+          }
+        }
+        annotated.push(Object.assign({}, f, { realized_pnl: pnl }));
+        continue;
+      }
       if (q > 0) {
         if (held <= 1e-12) trip[t] = { ticker: t, entry_date: f.date, cost: 0, pnl: 0 };
         shares[t] = held + q; basis[t] = (basis[t] || 0) + q * px + fee; trip[t].cost += q * px + fee;

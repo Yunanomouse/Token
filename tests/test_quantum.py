@@ -3001,7 +3001,11 @@ class TestAlpacaBroker(unittest.TestCase):
             feed = type("Feed", (), {"bars": lambda self: iter(bars)})()
             engine = run(cfg, feed, broker=b)
         self.assertEqual({s["symbol"] for s in fake.posted()}, {"AAPL", "XOM"})
-        self.assertTrue(all(s["client_order_id"].startswith("qt-2026-09-2") for s in fake.posted()))
+        # The rebalance fell due on 09-21, two days before TODAY; the broker
+        # does not trade a bar that old, so the engine waited for 09-22.
+        self.assertTrue(all(s["client_order_id"].startswith("qt-2026-09-22") for s in fake.posted()))
+        self.assertIn("broker does not trade this bar", engine.state.log[2])
+        self.assertEqual(engine.state.last_rebalance_index, 4)
         self.assertEqual(snapshot(engine)[0]["mode"], "alpaca-paper")
 
     def test_cli_refuses_without_keys(self):

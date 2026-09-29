@@ -20,7 +20,12 @@ code.  The status banner says PAPER on every screen for that reason.
 
 Security note: the server binds to loopback only and has no authentication.
 Anything on the same machine can drive it.  Do not bind it to a public
-interface.
+interface.  To keep web pages out, requests must name the server by its
+loopback Host (defeats DNS rebinding), POSTs must be ``application/json``
+(a cross-site form or ``text/plain`` fetch cannot send that without a
+preflight the server never answers) and must not carry a foreign Origin.
+Every file name a request supplies has to resolve inside the working
+directory; the state file is a bare ``*.json`` name in it.
 """
 
 from __future__ import annotations
@@ -61,11 +66,16 @@ DEFAULT_TICKERS = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
 class _Stoppable(PriceFeed):
     """Wrap a feed so the engine loop can be interrupted and throttled."""
 
-    def __init__(self, inner: PriceFeed, stop: threading.Event, bars_per_second: float | None) -> None:
+    def __init__(self, inner: PriceFeed, stop: threading.Event, bars_per_second: float | None,
+                 skip_until: str | None = None) -> None:
         self.inner = inner
         self.stop = stop
         self.delay = (1.0 / bars_per_second) if bars_per_second and bars_per_second > 0 else 0.0
         self.tickers = inner.tickers
+        # Bars dated on or before this are passed over without a pause: a
+        # resumed replay keeps its full history (so the engine can reconcile
+        # against it) but does not sleep through what the state already holds.
+        self.skip_until = skip_until
 
     def history(self) -> list[Bar]:
         return self.inner.history()
@@ -74,6 +84,8 @@ class _Stoppable(PriceFeed):
         for bar in self.inner.bars():
             if self.stop.is_set():
                 return
+            if self.skip_until and bar.date <= self.skip_until:
+                continue
             yield bar
             if self.delay:
                 # Sleep in slices so a stop request lands within ~50 ms.
@@ -117,6 +129,30 @@ class Controller:
                 found.extend(p.relative_to(self.workdir).as_posix() for p in sorted(base.glob("*.csv")))
         return found
 
+    def _inside(self, name: str) -> Path | None:
+        """``name`` resolved under the working directory, or None if it escapes."""
+        root = self.workdir.resolve()
+        try:
+            path = (root / str(name)).resolve()
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return path if root in path.parents else None
+
+    def _state_file(self, name: str) -> Path | None:
+        """The state file: a bare ``*.json`` name directly in the working directory."""
+        name = str(name)
+        if (not name.endswith(".json") or name.startswith(".") or "/" in name or "\\" in name
+                or ":" in name or Path(name).name != name):
+            return None
+        path = self._inside(name)
+        return path if path is not None and path.parent == self.workdir.resolve() else None
+
+    @staticmethod
+    def _flag(value) -> bool:
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return bool(value)
+
     @staticmethod
     def config_from_form(form: dict) -> EngineConfig:
         tickers = form.get("tickers", DEFAULT_TICKERS)
@@ -128,6 +164,8 @@ class Controller:
             max_drawdown=float(form.get("max_drawdown", 0.25)),
             rearm_after=int(form.get("rearm_after", 0)),
             min_history=int(form.get("window", 252)),
+            min_cash_fraction=float(form.get("min_cash_fraction", 0.0)),
+            deploy_from_cash=Controller._flag(form.get("deploy_from_cash", False)),
         )
         return EngineConfig(
             tickers=tickers,
@@ -142,6 +180,9 @@ class Controller:
             limits=limits,
             state_path=str(form.get("state_path", "live_state.json")),
             seed=int(form.get("seed", 0)),
+            trade_from=str(form.get("trade_from") or "") or None,
+            whole_shares=Controller._flag(form.get("whole_shares", False)),
+            fill_leftover=Controller._flag(form.get("fill_leftover", False)),
         )
 
     # -- commands ----------------------------------------------------------
@@ -159,10 +200,16 @@ class Controller:
         except (ValueError, TypeError) as exc:
             return {"ok": False, "error": f"bad config: {exc}"}
         mode = str(form.get("mode", "replay"))
-        csv_path = self.workdir / str(form.get("csv", "data/prices/us_equities_1989_2018.csv"))
+        csv_name = str(form.get("csv", "data/prices/us_equities_1989_2018.csv"))
+        csv_path = self._inside(csv_name)
+        if csv_path is None or csv_path.suffix.lower() != ".csv":
+            return {"ok": False, "error": f"price file must be a .csv inside {self.workdir}: {csv_name}"}
         if not csv_path.exists():
             return {"ok": False, "error": f"price file not found: {csv_path}"}
-        state_path = self.workdir / config.state_path
+        state_path = self._state_file(config.state_path)
+        if state_path is None:
+            return {"ok": False, "error": f"state file must be a plain *.json name in {self.workdir}: "
+                                          f"{config.state_path}"}
         fresh = bool(form.get("fresh", False))
         try:
             state = EngineState.load(state_path) if state_path.exists() and not fresh else None
@@ -178,16 +225,17 @@ class Controller:
                                           start=form.get("start") or None, end=form.get("end") or None)
             if len(inner) == 0:
                 return {"ok": False, "error": "no bars in that date range with all tickers present"}
-            if engine.state.dates:
-                # Resuming: drop bars the state already holds *before* the
-                # throttle, so a paced replay does not sleep through history.
-                last = engine.state.dates[-1]
-                inner._bars = [b for b in inner._bars if b.date > last]
-                if not inner._bars:
-                    return {"ok": False, "error": f"nothing new to replay after {last}; tick 'start fresh' to rerun"}
+            last = engine.state.dates[-1] if engine.state.dates else None
+            # Resuming: keep the full bar list so history() still overlaps the
+            # state and Engine.reconcile can re-base a re-adjusted file; the
+            # wrapper skips the stored dates without pausing on them.
+            new = sum(1 for b in inner.bars() if last is None or b.date > last)
+            if not new:
+                return {"ok": False, "error": f"nothing new to replay after {last}; tick 'start fresh' to rerun"}
             speed = form.get("bars_per_second")
-            feed = _Stoppable(inner, self.stop_event, float(speed) if speed not in (None, "", 0, "0") else None)
-            self.source = f"replay {csv_path.name} ({len(inner)} bars)"
+            feed = _Stoppable(inner, self.stop_event, float(speed) if speed not in (None, "", 0, "0") else None,
+                              skip_until=last)
+            self.source = f"replay {csv_path.name} ({new} bars)"
         elif mode == "feed":
             last = engine.state.dates[-1] if engine.state.dates else None
             inner = FileFeed(csv_path, config.tickers, poll_seconds=float(form.get("poll_seconds", 5.0)), after=last)
@@ -227,7 +275,9 @@ class Controller:
     def reset(self, state_path: str = "live_state.json") -> dict:
         if self.running:
             return {"ok": False, "error": "stop the engine before resetting"}
-        path = self.workdir / state_path
+        path = self._state_file(state_path)
+        if path is None:
+            return {"ok": False, "error": f"state file must be a plain *.json name: {state_path}"}
         if path.exists():
             path.unlink()
         self.engine = None
@@ -238,7 +288,9 @@ class Controller:
         """Clear the kill switch -- the one deliberate manual override."""
         if self.running:
             return {"ok": False, "error": "stop the engine first"}
-        path = self.workdir / state_path
+        path = self._state_file(state_path)
+        if path is None:
+            return {"ok": False, "error": f"state file must be a plain *.json name: {state_path}"}
         if not path.exists():
             return {"ok": False, "error": "no state file"}
         state = EngineState.load(path)
@@ -253,8 +305,8 @@ class Controller:
         engine = self.engine
         state = engine.state if engine else None
         if state is None:
-            path = self.workdir / state_path
-            if path.exists():
+            path = self._state_file(state_path)
+            if path is not None and path.exists():
                 try:
                     state = EngineState.load(path)
                 except (OSError, json.JSONDecodeError, TypeError):
@@ -300,7 +352,7 @@ class Controller:
             curve=[eq[i] for i in idx], dates=[state.dates[i] for i in idx], drawdown=[dd[i] for i in idx],
             positions=state.positions, weights=weights, target_weights=state.target_weights,
             cash=state.cash, prices=last_prices,
-            fills=ledger["fills"][-25:][::-1], n_fills=len(state.fills),
+            fills=ledger["fills"][-25:][::-1], n_fills=sum(1 for f in state.fills if not f.get("note")),  # trades, not bookkeeping
             pnl={k: v for k, v in ledger.items() if k not in ("fills", "round_trips")},
             fees=sum(f.get("fee", 0.0) for f in state.fills),
             log=state.log[-30:][::-1], halted=state.halted, halt_reason=state.halt_reason,
@@ -340,7 +392,31 @@ class _Handler(BaseHTTPRequestHandler):
     def _json(self, obj, status: int = 200) -> None:
         self._send(status, json.dumps(obj).encode("utf-8"), "application/json")
 
+    def _origins(self) -> tuple[set[str], set[str]]:
+        port = self.server.server_address[1]
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        return hosts, {f"http://{h}" for h in hosts}
+
+    def _allowed(self, post: bool) -> bool:
+        """Refuse (and answer) requests a web page could forge; True if allowed."""
+        hosts, origins = self._origins()
+        if (self.headers.get("Host") or "").strip().lower() not in hosts:
+            self._json({"ok": False, "error": "forbidden host"}, 403)
+            return False
+        if post:
+            origin = self.headers.get("Origin")
+            if origin is not None and origin.strip().lower() not in origins:
+                self._json({"ok": False, "error": "forbidden origin"}, 403)
+                return False
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                self._json({"ok": False, "error": "Content-Type must be application/json"}, 415)
+                return False
+        return True
+
     def do_GET(self) -> None:  # noqa: N802
+        if not self._allowed(post=False):
+            return
         path = urlparse(self.path).path
         ctl = self.server.controller
         if path in ("/", "/index.html"):
@@ -355,13 +431,18 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._allowed(post=True):
+            return
         path = urlparse(self.path).path
         ctl = self.server.controller
         length = int(self.headers.get("Content-Length") or 0)
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             self._json({"ok": False, "error": "bad JSON"}, 400)
+            return
+        if not isinstance(body, dict):
+            self._json({"ok": False, "error": "expected a JSON object"}, 400)
             return
         if path == "/api/start":
             self._json(ctl.start(body))

@@ -524,10 +524,20 @@ class _OrbPolicy:
 
 class _RandomPolicy:
     """Same count of entries per day and same holding-time distribution as a
-    given set of trades, at random times on random screened tickers."""
+    given set of trades, at random times on random screened tickers.
+
+    A queued entry is consumed only when it fills (:meth:`filled`).  When its
+    ticker cannot be bought (the fill failed: too little settled cash for a
+    whole share) or is not on offer while other screened tickers are (it is
+    held, or has no bar), the entry moves to a random ticker among those
+    offered on the previous bar that have not failed today, so it is delayed
+    rather than lost."""
 
     def __init__(self, trades, config, seed):
         self.rng = np.random.default_rng(seed)
+        # Reassignments draw from their own stream, so each day's plan does
+        # not depend on how the previous day's fills went.
+        self.rng_move = np.random.default_rng([seed, 1])
         self.per_day: dict[str, int] = {}
         for tr in trades:
             d = tr["entry_time"][:10]
@@ -535,22 +545,62 @@ class _RandomPolicy:
         self.holds = np.array([max(1, int(tr.get("bars_held", 1))) for tr in trades] or [1])
         self.no_entry_after = config.no_entry_after
         self.queue: list[tuple[str, str, int]] = []
+        self.failed: set[str] = set()
+        self.bar_time = ""
+        self.offered: list[str] = []
+        self.offered_prev: list[str] = []
 
     def start_day(self, date, screen, times, trades_today_cap):
         k = self.per_day.get(date, 0)
         ok = [t for t in times if t[11:16] < self.no_entry_after]
-        self.queue = []
+        self.queue, self.failed = [], set()
+        self.bar_time, self.offered, self.offered_prev = "", [], []
         if k and screen and ok:
-            when = sorted(self.rng.choice(len(ok), size=k, replace=len(ok) < k))
+            # Random times that do not overlap: entry j (signal bar, then
+            # ``hold`` bars held, exit at the next open) takes hold + 1 bars
+            # before the next can be signalled.  Holding times are redrawn
+            # until the day's plan fits before ``no_entry_after`` (as the
+            # strategy's own trades that day did), so entries are not queued
+            # behind long holds until the cutoff and dropped.
+            for _ in range(50):
+                hold = self.rng.choice(self.holds, size=k)
+                busy = np.r_[0, np.cumsum(hold[:-1] + 1)]
+                room = len(ok) - int(busy[-1])
+                if room > 0:
+                    break
             who = self.rng.integers(0, len(screen), size=k)
-            hold = self.rng.choice(self.holds, size=k)
+            if room > 0:
+                when = np.sort(self.rng.choice(room, size=k, replace=room < k)) + busy
+            else:  # the holds cannot fit: plain random times
+                when = np.sort(self.rng.choice(len(ok), size=k, replace=len(ok) < k))
             self.queue = [(ok[w], screen[j], int(h)) for w, j, h in zip(when, who, hold)]
 
+    def _new_bar(self, time):
+        self.bar_time, self.offered_prev, self.offered = time, self.offered, []
+        if not self.queue or self.queue[0][0] > time:
+            return
+        due, t, h = self.queue[0]
+        if t not in self.failed and (not self.offered_prev or t in self.offered_prev):
+            return
+        alt = [x for x in self.offered_prev if x not in self.failed]
+        if alt:
+            self.queue[0] = (due, alt[int(self.rng_move.integers(0, len(alt)))], h)
+
     def want_entry(self, ticker, i, time):
-        if self.queue and self.queue[0][0] <= time and self.queue[0][1] == ticker:
-            _, _, h = self.queue.pop(0)
-            return True, {"hold": h}
+        if time != self.bar_time:
+            self._new_bar(time)
+        self.offered.append(ticker)
+        if (self.queue and self.queue[0][0] <= time and self.queue[0][1] == ticker
+                and ticker not in self.failed):
+            return True, {"hold": self.queue[0][2]}
         return False, {}
+
+    def filled(self, ticker):
+        if self.queue and self.queue[0][1] == ticker:
+            self.queue.pop(0)
+
+    def fill_failed(self, ticker):
+        self.failed.add(ticker)
 
     def want_exit(self, ticker, i, pos):
         return i - pos["entry_idx"] >= pos["meta"]["hold"] - 1
@@ -644,6 +694,8 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
                 if cfg.whole_shares:
                     shares = float(math.floor(shares + 1e-12))
                 if shares <= 0 or (cfg.whole_shares and shares < 1):
+                    if hasattr(policy, "fill_failed"):
+                        policy.fill_failed(t)
                     continue
                 fill = float(fill)
                 cost = shares * fill + cfg.commission
@@ -654,6 +706,8 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
                     "entry_time": now, "last": float(bars[t]["close"][i]), "peak": None, "meta": meta,
                     "stop": _stop_price(cfg, stats, t, date, fill),
                 }
+                if hasattr(policy, "filled"):
+                    policy.filled(t)
             # 3. intrabar stop, forced close on the last bar, signals on the close.
             for t, i in live:
                 b = bars[t]
@@ -691,14 +745,21 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
 
     open_positions = []
     if open_session and dates:
+        # An open position is marked at what selling it at the last close
+        # would bring (slippage and commission off), both in its unrealized
+        # pnl and in the equity, so equity = cash + cost + unrealized.
+        def liquidation(p):
+            return p["shares"] * p["last"] * (1 - slip) - cfg.commission
+
         for t, p in positions.items():
             open_positions.append({
                 "ticker": t, "shares": p["shares"], "entry_time": p["entry_time"],
                 "entry_price": p["entry_price"], "last": p["last"],
-                "unrealized": float(p["shares"] * p["last"] * (1 - slip) - p["cost"]),
+                "unrealized": float(liquidation(p) - p["cost"]),
                 "exit_pending": pending.get(t, ("",))[0] == "sell",
             })
-        equity_curve.append({"date": dates[-1], "equity": float(equity_now())})
+        marked = settled + unsettled + sum(liquidation(p) for p in positions.values())
+        equity_curve.append({"date": dates[-1], "equity": float(marked)})
 
     summary = summarize(trades, equity_curve, cfg.cash)
     summary.update({
@@ -797,7 +858,11 @@ def random_baseline(bars: dict[str, dict[str, np.ndarray]], config: IntradayConf
     are placed at uniformly random bar times (before ``no_entry_after``) on
     uniformly random screened tickers, each held for a number of bars drawn
     from ``trades``' own holding times (stops and the end-of-day close still
-    apply).  Entries that would overlap an open position wait for it to
-    close.  Returns the same structure as :func:`backtest`.
+    apply).  The times are drawn so the day's entries do not overlap, and an
+    entry is only used up once it fills: one whose ticker cannot be bought
+    (not enough settled cash for a whole share) or is not on offer moves to
+    another screened ticker, so the baseline makes as nearly as it can the
+    same number of entries as the strategy.  Deterministic for a given
+    ``seed``.  Returns the same structure as :func:`backtest`.
     """
     return _simulate(bars, config, _RandomPolicy(trades, config, seed))

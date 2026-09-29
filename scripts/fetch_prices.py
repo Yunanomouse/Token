@@ -13,7 +13,9 @@ Python does.  Every run rewrites the whole file from the source; the engine
 re-bases its stored history from it and only acts on dates newer than its
 state, so a rewrite is safe and self-healing.
 
-A bot must never trade on a partial market.  A source that fails for any
+Today's bar is dropped until 16:30 New York time, so a run during market
+hours never stores an intraday price as a close.  A bot must never trade
+on a partial market.  A source that fails for any
 ticker, or whose tickers disagree on the latest date (today's close not yet
 published for every name), hands over to the next source.  If every source
 disagrees, the file stops at the latest date all tickers share, with a
@@ -30,9 +32,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time as dtime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-UA = {"User-Agent": "Mozilla/5.0 (quantum-trading paper bot)"}
+NY = ZoneInfo("America/New_York")
+SESSION_FINAL = dtime(16, 30)
+UA ={"User-Agent": "Mozilla/5.0 (quantum-trading paper bot)"}
 # Yahoo rate-limits (HTTP 429) by User-Agent string, and which strings it
 # refuses changes over time; on a 429 the same request is retried as these.
 ALT_UAS = [
@@ -60,6 +65,7 @@ def stooq(ticker: str) -> dict[str, float]:
             continue
         if v > 0:
             out[row["Date"][:10]] = v
+    out.pop(unfinished_session(), None)
     if not out:
         raise ValueError(f"stooq had no closes for {ticker}")
     return out
@@ -93,9 +99,23 @@ def yahoo(ticker: str, days: int) -> dict[str, float]:
     for t, v in zip(ts, adj):
         if v and v > 0:
             out[datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d")] = float(v)
+    out.pop(unfinished_session(), None)
     if not out:
         raise ValueError(f"yahoo had no closes for {ticker}")
     return out
+
+
+def unfinished_session(now: datetime | None = None) -> str | None:
+    """Today's New York date while its session may still be trading, else None.
+
+    Yahoo's daily series includes today's bar from the open, priced at the
+    latest trade.  A bot that stored it would take an intraday price for the
+    close.  The regular session ends at 16:00 (13:00 on half days); closes
+    are final well within the next half hour, so today's bar is kept only
+    from 16:30 New York time.
+    """
+    ny = (now or datetime.now(timezone.utc)).astimezone(NY)
+    return ny.strftime("%Y-%m-%d") if ny.time() < SESSION_FINAL else None
 
 
 # Sources that could not be reached at all this run.  A host that resets or

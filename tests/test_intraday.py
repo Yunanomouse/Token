@@ -361,21 +361,32 @@ class TestLiveSession(unittest.TestCase):
         live = mod.status(bars, DATES[1], cfg, True, "replay", 1)
         self.assertEqual((done["positions"], done["session_open"], len(done["trades"])), ([], False, 1))
         self.assertEqual((len(live["positions"]), live["session_open"], live["trades"]), (1, True, []))
+        # A replay file where DATES[1] (ending 14:29) is followed by a later
+        # session: DATES[1] is over, and is replayed to its close.
+        rng = np.random.default_rng(6)
+        full = make_ticker([(DATES[0], noisy_day(rng, 20.0)), (DATES[1], rising),
+                            (DATES[2], noisy_day(rng, 30.0))])
         with tempfile.TemporaryDirectory() as d:
             src, out = Path(d) / "bars.csv", Path(d) / "status.json"
-            b = bars["AAA"]
-            with src.open("w") as fh:
-                fh.write("datetime,ticker,open,high,low,close,volume\n")
-                for i in range(len(b["datetime"])):
-                    fh.write(f"{b['datetime'][i]},AAA,{b['open'][i]},{b['high'][i]},{b['low'][i]},{b['close'][i]},1000\n")
+            _write_csv(src, {"AAA": full})
             cmd = [sys.executable, "scripts/intraday_live.py", "--bars-csv", str(src), "--out", str(out)]
             subprocess.run(cmd + ["--date", DATES[1]], check=True, capture_output=True, timeout=120)
             doc = json.loads(out.read_text())
             self.assertEqual((doc["mode"], doc["session_open"], doc["positions"]), ("replay", False, []))
             self.assertEqual([t["reason"] for t in doc["trades"]], ["eod"])
+            self.assertEqual(doc["trades"][0]["exit_time"], str(bars["AAA"]["datetime"][-1]))
             bad = subprocess.run(cmd + ["--date", "1999-01-04"], capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0)
             self.assertIn("no bars for 1999-01-04", bad.stderr)
+
+
+def _write_csv(path, bars):
+    with Path(path).open("w") as fh:
+        fh.write("datetime,ticker,open,high,low,close,volume\n")
+        for t, b in bars.items():
+            for i in range(len(b["datetime"])):
+                fh.write(f"{b['datetime'][i]},{t},{b['open'][i]},{b['high'][i]},{b['low'][i]},"
+                         f"{b['close'][i]},{int(b['volume'][i])}\n")
 
 
 def _flat_days(prices_by_day, vols_by_day):
@@ -459,3 +470,138 @@ class TestStocksInPlay(unittest.TestCase):
         self.assertEqual(list(r["close"]), [12.0, 13.0, 22.0])
         self.assertEqual(list(r["volume"]), [4.0, 2.0, 4.0])
         self.assertEqual(r["high"][0], max(b["high"][:2]))
+
+
+def _live_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("intraday_live", "scripts/intraday_live.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestBaselinePace(unittest.TestCase):
+    def test_baseline_makes_about_as_many_entries_when_cash_is_tight(self):
+        """Under T+1 with whole shares, a random entry whose ticker cannot be
+        bought moves to another ticker instead of being lost, and the day's
+        entries are spaced so they are not queued past the cutoff."""
+        bars = _universe(seed=5, days=8, n_tickers=10)
+        cfg = IntradayConfig(settled_cash_only=True)
+        res = backtest(bars, cfg)
+        n = len(res["trades"])
+        self.assertGreaterEqual(n, 10)
+        for seed in range(6):
+            base = random_baseline(bars, cfg, res["trades"], seed=seed)
+            self.assertLessEqual(len(base["trades"]), n)
+            self.assertGreaterEqual(len(base["trades"]), n - 2, f"seed {seed}")
+        again = random_baseline(bars, cfg, res["trades"], seed=3)
+        self.assertEqual(again["trades"], random_baseline(bars, cfg, res["trades"], seed=3)["trades"])
+
+
+class TestLiveFeed(unittest.TestCase):
+    """What the live runner fetches and when it calls a session open."""
+
+    def test_yahoo_drops_the_forming_bar_and_off_grid_points(self):
+        import sys
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from fetch_intraday import parse_chart
+
+        ny = ZoneInfo("America/New_York")
+        stamps = [datetime(2026, 9, 29, 9, 25, tzinfo=ny)]  # pre-market
+        stamps += [datetime(2026, 9, 29, 9, 30, tzinfo=ny) + timedelta(minutes=5 * k)
+                   for k in range(56)]  # 09:30 .. 14:05, the last still forming at 14:08
+        stamps += [datetime(2026, 9, 29, 14, 7, 25, tzinfo=ny),  # last-price point
+                   datetime(2026, 9, 29, 11, 2, tzinfo=ny)]  # off the 5-minute grid
+        n = len(stamps)
+        data = {"chart": {"result": [{
+            "meta": {"exchangeTimezoneName": "America/New_York"},
+            "timestamp": [int(s.timestamp()) for s in stamps],
+            "indicators": {"quote": [{"open": [1.0] * n, "high": [1.0] * n, "low": [1.0] * n,
+                                      "close": [1.0] * n, "volume": [100] * (n - 2) + [0, 0]}]}}]}}
+        bars = parse_chart(data, "5m", now=datetime(2026, 9, 29, 14, 8, 30, tzinfo=ny))
+        times = [b[0].strftime("%H:%M:%S") for b in bars]
+        self.assertEqual(times[0], "09:30:00")
+        self.assertEqual(times[-1], "14:00:00")
+        self.assertEqual(len(times), 55)
+        self.assertTrue(all(t.endswith(":00") and int(t[3:5]) % 5 == 0 for t in times))
+        # After the close every bar has finished.
+        late = parse_chart(data, "5m", now=datetime(2026, 9, 29, 17, 0, tzinfo=ny))
+        self.assertEqual(late[-1][0].strftime("%H:%M"), "14:05")
+
+    def test_session_open_live_and_early_close(self):
+        from datetime import datetime
+
+        mod = _live_module()
+        ny = mod.NY
+        at = lambda d, hm: datetime.strptime(f"{d} {hm}", "%Y-%m-%d %H:%M").replace(tzinfo=ny)
+        d = "2026-09-29"
+        self.assertTrue(mod.session_is_open("live", d, d, f"{d} 14:00:00", at(d, "14:07"), 5))
+        # Bars stopped coming: over, whatever the clock says.
+        self.assertFalse(mod.session_is_open("live", d, d, f"{d} 13:40:00", at(d, "14:07"), 5))
+        self.assertFalse(mod.session_is_open("live", d, d, f"{d} 15:55:00", at(d, "16:01"), 5))
+        self.assertFalse(mod.session_is_open("live", d, d, f"{d} 14:00:00", at("2026-09-30", "10:00"), 5))
+        # Half days close at 13:00.
+        for half in ("2026-11-27", "2026-12-24", "2027-11-26"):
+            self.assertEqual(mod.session_close(half), "13:00")
+            self.assertFalse(mod.session_is_open("live", half, half, f"{half} 12:55:00", at(half, "13:02"), 5))
+            self.assertTrue(mod.session_is_open("live", half, half, f"{half} 12:30:00", at(half, "12:36"), 5))
+        self.assertEqual(mod.session_close("2027-12-24"), "16:00")  # a holiday that year, not a half day
+        self.assertEqual(mod.session_close(d), "16:00")
+
+    def test_replay_of_a_partial_newest_session_keeps_it_open(self):
+        import json
+        import subprocess
+        import sys
+
+        mod = _live_module()
+        d0, d1 = DATES[0], DATES[1]
+        self.assertTrue(mod.session_is_open("replay", d1, d1, f"{d1} 14:05:00", None, 5))
+        self.assertTrue(mod.session_is_open("replay", d1, d1, f"{d1} 14:08:15", None, 5))
+        self.assertFalse(mod.session_is_open("replay", d1, d1, f"{d1} 15:55:00", None, 5))
+        self.assertFalse(mod.session_is_open("replay", d0, d1, f"{d0} 14:05:00", None, 5))
+        half = "2026-11-27"
+        self.assertFalse(mod.session_is_open("replay", half, half, f"{half} 12:55:00", None, 5))
+
+        rng = np.random.default_rng(6)
+        rising = 20.0 * (1 + 0.002 * np.arange(300))  # to 14:29, no exit signal
+        bars = {"AAA": make_ticker([(d0, noisy_day(rng, 20.0)), (d1, rising)])}
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out = Path(tmp) / "bars.csv", Path(tmp) / "status.json"
+            _write_csv(src, bars)
+            cmd = [sys.executable, "scripts/intraday_live.py", "--bars-csv", str(src), "--out", str(out)]
+            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+            doc = json.loads(out.read_text())
+        self.assertEqual((doc["mode"], doc["date"], doc["session_open"]), ("replay", d1, True))
+        self.assertEqual(([p["ticker"] for p in doc["positions"]], doc["trades"]), (["AAA"], []))
+
+    def test_fetch_range_covers_the_rvol_history(self):
+        import contextlib
+        import io
+
+        mod = _live_module()
+        self.assertEqual(mod.fetch_range(IntradayConfig(), 5), "5d")
+        self.assertEqual(mod.fetch_range(IntradayConfig(), 30), "1mo")
+        self.assertEqual(mod.fetch_range(IntradayConfig(screen="rvol"), 5), "1mo")
+        self.assertEqual(mod.fetch_range(IntradayConfig(stop_atr_mult=0.1), 5), "1mo")
+        self.assertEqual(mod.fetch_range(IntradayConfig(screen="rvol", rvol_days=30), 5), "51d")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(mod.fetch_range(IntradayConfig(screen="rvol"), 1), "7d")
+        self.assertIn("WARNING", err.getvalue())
+
+    def test_open_position_equity_matches_unrealized(self):
+        rng = np.random.default_rng(6)
+        rising = 20.0 * (1 + 0.002 * np.arange(300))
+        bars = {"AAA": make_ticker([(DATES[0], noisy_day(rng, 20.0)), (DATES[1], rising)])}
+        cfg = IntradayConfig(trade_from=DATES[1], commission=0.25, slippage_bps=20.0)
+        res = backtest(bars, cfg, open_session=True)
+        op = res["open"]
+        (p,) = op["positions"]
+        cost = p["shares"] * p["entry_price"] + cfg.commission
+        liq = p["shares"] * p["last"] * (1 - 20.0 / 1e4) - cfg.commission
+        self.assertAlmostEqual(p["unrealized"], liq - cost)
+        self.assertAlmostEqual(res["equity"][-1]["equity"],
+                               op["cash_settled"] + op["cash_unsettled"] + cost + p["unrealized"])

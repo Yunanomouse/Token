@@ -450,8 +450,14 @@ def cmd_live(args) -> int:
     broker = None
     if broker_name == "alpaca":
         from .alpaca import BrokerRefused, from_environment
+        # The engine's own fills are its cash ledger (realized P&L included);
+        # None when the run starts without a state to resume.
+        prior_fills = None
+        if not args.fresh and os.path.exists(config.state_path):
+            from .live import EngineState
+            prior_fills = EngineState.load(config.state_path).fills
         try:
-            broker = from_environment(config.tickers, config.initial_cash, log=print)
+            broker = from_environment(config.tickers, config.initial_cash, log=print, fills=prior_fills)
         except BrokerRefused as exc:
             print(f"broker refused, nothing sent: {exc}")
             return 2
