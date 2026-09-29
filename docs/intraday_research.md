@@ -33,6 +33,12 @@ A candidate had to meet all four rules:
 
 No candidate passed, and the live configuration is unchanged.
 
+> **Note (2026-09-29):** the "Beats random" column was computed before a fix to the random
+> baseline. The old random runs made fewer trades than the strategy they were compared with
+> (about 91–95 against 122 on the 60-day cache), because an entry whose stock could not be
+> bought was dropped. They now keep pace (110–114). These percentiles were not re-run and may
+> shift; the other columns do not depend on the baseline.
+
 - **KAMA on 15-minute bars** came closest. It won half its trades and was the only candidate to survive a 0.25% cost. It lost only because the last month was down 1.0%.
 - **The opening-range breakout did not reproduce here.** Our setup differs from the paper's in four ways:
   - It picks from 58 pre-chosen names, not the top 20 of about 7,000 stocks.

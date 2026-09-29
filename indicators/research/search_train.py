@@ -19,8 +19,8 @@ sys.path.insert(0, str(ROOT / "indicators" / "research"))
 
 from claude_candidates import grid  # noqa: E402
 from quantum.intraday import load_bars  # noqa: E402
-from quantum.signals import (BOT_CONFIG, STRESS_SLIPPAGE_BPS, TEST_SESSIONS, WARMUP_SESSIONS,  # noqa: E402
-                             SignalPolicy, _until, prepare, run_window, sessions)
+from quantum.signals import (BOT_CONFIG, STRESS_SLIPPAGE_BPS, SignalPolicy, _until,  # noqa: E402
+                             prepare, run_window, sessions, split_windows)
 
 
 def main():
@@ -28,8 +28,9 @@ def main():
     rows = []
     for ind in grid():
         prepared = prepare(bars5, ind.timeframe)
-        days = sessions(prepared)
-        train = days[WARMUP_SESSIONS:-TEST_SESSIONS]
+        # The pre-registered windows, by date; data past the test window
+        # (a later or still-forming session) cannot shift them.
+        train, _ = split_windows(sessions(prepared))
         half = len(train) // 2
         pol = SignalPolicy(_until(prepared, train[-1]), ind)  # test bars never reach the indicator
         run = lambda a, z, cfg=BOT_CONFIG: run_window(prepared, ind, a, z, cfg, pol)["summary"]

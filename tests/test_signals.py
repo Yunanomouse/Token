@@ -4,15 +4,19 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+import importlib.util
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
 import numpy as np
 
-from quantum.signals import (Indicator, causality_violations, evaluate, load_indicator, prepare, run_window,
-                             sessions)
+import quantum.signals as signals_mod
+from quantum.signals import (BOT_CONFIG, TEST, TRAIN, Indicator, _cut_points, causality_violations, config_for,
+                             evaluate, flat_by_for, forward_status, load_indicator, prepare, rank, run_window,
+                             sessions, split_windows)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,6 +44,33 @@ def _ind(fn, name="t", tf=5):
     return Indicator(name, tf, lambda b, **_: fn(b))
 
 
+def _windows(bars, warmup=10, test=20):
+    """(train, test) date windows for synthetic data, laid out like the pre-registered ones."""
+    days = sessions(bars)
+    return (days[warmup], days[-test - 1]), (days[-test], days[-1])
+
+
+def _write_csv(bars, path):
+    with Path(path).open("w") as fh:
+        fh.write("datetime,ticker,open,high,low,close,volume\n")
+        for t, b in bars.items():
+            for i in range(b["close"].size):
+                fh.write(f"{b['datetime'][i]},{t},{b['open'][i]:.4f},{b['high'][i]:.4f},{b['low'][i]:.4f},"
+                         f"{b['close'][i]:.4f},1000\n")
+
+
+def _peek(b):
+    """Look-ahead: the next bar's move decides this bar's signals."""
+    c = b["close"]
+    up = np.r_[c[1:] > c[:-1], False]
+    return {"entry": up, "exit": ~up}
+
+
+def _honest(b):
+    c = b["close"]
+    return {"entry": np.r_[False, c[1:] > c[:-1]], "exit": np.r_[False, c[1:] < c[:-1]]}
+
+
 class TestContract(unittest.TestCase):
     def test_bad_outputs_are_refused(self):
         b = _universe(3, 1)["T0"]
@@ -59,6 +90,60 @@ class TestContract(unittest.TestCase):
         self.assertTrue(causality_violations(peek, bars))
         self.assertEqual(causality_violations(honest, bars), [])
 
+    def test_lookahead_on_any_ticker_is_caught(self):
+        bars = _universe(4, 10)
+        marker = bars["T9"]["close"][0]  # sorted() puts T9 tenth, past the old 8-ticker limit
+
+        def fn(b):
+            return _peek(b) if b["close"][0] == marker else _honest(b)
+        self.assertTrue(any(v.startswith("T9:") for v in causality_violations(_ind(fn), bars)))
+
+    def test_early_lookahead_is_caught(self):
+        # Peeks only in the first 30 bars: cuts starting from n // 3 would never see it.
+        def fn(b):
+            n = b["close"].size
+            e = np.zeros(n, bool)
+            e[:30] = np.arange(min(n, 30)) + 1 < n  # "is there a next bar?"
+            return {"entry": e, "exit": np.zeros(n, bool)}
+        self.assertTrue(causality_violations(_ind(fn), _universe(6, 1)))
+
+    def test_mid_session_lookahead_is_caught(self):
+        # Knows whether its own session is finished: invisible to cuts at session boundaries.
+        def fn(b):
+            day = np.array([str(d)[:10] for d in b["datetime"]])
+            full = np.array([np.count_nonzero(day == d) == 78 for d in day])
+            return {"entry": full, "exit": ~full}
+        bars = _universe(6, 2)
+        n = bars["T0"]["close"].size
+        cuts = _cut_points(bars["T0"]["datetime"], 8)
+        self.assertEqual(cuts[0], 20)
+        self.assertTrue(any(c % 78 for c in cuts))                       # cuts inside a session
+        self.assertGreaterEqual(sum(1 for c in cuts if c % 78 == 39), 3)  # including mid-session ones
+        self.assertTrue(all(20 <= c < n for c in cuts))
+        self.assertTrue(causality_violations(_ind(fn), bars))
+
+    def test_caching_cannot_mask_lookahead(self):
+        # Answers later calls from the longest result it has seen: if the full
+        # history ran first, every truncated run would just be a slice of it.
+        cache = {}
+
+        def fn(b):
+            key, n = (str(b["datetime"][0]), float(b["close"][0])), b["close"].size
+            if key not in cache or cache[key]["entry"].size < n:
+                cache[key] = _peek(b)
+            return {k: v[:n] for k, v in cache[key].items()}
+        self.assertTrue(causality_violations(_ind(fn), _universe(6, 2)))
+
+    def test_mutating_the_input_cannot_mask_lookahead(self):
+        def fn(b):
+            out = _peek(b)
+            b["close"][:] = 1.0  # scribbles over what it was given
+            return out
+        bars = _universe(6, 2)
+        before = bars["T0"]["close"].copy()
+        self.assertTrue(causality_violations(_ind(fn), bars))
+        np.testing.assert_array_equal(bars["T0"]["close"], before)
+
     def test_load_indicator_checks_the_file(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "x.py"
@@ -68,6 +153,111 @@ class TestContract(unittest.TestCase):
             p.write_text("NAME='x'\nTIMEFRAME=15\n")
             with self.assertRaisesRegex(ValueError, "signals"):
                 load_indicator(p)
+
+
+class TestRules(unittest.TestCase):
+    def test_pre_registered_windows(self):
+        self.assertEqual(TRAIN, ("2026-07-21", "2026-08-28"))
+        self.assertEqual(TEST, ("2026-08-31", "2026-09-28"))
+        self.assertEqual(signals_mod.FROZEN_END, TEST[1])
+        # The frozen cache: 10 warm-up sessions from Jul 7, then 29 training, then 20 test.
+        days = [str(d) for d in np.arange(np.datetime64("2026-07-07"), np.datetime64("2026-09-29"))
+                if np.is_busday(d, holidays=["2026-09-07"])]
+        self.assertEqual(len(days), 59)
+        tr, te = split_windows(days)
+        self.assertEqual((tr[0], tr[-1], len(tr)), (TRAIN[0], TRAIN[1], 29))
+        self.assertEqual((te[0], te[-1], len(te)), (TEST[0], TEST[1], 20))
+        self.assertEqual(split_windows(days + ["2026-09-29", "2026-09-30"]), (tr, te))  # later data is cut off
+        for bad in (days[1:],                          # a rolled download: one warm-up session short
+                    [d for d in days if d != "2026-09-15"],  # a missing test session
+                    [d for d in days if d != "2026-07-21"],  # training starts late
+                    ["2026-07-06"] + days):            # an extra warm-up session shifts the count split
+            with self.assertRaisesRegex(ValueError, "pre-registered windows"):
+                split_windows(bad)
+
+    def test_evaluate_refuses_data_that_misses_the_windows(self):
+        bars = _universe(40, 2)  # June-July 2026: not the pre-registered dates
+        with self.assertRaisesRegex(ValueError, "pre-registered windows"):
+            evaluate(bars, _ind(_honest), random_runs=0)
+        tr, te = _windows(bars)
+        with self.assertRaisesRegex(ValueError, "pre-registered windows"):
+            evaluate(bars, _ind(_honest), random_runs=0, windows=((tr[0], tr[1]), (sessions(bars)[-21], te[1])))
+
+    def test_flat_by_per_timeframe(self):
+        self.assertEqual({tf: flat_by_for(tf) for tf in (1, 5, 15, 30, 60)},
+                         {1: "15:55", 5: "15:55", 15: "15:45", 30: "15:30", 60: "15:30"})
+        for tf in signals_mod.TIMEFRAMES:
+            self.assertEqual(config_for(tf).flat_by, flat_by_for(tf))
+            self.assertEqual(config_for(tf).cash, BOT_CONFIG.cash)
+
+    def test_flat_by_is_applied_on_every_timeframe(self):
+        bars = _universe(4, 1)
+        days = sessions(bars)
+        for tf, last_open in ((5, "15:55"), (15, "15:45"), (30, "15:30"), (60, "15:30")):
+            ind = _ind(lambda b: {"entry": np.ones(b["close"].size, bool), "exit": np.zeros(b["close"].size, bool)},
+                       tf=tf)
+            prepared = prepare(bars, tf, "2099-01-01")
+            res = run_window(prepared, ind, days[1], days[-1])
+            self.assertEqual(res["config"]["flat_by"], last_open)
+            self.assertTrue(res["trades"])
+            for t in res["trades"]:
+                self.assertEqual(t["exit_time"][11:16], last_open, (tf, t))
+                i = list(prepared["T0"]["datetime"]).index(t["exit_time"])
+                self.assertAlmostEqual(t["exit_price"], prepared["T0"]["open"][i] * 0.999)  # at that bar's open
+            rep = evaluate(bars, ind, random_runs=0, forward=True, forward_window=(days[0], days[-1]))
+            self.assertEqual(rep["flat_by"], last_open)
+
+    def test_forward_incomplete_is_not_scored(self):
+        bars = _universe(12, 2)
+        days = sessions(bars)
+        win = (days[2], days[-1])  # 10 sessions
+        ind = _ind(_honest)
+        rep = evaluate(bars, ind, random_runs=0, forward=True, forward_window=win)
+        self.assertEqual(rep["forward"]["status"], "incomplete")  # needs 20
+        self.assertEqual((rep["forward"]["sessions_have"], rep["forward"]["sessions_needed"]), (10, 20))
+        self.assertNotIn("return", rep["forward"])
+        st = forward_status(bars, win, n_sessions=10)
+        self.assertEqual(st["status"], "complete")
+        # The last session stops at 12:00: not through the close.
+        cut = {t: {k: v[b["datetime"] < f"{days[-1]} 12:00"] for k, v in b.items()} for t, b in bars.items()}
+        st = forward_status(cut, win, n_sessions=10)
+        self.assertEqual((st["status"], st["sessions_have"], st["last_session_complete"], st["last_bar"]),
+                         ("incomplete", 10, False, "11:55"))
+        # A missing session in the middle.
+        gap = {t: {k: v[~np.char.startswith(b["datetime"].astype(str), days[5])] for k, v in b.items()}
+               for t, b in bars.items()}
+        self.assertEqual(forward_status(gap, win, n_sessions=10)["status"], "incomplete")
+
+    def test_forward_complete_is_scored(self):
+        bars = _universe(22, 2)
+        days = sessions(bars)
+        rep = evaluate(bars, _ind(_honest), random_runs=0, forward=True, forward_window=(days[2], days[-1]))
+        self.assertEqual(rep["forward"]["status"], "complete")
+        self.assertEqual(rep["forward"]["sessions"], [days[2], days[-1], 20])
+        self.assertTrue(math.isfinite(rep["forward"]["return"]))
+
+    def test_lookahead_is_never_ranked_ahead(self):
+        clean = {"name": "clean", "causality": [], "gates": {"a": False, "b": False}, "test": {"return": -0.5},
+                 "forward": {"status": "complete", "return": -0.5}}
+        cheat = {"name": "cheat", "causality": ["T0: 'entry' ..."], "gates": {"a": True, "b": True},
+                 "test": {"return": 9.0}, "forward": {"status": "complete", "return": 9.0}}
+        self.assertEqual(rank([cheat, clean])[0]["name"], "clean")
+        self.assertEqual(rank([cheat, clean], forward=True)[0]["name"], "clean")
+        self.assertIsNone(rank([cheat])[0])
+        pending = dict(clean, forward={"status": "incomplete", "sessions_have": 3, "sessions_needed": 20})
+        best, why = rank([pending, dict(clean, name="other")], forward=True)
+        self.assertIsNone(best)
+        self.assertIn("incomplete", why)
+
+    def test_evaluated_lookahead_entry_loses_the_ranking(self):
+        bars = _universe(40, 3)
+        win = _windows(bars)
+        peek = evaluate(bars, _ind(_peek, "peek"), random_runs=0, windows=win)
+        honest = evaluate(bars, _ind(_honest, "honest"), random_runs=0, windows=win)
+        self.assertTrue(peek["causality"])
+        self.assertFalse(peek["gates"]["no_lookahead"])
+        self.assertGreater(peek["test"]["return"], honest["test"]["return"])  # it cheats well...
+        self.assertEqual(rank([peek, honest])[0]["name"], "honest")          # ...and still is not ahead
 
 
 class TestEngine(unittest.TestCase):
@@ -90,7 +280,8 @@ class TestEngine(unittest.TestCase):
                               "exit": np.r_[False, b["close"][1:] < b["close"][:-1]]}, tf=15)
         prepared = prepare(bars, 15, end="2099-01-01")
         self.assertEqual(prepared["T0"]["close"].size, 40 * 26)
-        rep = evaluate(bars, ind, end="2099-01-01", random_runs=3)
+        rep = evaluate(bars, ind, random_runs=3, windows=_windows(bars))
+        self.assertEqual(rep["flat_by"], "15:45")
         self.assertEqual(rep["windows"]["test"][2], 20)
         self.assertEqual(rep["windows"]["train"][2], 40 - 10 - 20)
         self.assertEqual(set(rep["gates"]), {"profitable_test_and_train", "profitable_both_test_halves",
@@ -166,6 +357,16 @@ class TestClaudeEntry(unittest.TestCase):
         self.assertIn('input.float(3.0, "ATR factor"', pine)
         self.assertIn("ta.supertrend(factor, atrPeriod)", pine)
         self.assertIn('"0930-1530"', pine)  # the engine's last entry, 15:30
+        # Alerts fire on the rising edge of the entry condition, not on every bar while it holds.
+        self.assertIn("entryEdge = entry and not entry[1]", pine)
+        self.assertIn('alertcondition(entryEdge, "Claude ST: buy"', pine)
+        self.assertNotIn("alertcondition(entry,", pine)
+        # The flatten bar matches flat_by_for: 9:30 + floor((15:55 - 9:30) / tf) * tf.
+        self.assertIn("flatMin  = 570 + math.floor((955 - 570) / tfMin) * tfMin", pine)
+        self.assertIn('alertcondition(flatBar,   "Claude ST: flatten"', pine)
+        for tf in (1, 5, 15, 30, 60):
+            m = 570 + (955 - 570) // tf * tf
+            self.assertEqual(f"{m // 60:02d}:{m % 60:02d}", flat_by_for(tf))
 
     def test_every_bundled_indicator_follows_the_contract(self):
         bars = _universe(8, 2)
@@ -176,33 +377,103 @@ class TestClaudeEntry(unittest.TestCase):
             self.assertEqual(causality_violations(ind, prepare(bars, ind.timeframe, "2099-01-01")), [], f.name)
 
 
+def _load_script():
+    spec = importlib.util.spec_from_file_location("indicator_duel_script", ROOT / "scripts" / "indicator_duel.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 class TestDuelScript(unittest.TestCase):
+    def _run(self, bars, *argv, forward_window=None):
+        """Run the CLI in a subprocess with the pre-registered windows moved onto the synthetic data."""
+        tr, te = _windows(bars)
+        code = ("import sys, runpy; import quantum.signals as s; s.TRAIN = %r; s.TEST = %r; s.FROZEN_END = %r; "
+                "sys.argv = ['x'] + %r; runpy.run_path(%r, run_name='__main__')"
+                % (tr, te, te[1], [str(a) for a in argv], str(ROOT / "scripts" / "indicator_duel.py")))
+        return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=600, cwd=ROOT)
+
     def test_cli_scores_two_files(self):
-        bars = _universe(36, 3, seed=2)
+        bars = _universe(40, 3, seed=2)
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / "bars.csv"
-            with src.open("w") as fh:
-                fh.write("datetime,ticker,open,high,low,close,volume\n")
-                for t, b in bars.items():
-                    for i in range(b["close"].size):
-                        fh.write(f"{b['datetime'][i]},{t},{b['open'][i]:.4f},{b['high'][i]:.4f},{b['low'][i]:.4f},"
-                                 f"{b['close'][i]:.4f},1000\n")
-            out = Path(d) / "r.json"
-            import quantum.signals as s
-            end = sessions(bars)[-1]
-            code = ("import sys, runpy; import quantum.signals as s; s.FROZEN_END = %r; "
-                    "sys.argv = ['x', '--bars', %r, '--random-runs', '2', '--out', %r, %r, %r]; "
-                    "runpy.run_path(%r, run_name='__main__')"
-                    % (end, str(src), str(out), str(ROOT / "indicators" / "claude.py"),
-                       str(ROOT / "indicators" / "kama_baseline.py"), str(ROOT / "scripts" / "indicator_duel.py")))
-            r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=300, cwd=ROOT)
+            _write_csv(bars, src)
+            out = Path(d) / "new" / "dir" / "r.json"  # --out's directory is created
+            r = self._run(bars, "--bars", src, "--random-runs", "2", "--out", out,
+                          ROOT / "indicators" / "claude.py", ROOT / "indicators" / "kama_baseline.py")
             self.assertEqual(r.returncode, 0, r.stderr[-2000:])
             self.assertIn("PASSED:", r.stdout)
-            self.assertIn("Ahead on", r.stdout)
+            self.assertIn("Ahead on gates passed", r.stdout)
+            self.assertIn("forward window decides", r.stdout)
             rep = json.loads(out.read_text())
             self.assertEqual([x["timeframe"] for x in rep], [5, 5])
             self.assertTrue(all(math.isfinite(x["test"]["return"]) for x in rep))
-            self.assertEqual(s.FORWARD[0] > s.FROZEN_END, True)
+            self.assertEqual(signals_mod.FORWARD[0] > signals_mod.FROZEN_END, True)
+
+    def test_cli_refuses_data_off_the_windows(self):
+        bars = _universe(40, 2, seed=2)
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "bars.csv"
+            _write_csv({t: {k: v[78:] for k, v in b.items()} for t, b in bars.items()}, src)  # one session short
+            r = self._run(bars, "--bars", src, "--random-runs", "0", "--out", Path(d) / "r.json",
+                          ROOT / "indicators" / "claude.py")
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("pre-registered windows", r.stderr)
+
+    def test_cli_never_ranks_lookahead_ahead(self):
+        bars = _universe(40, 2, seed=2)
+        with tempfile.TemporaryDirectory() as d:
+            src, cheat = Path(d) / "bars.csv", Path(d) / "cheat.py"
+            _write_csv(bars, src)
+            cheat.write_text("import numpy as np\nNAME='cheat'\nTIMEFRAME=5\n"
+                             "def signals(b):\n    c = b['close']\n    up = np.r_[c[1:] > c[:-1], False]\n"
+                             "    return {'entry': up, 'exit': ~up}\n")
+            r = self._run(bars, "--bars", src, "--random-runs", "0", "--out", Path(d) / "r.json",
+                          cheat, ROOT / "indicators" / "claude.py")
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+            self.assertIn("LOOKAHEAD", r.stdout)
+            self.assertIn("Ahead on", r.stdout)
+            self.assertNotIn(": cheat", r.stdout.split("Ahead on")[1].splitlines()[0])
+
+    def test_cli_forward_incomplete_declares_nobody_ahead(self):
+        bars = _universe(40, 2, seed=2)
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "bars.csv"
+            _write_csv(bars, src)  # June-July 2026: no forward sessions at all
+            r = self._run(bars, "--bars", src, "--forward", "--out", Path(d) / "r.json",
+                          ROOT / "indicators" / "claude.py", ROOT / "indicators" / "kama_baseline.py")
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+            self.assertIn("incomplete: 0 of 20 sessions", r.stdout)
+            self.assertIn("Nobody is ahead: the forward window is incomplete", r.stdout)
+            self.assertNotIn("Ahead on", r.stdout)
+            rep = json.loads((Path(d) / "r.json").read_text())
+            self.assertEqual({x["forward"]["status"] for x in rep}, {"incomplete"})
+
+    def test_fetch_never_touches_the_frozen_cache(self):
+        mod = _load_script()
+        calls = []
+
+        def fake_run(cmd, check):
+            calls.append(cmd)
+            Path(cmd[cmd.index("--out") + 1]).write_text("fresh\n")
+        mod.subprocess = types.SimpleNamespace(run=fake_run)
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d) / "bars_5m.csv"
+            cache.write_text("frozen\n")
+            fresh = Path(d) / "sub" / "bars_5m_fresh.csv"
+            self.assertEqual(mod.fetch(fresh, protected=[cache]), fresh)
+            self.assertEqual(cache.read_text(), "frozen\n")
+            self.assertEqual(fresh.read_text(), "fresh\n")
+            for same in (cache, Path(d) / "sub" / ".." / "bars_5m.csv"):
+                with self.assertRaises(SystemExit):
+                    mod.fetch(same, protected=[cache])
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(cache.read_text(), "frozen\n")
+            # The CLI's defaults write --fetch to a different file from the frozen cache.
+            ap_defaults = mod.DATA / "bars_5m.csv", mod.DATA / "bars_5m_fresh.csv"
+            self.assertNotEqual(*ap_defaults)
+            src = (ROOT / "scripts" / "indicator_duel.py").read_text()
+            self.assertIn("fetch(args.fresh, protected=[args.cache]", src)
 
 
 if __name__ == "__main__":
