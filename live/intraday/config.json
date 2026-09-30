@@ -1,0 +1,13 @@
+{
+ "interval": "5m",
+ "cash": 50.0,
+ "deploy_fraction": 0.7,
+ "max_trades_per_day": 6,
+ "settled_cash_only": true,
+ "slippage_bps": 10.0,
+ "kama_n": 10,
+ "kama_fast": 2,
+ "kama_slow": 30,
+ "filter_k": 0.5,
+ "top_n": 5
+}
