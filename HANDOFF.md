@@ -25,6 +25,10 @@ TradingView. Its `"mode"` line is the owner's paper/live switch; in live mode
 `tools/tradingview_orders.py` (run on the owner's PC) fills the TradingView
 ticket but never clicks Buy/Sell. Keep the person-clicks-the-button step.
 
+Research findings (brokers, costs, data sources, safety, quantum state of
+the art) as of 2026-09-30 are in `docs/research_2026-09.md`; read its
+"ten things" list before changing the bots.
+
 ## Where everything is
 
 | What | Where |
