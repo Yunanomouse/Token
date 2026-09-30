@@ -279,7 +279,9 @@ For the owner (decisions, no code):
 4. Merge PR #4 so the daily schedule starts, and turn on GitHub's failure
    emails for Actions.
 
-For Claude (code, each small and testable):
+For Claude (code, each small and testable). Done 2026-09-30: 5, 6 (except
+moving prices out of the public repo, an owner decision), 7 and 9; 8 and 10
+still open (8 needs 2019-2026 price data this environment cannot download):
 
 5. Pin the schedule to New York time (`timezone: "America/New_York"`, off
    the hour) before 2026-11-01.

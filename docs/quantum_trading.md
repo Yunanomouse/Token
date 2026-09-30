@@ -832,18 +832,27 @@ sheets before being quoted further):
 
 | profile | two-qubit | one-qubit | readout | abs error | classical | survival | beats classical |
 |---|---|---|---|---|---|---|---|
-| Quantinuum Helios (98 qubits, Nature 2026) | 7.9e-4 | 2.5e-5 | 3.3e-4 | 0.1005 | 0.0052 | 0.19 | no |
-| IonQ two-qubit record (Oct 2025) | 1.0e-4 | 2.5e-5 | 3.3e-4 | 0.0041 | 0.0052 | 0.81 | yes |
-| IBM Nighthawk (120 qubits, Jan 2026) | 2.2e-3 | 2.5e-4 | 1.0e-2 | 0.1030 | 0.0052 | 0.01 | no |
+| Quantinuum Helios (98 qubits, Nature 2026) | 7.9e-4 | 2.5e-5 | 3.3e-4 | 0.1018 | 0.0052 | 0.19 | no |
+| IonQ two-qubit record (Oct 2025, R&D prototype) | 1.0e-4 | 2.5e-5 | 3.3e-4 | 0.0038 (median of 12 seeds) | 0.0052 | 0.81 | in 9 of 12 seeds |
+| IBM Nighthawk (120 qubits, median, Jun 2026) | 2.8e-3 | 2.5e-4 | 1.0e-2 | 0.1012 | 0.0052 | 0.003 | no |
+| IBM Heron r3 (156 qubits, Jan 2026) | 2.2e-3 | 2.5e-4 | 1.0e-2 | 0.1038 | 0.0052 | 0.01 | no |
 
 Same 3-qubit pricing circuit, five Grover powers, deepest circuit 2,112
-gates.  The two commercial systems lose to classical Monte Carlo outright —
-both sit past the cliff, at an estimate of ½.  The one profile that wins is
-IonQ's 99.99% two-qubit demonstration, and it wins by 20% on a circuit that
-needs five qubits when the demonstration used two.  So the position as of
-2026: the best *published gate* clears the bar for the *smallest useful
+gates.  The commercial systems lose to classical Monte Carlo outright —
+all sit past the cliff, at an estimate of ½.  The one profile that wins is
+IonQ's 99.99% two-qubit demonstration, on a lab prototype rather than a
+commercial system: over 12 random seeds its median error is 0.0038 against
+classical 0.0052, and it wins in 9 of the 12.  A single run can lose — the
+default `noise --hardware` run lands on one of the losing seeds (0.031) —
+so treat the win as "usually, narrowly", on a circuit that needs five
+qubits when the demonstration used two.  So the position as of 2026: the
+best *published gate* usually clears the bar for the *smallest useful
 circuit*; no *system* does; and the 6-qubit circuit the `price` command
-runs by default is ten times deeper again.  `python3 -m quantum noise
+runs by default is ten times deeper again.
+
+*Corrected 2026-09-30:* the IBM row previously read "Nighthawk 2.2e-3";
+2.15e-3 is Heron r3's figure, and Nighthawk's reported median is about
+2.8e-3 (secondary sources; see `docs/research_2026-09.md`).  `python3 -m quantum noise
 --hardware` reruns it.
 
 ### Where else to look

@@ -2653,9 +2653,15 @@ class TestLiveBot(unittest.TestCase):
                  mock.patch("sys.argv", ["x", "--config", str(cfg), "--out", str(out), "--days", "36500"]):
                 self.assertEqual(mod.main(), 2)
             self.assertFalse(out.exists())
+            argv = ["x", "--config", str(cfg), "--out", str(out), "--days", "36500"]
             with mock.patch.object(mod, "fetch", side_effect=[(good, "stooq"), (dict(good), "yahoo")]), \
-                 mock.patch("sys.argv", ["x", "--config", str(cfg), "--out", str(out), "--days", "36500"]):
+                 mock.patch("sys.argv", argv):
+                self.assertEqual(mod.main(), 3)  # the fixed dates are stale by now
+            with mock.patch.object(mod, "fetch", side_effect=[(good, "stooq"), (dict(good), "yahoo")]), \
+                 mock.patch("sys.argv", argv + ["--max-age-days", "36500"]):
                 self.assertEqual(mod.main(), 0)
+            used = json.loads((Path(d) / "p_sources.json").read_text())["sources"]
+            self.assertEqual(used, {"AAA": "stooq", "BBB": "yahoo"})
             self.assertEqual(out.read_text().splitlines()[0], "date,AAA,BBB")
             self.assertEqual(len(out.read_text().splitlines()), 3)
 
@@ -2954,3 +2960,117 @@ class TestWholeShareBot(unittest.TestCase):
         self.assertEqual(cfg.state_path, "live/real/state.json")
         self.assertTrue(cfg.fill_leftover)
         self.assertTrue(cfg.limits.deploy_from_cash)
+
+
+class TestPriceSources(unittest.TestCase):
+    """The keyed price sources, the source order, and the data checks."""
+
+    def setUp(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("fetch_prices", "scripts/fetch_prices.py")
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+
+    def test_keyed_sources_come_first_only_when_their_key_is_set(self):
+        import os
+        from unittest import mock
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual([n for n, _ in self.mod.sources("AAA", 10)], ["stooq", "yahoo"])
+        with mock.patch.dict(os.environ, {"FMP_API_KEY": "k", "TWELVEDATA_API_KEY": "t"}, clear=True):
+            self.assertEqual([n for n, _ in self.mod.sources("AAA", 10)],
+                             ["fmp", "twelvedata", "stooq", "yahoo"])
+
+    def test_fmp_parses_adjusted_closes_and_reports_errors(self):
+        import json
+        from unittest import mock
+        rows = [{"symbol": "AAA", "date": "2026-09-29", "adjClose": 10.5},
+                {"symbol": "AAA", "date": "2026-09-28", "adjClose": 10.0}]
+        with mock.patch.object(self.mod, "_get", return_value=json.dumps(rows).encode()) as get:
+            self.assertEqual(self.mod.fmp("AAA", 10), {"2026-09-29": 10.5, "2026-09-28": 10.0})
+            self.assertIn("dividend-adjusted", get.call_args[0][0])
+        with mock.patch.object(self.mod, "_get", return_value=b'{"Error Message": "Invalid API KEY."}'):
+            with self.assertRaises(ValueError):
+                self.mod.fmp("AAA", 10)
+
+    def test_twelvedata_asks_for_full_adjustment_and_reports_errors(self):
+        import json
+        from unittest import mock
+        body = {"status": "ok", "values": [{"datetime": "2026-09-29", "close": "7.25"}]}
+        with mock.patch.object(self.mod, "_get", return_value=json.dumps(body).encode()) as get, \
+             mock.patch.object(self.mod.time, "sleep"):
+            self.assertEqual(self.mod.twelvedata("AAA", 10), {"2026-09-29": 7.25})
+            self.assertIn("adjust=all", get.call_args[0][0])
+        with mock.patch.object(self.mod, "_get", return_value=b'{"status": "error", "message": "limit"}'), \
+             mock.patch.object(self.mod.time, "sleep"):
+            with self.assertRaises(ValueError):
+                self.mod.twelvedata("AAA", 10)
+
+    def test_stooq_sends_its_key_and_rejects_a_refusal_page(self):
+        import os
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"STOOQ_API_KEY": "abc"}, clear=True), \
+             mock.patch.object(self.mod, "_get", return_value=b"Date,Close\n2026-09-29,5\n") as get:
+            self.assertEqual(self.mod.stooq("AAA"), {"2026-09-29": 5.0})
+            self.assertIn("apikey=abc", get.call_args[0][0])
+        with mock.patch.object(self.mod, "_get", return_value=b"Exceeded the daily hits limit"):
+            with self.assertRaises(ValueError):
+                self.mod.stooq("AAA")
+
+    def test_an_implausible_jump_falls_through_to_the_next_source(self):
+        from unittest import mock
+        split = {"2026-09-28": 100.0, "2026-09-29": 25.0}
+        good = {"2026-09-28": 25.1, "2026-09-29": 25.0}
+        with mock.patch.object(self.mod, "sources", return_value=[("fmp", lambda: split), ("yahoo", lambda: good)]), \
+             mock.patch.object(self.mod.time, "sleep"):
+            self.assertEqual(self.mod.fetch("AAA", 10), (good, "yahoo"))
+
+
+class TestEvaluation(unittest.TestCase):
+    """Skill-versus-luck tests, against the published worked values."""
+
+    def test_min_track_record_matches_the_published_values(self):
+        import math
+        from quantum.evaluation import min_track_record
+        self.assertEqual(round(min_track_record(0.5 / math.sqrt(12))), 132)  # months, annual SR 0.5
+        self.assertEqual(round(min_track_record(1.0 / math.sqrt(12))), 35)
+        self.assertEqual(min_track_record(-0.1), float("inf"))
+
+    def test_probabilistic_and_deflated_sharpe(self):
+        from quantum.evaluation import deflated_sharpe, expected_max_sharpe, probabilistic_sharpe
+        rng = np.random.default_rng(0)
+        good = rng.normal(0.002, 0.01, 1000)
+        self.assertGreater(probabilistic_sharpe(good), 0.99)
+        self.assertLess(probabilistic_sharpe(-good), 0.01)
+        self.assertAlmostEqual(expected_max_sharpe(28, 1.0), 2.04, places=2)
+        self.assertLess(deflated_sharpe(good, 1000, 0.2), probabilistic_sharpe(good))
+
+    def test_evaluate_bot_against_equal_weight(self):
+        from quantum.evaluation import STOP_RULE, evaluate_bot
+        from quantum.live import EngineState
+        rng = np.random.default_rng(1)
+        prices = 10 * np.cumprod(1 + rng.normal(0.0005, 0.01, (40, 3)), axis=0)
+        ew = np.r_[1.0, np.cumprod(1 + (prices[1:] / prices[:-1] - 1).mean(axis=1))]
+        state = EngineState(tickers=["A", "B", "C"], dates=[f"d{i:03d}" for i in range(40)],
+                            prices=prices.tolist(), equity_curve=(100 * ew).tolist())
+        ev = evaluate_bot(state)
+        self.assertAlmostEqual(ev["bot_return"], ev["equal_weight_return"], places=12)
+        self.assertAlmostEqual(ev["tracking_error_annual"], 0.0, places=10)
+        self.assertIn("too early", ev["verdict"])
+        self.assertEqual(STOP_RULE["review_after_days"], 756)
+
+    def test_snapshot_carries_the_evaluation(self):
+        from quantum.live import Engine, EngineConfig, snapshot
+        engine = Engine(EngineConfig(tickers=["A", "B"], strategy="equal_weight", window=3))
+        self.assertIn("verdict", snapshot(engine)[0]["evaluation"])
+
+
+class TestQuasiMonteCarlo(unittest.TestCase):
+    def test_qmc_beats_plain_monte_carlo_at_equal_budget(self):
+        from quantum.pricing import black_scholes_call, classical_monte_carlo_price, quasi_monte_carlo_price
+        truth = black_scholes_call(100, 100, 0.05, 0.2, 1.0)
+        mc, mc_se = classical_monte_carlo_price(100, 100, 0.05, 0.2, 1.0, samples=16384,
+                                                rng=np.random.default_rng(3))
+        qmc, qmc_se = quasi_monte_carlo_price(100, 100, 0.05, 0.2, 1.0, samples=16384,
+                                              rng=np.random.default_rng(3))
+        self.assertLess(qmc_se, mc_se / 5)
+        self.assertLess(abs(qmc - truth), 5 * qmc_se + 1e-3)

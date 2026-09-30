@@ -79,15 +79,22 @@ HARDWARE_PROFILES: dict[str, dict] = {
         "one_qubit": 2.5e-5, "two_qubit": 1.0e-4, "readout": 3.3e-4,
         "qubits": 2, "modality": "trapped ion (Oxford Ionics electronic control)",
         "source": "IonQ press release, October 2025: 99.99% two-qubit fidelity "
-                  "demonstration; 1q and readout taken from the Helios figures "
+                  "on an R&D prototype, not a commercial system; 1q and readout taken from the Helios figures "
                   "as no IonQ system-level numbers accompany it",
     },
     "ibm_nighthawk": {
-        "one_qubit": 2.5e-4, "two_qubit": 2.15e-3, "readout": 1.0e-2,
+        "one_qubit": 2.5e-4, "two_qubit": 2.8e-3, "readout": 1.0e-2,
         "qubits": 120, "modality": "superconducting",
-        "source": "IBM Nighthawk availability announcement, January 2026: "
-                  "two-qubit error ~2.15e-3 across 100 qubits; readout on Heron-class "
-                  "processors reported 2-7x the two-qubit error",
+        "source": "IBM Nighthawk (ibm_miami) median two-qubit error ~2.8e-3, June 2026 "
+                  "(secondary reports, unverified against IBM's page); readout on "
+                  "Heron-class processors reported 2-7x the two-qubit error. "
+                  "Corrected 2026-09-30: the earlier 2.15e-3 was Heron r3's figure",
+    },
+    "ibm_heron_r3": {
+        "one_qubit": 2.5e-4, "two_qubit": 2.15e-3, "readout": 1.0e-2,
+        "qubits": 156, "modality": "superconducting",
+        "source": "IBM Heron r3 (ibm_boston) two-qubit error ~2.15e-3, January 2026 "
+                  "availability announcement (secondary reports)",
     },
 }
 

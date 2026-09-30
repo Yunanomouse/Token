@@ -58,8 +58,10 @@ the art) as of 2026-09-30 are in `docs/research_2026-09.md`; read its
 
 ## How the live bot works
 
-1. After each US close (21:30 UTC weekdays) the `live bot` workflow fetches
-   real adjusted closes (Stooq, then Yahoo), runs the engine over new bars,
+1. After each US close (17:07 New York time, weekdays; the schedule carries
+   `timezone: America/New_York`) the `live bot` workflow fetches real
+   adjusted closes (FMP, Twelve Data, Stooq, Yahoo, keyed ones only if their
+   secret is set), runs the engine over new bars,
    and commits `live/state.json`, `live/snapshot.json` and
    `live/snapshot_prices.json`. Commits come from `quantum-trading-bot` and
    only touch `live/`; pull them before pushing.

@@ -89,6 +89,7 @@ from .pricing import (
     black_scholes_call,
     black_scholes_put,
     classical_monte_carlo_price,
+    quasi_monte_carlo_price,
     price_basket_option,
     price_european_option,
 )
@@ -140,7 +141,7 @@ __all__ = [
     "PortfolioProblem", "PortfolioConstraints", "PortfolioResult", "solve_portfolio",
     "unconstrained_mean_variance", "exhaustive_cardinality",
     "OptionSpec", "PricingResult", "price_european_option", "price_basket_option",
-    "black_scholes_call", "black_scholes_put", "classical_monte_carlo_price",
+    "black_scholes_call", "black_scholes_put", "classical_monte_carlo_price", "quasi_monte_carlo_price",
     "RiskResult", "portfolio_loss_distribution", "quantum_value_at_risk",
     "quantum_expected_shortfall", "classical_var_cvar", "parametric_var",
     "ArbitrageCycle", "find_arbitrage", "build_rate_matrix",

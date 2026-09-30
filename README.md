@@ -94,9 +94,10 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   variables, Gurobi-proven optimum): simulated annealing reaches a sixth of the
   optimum, simulated bifurcation never reaches feasibility. The first test at
   scale, and the heuristics do not pass it.
-- **Against published hardware** — Quantinuum Helios and IBM Nighthawk both
-  lose to classical Monte Carlo on the smallest pricing circuit; only IonQ's
-  two-qubit 99.99% demonstration clears the bar, by 20%.
+- **Against published hardware** — Quantinuum Helios and IBM Nighthawk and
+  Heron r3 all lose to classical Monte Carlo on the smallest pricing
+  circuit; only IonQ's two-qubit 99.99% lab demonstration clears the bar,
+  narrowly and not on every seed (9 of 12).
 
 - **As a program** — `python3 -m quantum live` runs the optimiser as a
   restart-safe loop over a replayed or tailed price CSV with a paper broker,
@@ -108,7 +109,7 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   in; it matches the Python engine to the cent (tested). Open the file, or the
   published copy, and press Start.
 - **Live, on GitHub** — `.github/workflows/live-bot.yml` runs the paper bot
-  after every US close on real prices (Stooq, Yahoo fallback) and commits its
+  after every US close on real prices (Financial Modeling Prep or Twelve Data with free keys, Stooq and Yahoo as fallbacks) and commits its
   state to `live/`. The web page's **Live bot** tab shows that state and
   re-runs the same engine in the browser to confirm it lands on the same
   number. See [live/README.md](live/README.md).

@@ -3,9 +3,19 @@
 
     python3 scripts/fetch_prices.py --config live/config.json --out live/prices.csv
 
-Sources, tried in order per ticker: Stooq's CSV download (no key), then
-Yahoo Finance's chart endpoint (no key, adjusted closes).  Standard library
-only, so it runs anywhere Python does.  Every run rewrites the whole file
+Sources, tried in order per ticker, skipping any whose key is not set:
+
+1. Financial Modeling Prep (``FMP_API_KEY``), dividend-adjusted closes.
+2. Twelve Data (``TWELVEDATA_API_KEY``), ``adjust=all``.
+3. Stooq (``STOOQ_API_KEY`` if set; since about April 2026 Stooq wants a
+   key obtained through a captcha, and answers without one with an HTML
+   page instead of a CSV).
+4. Yahoo Finance's chart endpoint (no key; rate-limits cloud servers).
+
+Free official keys (1 and 2) are the reliable route from GitHub Actions;
+the keyless sources are kept as fallbacks.  Each ticker's whole series comes
+from one source, never spliced, because vendors adjust dividends
+differently.  Standard library only, so it runs anywhere Python does.  Every run rewrites the whole file
 from the source; the engine only ever acts on dates newer than its state,
 so a rewrite is safe and self-healing.
 
@@ -18,6 +28,7 @@ import argparse
 import csv
 import io
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -39,8 +50,72 @@ def _get(url: str, timeout: float = 30.0, headers: dict | None = None) -> bytes:
         return r.read()
 
 
+def _env(name: str) -> str:
+    return os.environ.get(name, "").strip()
+
+
+def fmp(ticker: str, days: int) -> dict[str, float]:
+    """Financial Modeling Prep, dividend- and split-adjusted end-of-day closes."""
+    start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    url = ("https://financialmodelingprep.com/stable/historical-price-eod/dividend-adjusted"
+           f"?symbol={ticker}&from={start}&apikey={_env('FMP_API_KEY')}")
+    data = json.loads(_get(url))
+    if isinstance(data, dict):  # {"Error Message": ...} or a wrapper
+        rows = data.get("historical")
+        if rows is None:
+            raise ValueError(f"fmp error for {ticker}: {str(data)[:120]}")
+    else:
+        rows = data
+    out = {}
+    for row in rows or []:
+        v = row.get("adjClose", row.get("close"))
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        if v > 0 and row.get("date"):
+            out[str(row["date"])[:10]] = v
+    if not out:
+        raise ValueError(f"fmp had no closes for {ticker}")
+    return out
+
+
+_TWELVE_LAST = [0.0]
+
+
+def twelvedata(ticker: str, days: int) -> dict[str, float]:
+    """Twelve Data daily series, fully adjusted (the default adjusts splits only)."""
+    wait = 8.0 - (time.time() - _TWELVE_LAST[0])  # free tier: 8 requests a minute
+    if wait > 0:
+        time.sleep(wait)
+    _TWELVE_LAST[0] = time.time()
+    start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    url = ("https://api.twelvedata.com/time_series"
+           f"?symbol={ticker}&interval=1day&start_date={start}&outputsize=5000&adjust=all"
+           f"&apikey={_env('TWELVEDATA_API_KEY')}")
+    data = json.loads(_get(url))
+    if data.get("status") != "ok":
+        raise ValueError(f"twelvedata error for {ticker}: {str(data.get('message', data))[:120]}")
+    out = {}
+    for row in data.get("values", []):
+        try:
+            v = float(row["close"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if v > 0:
+            out[str(row["datetime"])[:10]] = v
+    if not out:
+        raise ValueError(f"twelvedata had no closes for {ticker}")
+    return out
+
+
 def stooq(ticker: str) -> dict[str, float]:
-    raw = _get(f"https://stooq.com/q/d/l/?s={ticker.lower()}.us&i=d").decode("utf-8", "replace")
+    url = f"https://stooq.com/q/d/l/?s={ticker.lower()}.us&i=d"
+    if _env("STOOQ_API_KEY"):
+        url += f"&apikey={_env('STOOQ_API_KEY')}"
+    raw = _get(url).decode("utf-8", "replace")
+    # Stooq answers refusals (no key, quota exceeded, captcha) with HTTP 200
+    # and a text or HTML body, so the body is what must be checked.
     if not raw.lower().startswith("date"):
         raise ValueError(f"stooq returned no CSV for {ticker}: {raw[:80]!r}")
     out = {}
@@ -91,16 +166,39 @@ def _unreachable(exc: Exception) -> bool:
     return isinstance(exc, OSError) and not isinstance(exc, urllib.error.HTTPError)
 
 
+def sources(ticker: str, days: int) -> list[tuple[str, object]]:
+    """The sources to try for one ticker, in order; keyed ones only if their key is set."""
+    out = []
+    if _env("FMP_API_KEY"):
+        out.append(("fmp", lambda: fmp(ticker, days)))
+    if _env("TWELVEDATA_API_KEY"):
+        out.append(("twelvedata", lambda: twelvedata(ticker, days)))
+    out.append(("stooq", lambda: stooq(ticker)))
+    out.append(("yahoo", lambda: yahoo(ticker, days)))
+    return out
+
+
+def sanity(ticker: str, series: dict[str, float], max_move: float = 0.5) -> None:
+    """Refuse a series with an implausible one-day move (an unadjusted split, bad data)."""
+    dates = sorted(series)
+    for a, b in zip(dates, dates[1:]):
+        move = series[b] / series[a] - 1.0
+        if abs(move) > max_move:
+            raise ValueError(f"{ticker}: {move:+.0%} from {a} to {b}; unadjusted split or bad data")
+
+
 def fetch(ticker: str, days: int) -> tuple[dict[str, float], str]:
     errors = []
-    for name, fn in (("stooq", lambda: stooq(ticker)), ("yahoo", lambda: yahoo(ticker, days))):
+    for name, fn in sources(ticker, days):
         if name in UNREACHABLE:
             errors.append(f"{name}: skipped, unreachable earlier this run")
             continue
         down = True
         for attempt in range(3):
             try:
-                return fn(), name
+                series = fn()
+                sanity(ticker, series)
+                return series, name
             except Exception as exc:  # network, parse, or empty: try again, then fall back
                 errors.append(f"{name}#{attempt + 1}: {exc}")
                 down = down and _unreachable(exc)
@@ -116,14 +214,16 @@ def main() -> int:
     ap.add_argument("--config", default="live/config.json")
     ap.add_argument("--out", default="live/prices.csv")
     ap.add_argument("--days", type=int, default=730, help="calendar days of history to keep")
+    ap.add_argument("--max-age-days", type=int, default=6, dest="max_age_days",
+                    help="fail if the newest close is older than this (holiday weekends are 4)")
     args = ap.parse_args()
 
     tickers = json.load(open(args.config, encoding="utf-8"))["tickers"]
     cutoff = (datetime.now(timezone.utc) - timedelta(days=args.days)).strftime("%Y-%m-%d")
-    series, sources = {}, {}
+    series, used = {}, {}
     for t in tickers:
-        series[t], sources[t] = fetch(t, args.days + 10)
-        print(f"{t:6} {sources[t]:6} {len(series[t]):5} closes, last {max(series[t])}")
+        series[t], used[t] = fetch(t, args.days + 10)
+        print(f"{t:6} {used[t]:10} {len(series[t]):5} closes, last {max(series[t])}")
 
     lasts = {t: max(s) for t, s in series.items()}
     newest = max(lasts.values())
@@ -131,6 +231,11 @@ def main() -> int:
     if stale:
         print(f"ERROR: tickers disagree on the latest date {newest}: {stale}", file=sys.stderr)
         return 2
+    age = (datetime.now(timezone.utc).date() - datetime.strptime(newest, "%Y-%m-%d").date()).days
+    if age > args.max_age_days:
+        print(f"ERROR: newest close is {newest}, {age} days old; the sources are serving "
+              "stale data", file=sys.stderr)
+        return 3
     dates = sorted(d for d in set.intersection(*(set(s) for s in series.values())) if d >= cutoff)
     with open(args.out, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
@@ -138,6 +243,9 @@ def main() -> int:
         for d in dates:
             w.writerow([d] + [f"{series[t][d]:.6f}" for t in tickers])
     print(f"wrote {args.out}: {len(dates)} days, {dates[0]} to {dates[-1]}")
+    with open(args.out.rsplit(".", 1)[0] + "_sources.json", "w", encoding="utf-8") as fh:
+        json.dump({"fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                   "sources": used}, fh, indent=1)
     return 0
 
 
