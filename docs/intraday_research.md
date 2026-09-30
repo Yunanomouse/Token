@@ -11,6 +11,7 @@ result was seen.
 - **Account:** $50, long only, whole shares, one position at a time.
 - **Settlement:** sale money is not reusable until the next session (T+1).
 - **Costs and fills:** 0.1% per side. Fills happen at the next bar's open, and everything is closed by 15:55.
+  (Since 2026-09-30 the live config also charges half a one-cent tick per share, 1.5× costs on fills before 09:45, and skips stocks under $2; see `docs/web_research.md`. The results below were run before that and use the flat 0.1%.)
 
 ## Pass bar
 

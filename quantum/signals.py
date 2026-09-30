@@ -114,7 +114,10 @@ BOT_CONFIG = IntradayConfig(
     max_trades_per_day=6, settled_cash_only=True, flat_by="15:55", no_entry_after="15:30",
     top_n=5, screen_days=1,
 )
-"""The live intraday bot's account and costs (live/intraday/config.json).
+"""The live intraday bot's account and costs (live/intraday/config.json) as
+pre-registered for the duel: a flat 10 bps per side.  The live config has
+since added a half-tick cost, a higher cost near the open and a $2 minimum
+price; the duel keeps the rules it was registered with.
 
 Its ``flat_by`` is the 5-minute value; the referee always runs an indicator
 with :func:`config_for` its timeframe."""

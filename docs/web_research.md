@@ -180,4 +180,4 @@ Assumptions that hold:
 5. Run End-of-Day Reversal as one pre-registered test, with relative-volume selection and no
    entries in the first hour.
 
-None of these changes has been made yet. They are proposals for the user to choose from.
+Item 1 was done on 2026-09-30: `tick_slippage` ($0.005 a share), `open_slippage_mult` (1.5× before 09:45) and a $2 `min_price` for both screens, set in `live/intraday/config.json`. On the 58 cached sessions the live KAMA rule's return fell from +9.8% to +3.0% with the same trades. That is the period its settings were chosen on, so it shows the cost, not an edge. The duel keeps its registered flat 10 bps. The other items are proposals.

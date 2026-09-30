@@ -52,8 +52,10 @@ What it is not
 --------------
 It is not a live trading tool, and it does not predict anything.  At $50 with
 whole shares the minimum trade is one share of whatever you can afford, and
-10 bps per side of slippage is often optimistic on the most volatile names.
-Read the baseline comparison before reading the return.
+a flat 10 bps per side of slippage is optimistic on cheap and volatile names:
+``tick_slippage`` adds half a one-cent tick per share and
+``open_slippage_mult`` charges more near the open (the live config uses
+both).  Read the baseline comparison before reading the return.
 
 Running it
 ----------
@@ -227,6 +229,17 @@ class IntradayConfig:
     whole_shares: bool = True
     slippage_bps: float = 10.0
     """Per side, always against you: buys fill higher, sells lower."""
+    tick_slippage: float = 0.0
+    """Dollars per share per side on top of ``slippage_bps``: half the
+    bid-ask spread at its narrowest.  US stocks trade in one-cent ticks, so
+    half a tick (0.005) is 0.5% per side at $1, 0.1% at $5 and 0.025% at
+    $20; a flat percentage misses how much more cheap stocks cost to trade
+    (docs/research/05_rules_costs.md)."""
+    open_slippage_mult: float = 1.0
+    """Slippage on fills in bars starting before ``open_slippage_until`` is
+    multiplied by this: spreads are widest right after the open.  (A signal
+    fills at the next bar's open, so no fill lands in the first bar.)"""
+    open_slippage_until: str = "09:45"
     commission: float = 0.0
     """Flat fee per order (each side)."""
     max_trades_per_day: int = 6
@@ -263,7 +276,9 @@ class IntradayConfig:
     rvol_days: int = 14
     min_rvol: float = 1.0
     min_price: float = 0.0
-    """Prior close at least this (the ORB paper uses $5)."""
+    """Prior close at least this, in either screen (the ORB paper uses $5).
+    Stocks under $1-2 carry the widest spreads, trading pauses and
+    delisting risk."""
     min_atr: float = 0.0
     """Daily ATR over ``rvol_days`` sessions at least this, in dollars."""
     min_avg_volume: float = 0.0
@@ -285,8 +300,10 @@ class IntradayConfig:
             raise ValueError("deploy_fraction must lie in (0, 1]")
         if self.max_positions < 1 or self.max_trades_per_day < 0 or self.top_n < 1:
             raise ValueError("max_positions and top_n must be >= 1, max_trades_per_day >= 0")
-        if self.slippage_bps < 0 or self.commission < 0:
-            raise ValueError("slippage_bps and commission must be non-negative")
+        if self.slippage_bps < 0 or self.commission < 0 or self.tick_slippage < 0:
+            raise ValueError("slippage_bps, tick_slippage and commission must be non-negative")
+        if self.open_slippage_mult < 1.0:
+            raise ValueError("open_slippage_mult must be at least 1")
         if self.stop_loss_pct is not None and not 0.0 < self.stop_loss_pct < 1.0:
             raise ValueError("stop_loss_pct must lie in (0, 1)")
         if self.entry_lookback < 1 or self.filter_n < 2 or self.screen_days < 1:
@@ -325,15 +342,25 @@ def daily_ranges(bars: dict[str, dict[str, np.ndarray]]) -> dict[str, dict[str, 
     return out
 
 
+def slip_fraction(config: "IntradayConfig", price: float, hm: str = "") -> float:
+    """Per-side slippage, as a fraction of ``price``, for a fill in the bar
+    starting at ``hm`` (``HH:MM``): ``slippage_bps`` plus ``tick_slippage``
+    dollars, times ``open_slippage_mult`` before ``open_slippage_until``."""
+    s = config.slippage_bps / 1e4 + (config.tick_slippage / price if price > 0 else 0.0)
+    return s * (config.open_slippage_mult if hm and hm < config.open_slippage_until else 1.0)
+
+
 def volatility_screen(ranges: dict[str, dict[str, tuple[float, float]]], date: str, budget: float,
                       top_n: int = 5, screen_days: int = 1, slippage_bps: float = 0.0,
-                      commission: float = 0.0, tradable: set[str] | None = None) -> list[str]:
+                      commission: float = 0.0, tradable: set[str] | None = None,
+                      tick_slippage: float = 0.0, min_price: float = 0.0) -> list[str]:
     """Tickers for ``date``, most volatile first, using prior sessions only.
 
     Each ticker is scored by its mean (high - low) / close range over its last
     ``screen_days`` sessions strictly before ``date``.  A ticker qualifies if
-    its last prior close (plus slippage and commission) fits one whole share
-    in ``budget``; the top ``top_n`` qualifiers are returned.  ``tradable``
+    its last prior close is at least ``min_price`` and (plus slippage and
+    commission) fits one whole share in ``budget``; the top ``top_n``
+    qualifiers are returned.  ``tradable``
     optionally restricts to tickers that have bars on ``date``.
     """
     scored = []
@@ -344,7 +371,9 @@ def volatility_screen(ranges: dict[str, dict[str, tuple[float, float]]], date: s
         if not prior:
             continue
         last_close = per[prior[-1]][1]
-        if last_close * (1 + slippage_bps / 1e4) + commission > budget:
+        if last_close < min_price:
+            continue
+        if last_close * (1 + slippage_bps / 1e4) + tick_slippage + commission > budget:
             continue
         scored.append((-float(np.mean([per[d][0] for d in prior])), t))
     scored.sort()
@@ -405,7 +434,7 @@ def rvol_screen(stats: dict[str, dict[str, dict]], date: str, budget: float, con
         if (s["rvol"] < c.min_rvol or s["prev_close"] < c.min_price or s["atr"] < c.min_atr
                 or s["avg_volume"] < c.min_avg_volume):
             continue
-        if s["prev_close"] * (1 + c.slippage_bps / 1e4) + c.commission > budget:
+        if s["prev_close"] * (1 + c.slippage_bps / 1e4) + c.tick_slippage + c.commission > budget:
             continue
         scored.append((-s["rvol"], t))
     scored.sort()
@@ -608,7 +637,6 @@ class _RandomPolicy:
 
 def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) -> dict:
     cfg = config
-    slip = cfg.slippage_bps / 1e4
     ranges = daily_ranges(bars)
     stats = daily_stats(bars, cfg.rvol_days) if (cfg.screen == "rvol" or cfg.stop_atr_mult) else {}
     index = {t: {d: i for i, d in enumerate(b["datetime"])} for t, b in bars.items()}
@@ -622,6 +650,9 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
         for i, d in enumerate(b["datetime"]):
             ld[d[:10]] = i
         last_of_day[t] = ld
+
+    def slip_at(t, i, price):
+        return slip_fraction(cfg, price, str(bars[t]["datetime"][i])[11:16])
 
     settled, unsettled = float(cfg.cash), 0.0
     positions: dict[str, dict] = {}
@@ -637,7 +668,7 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
     def close_pos(t, i, price, reason):
         nonlocal settled, unsettled
         p = positions.pop(t)
-        fill = price * (1 - slip)
+        fill = price * (1 - slip_at(t, i, price))
         proceeds = p["shares"] * fill - cfg.commission
         if cfg.settled_cash_only:
             unsettled += proceeds
@@ -663,7 +694,8 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
             screen = rvol_screen(stats, date, cfg.deploy_fraction * eq0, cfg, tradable)
         else:
             screen = volatility_screen(ranges, date, cfg.deploy_fraction * eq0, cfg.top_n, cfg.screen_days,
-                                       cfg.slippage_bps, cfg.commission, tradable=tradable)
+                                       cfg.slippage_bps, cfg.commission, tradable=tradable,
+                                       tick_slippage=cfg.tick_slippage, min_price=cfg.min_price)
         policy.start_day(date, screen, times, cfg.max_trades_per_day)
         pending: dict[str, tuple[str, dict]] = {}
         entries = 0
@@ -688,7 +720,7 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
                 _, meta = pending.pop(t)
                 if hm >= cfg.flat_by or t in positions:
                     continue
-                fill = bars[t]["open"][i] * (1 + slip)
+                fill = bars[t]["open"][i] * (1 + slip_at(t, i, bars[t]["open"][i]))
                 spend = min(cfg.deploy_fraction * equity_now(), settled) - cfg.commission
                 shares = spend / fill if spend > 0 else 0.0
                 if cfg.whole_shares:
@@ -749,7 +781,7 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
         # would bring (slippage and commission off), both in its unrealized
         # pnl and in the equity, so equity = cash + cost + unrealized.
         def liquidation(p):
-            return p["shares"] * p["last"] * (1 - slip) - cfg.commission
+            return p["shares"] * p["last"] * (1 - slip_fraction(cfg, p["last"])) - cfg.commission
 
         for t, p in positions.items():
             open_positions.append({

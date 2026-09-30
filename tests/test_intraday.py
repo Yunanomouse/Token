@@ -28,6 +28,7 @@ from quantum.intraday import (
     daily_ranges,
     load_bars,
     random_baseline,
+    slip_fraction,
     volatility_screen,
 )
 
@@ -155,6 +156,36 @@ class TestExecution(unittest.TestCase):
             i = int(np.flatnonzero(b["datetime"] == t0["exit_time"])[0])
             self.assertAlmostEqual(t0["exit_price"], b["open"][i] * 0.999, places=12)
 
+    def test_slippage_grows_as_the_price_falls_and_near_the_open(self):
+        cfg = IntradayConfig(slippage_bps=10, tick_slippage=0.005, open_slippage_mult=1.5)
+        self.assertAlmostEqual(slip_fraction(cfg, 20.0), 0.001 + 0.00025, places=15)
+        self.assertAlmostEqual(slip_fraction(cfg, 1.0, "10:30"), 0.001 + 0.005, places=15)
+        self.assertAlmostEqual(slip_fraction(cfg, 1.0, "09:35"), 1.5 * 0.006, places=15)
+        self.assertAlmostEqual(slip_fraction(cfg, 1.0, "09:45"), 0.006, places=15)  # from 09:45 on: normal
+        self.assertEqual(slip_fraction(IntradayConfig(slippage_bps=10), 1.0, "09:35"), 0.001)  # defaults: flat
+        with self.assertRaises(ValueError):
+            IntradayConfig(tick_slippage=-0.01)
+        with self.assertRaises(ValueError):
+            IntradayConfig(open_slippage_mult=0.5)
+
+    def test_fills_carry_the_half_tick_and_the_opening_multiplier(self):
+        base = IntradayConfig(slippage_bps=10)
+        flat = backtest(self.bars, base)["trades"]
+        # Every fill counts as "near the open" here, so each pays twice the per-side cost.
+        cfg = IntradayConfig(slippage_bps=10, tick_slippage=0.005, open_slippage_mult=2.0,
+                             open_slippage_until="16:00")
+        res = backtest(self.bars, cfg)
+        self.assertTrue(res["trades"])
+        self.assertEqual([t["entry_time"] for t in res["trades"]], [t["entry_time"] for t in flat])
+        b = self.bars["AAA"]
+        for t in res["trades"]:
+            o = b["open"][int(np.flatnonzero(b["datetime"] == t["entry_time"])[0])]
+            self.assertAlmostEqual(t["entry_price"], o * (1 + 2 * (0.001 + 0.005 / o)), places=10)
+            if t["reason"] == "signal":
+                ox = b["open"][int(np.flatnonzero(b["datetime"] == t["exit_time"])[0])]
+                self.assertAlmostEqual(t["exit_price"], ox * (1 - 2 * (0.001 + 0.005 / ox)), places=10)
+        self.assertLess(res["summary"]["total_return"], backtest(self.bars, base)["summary"]["total_return"])
+
     def test_stop_fills_at_min_of_stop_and_open(self):
         cfg = IntradayConfig(slippage_bps=0, stop_loss_pct=0.02, settled_cash_only=True)
         base = backtest(self.bars, cfg)
@@ -280,6 +311,15 @@ class TestScreen(unittest.TestCase):
         res = backtest(bars, IntradayConfig(top_n=1))
         self.assertTrue(res["trades"])
         self.assertTrue(all(t["ticker"] == "A" for t in res["trades"]))
+
+    def test_min_price_applies_to_the_range_screen(self):
+        ranges = {"PENNY": {DATES[0]: (0.30, 1.5)}, "OK": {DATES[0]: (0.02, 5.0)}}
+        self.assertEqual(volatility_screen(ranges, DATES[1], 35.0, top_n=5), ["PENNY", "OK"])
+        self.assertEqual(volatility_screen(ranges, DATES[1], 35.0, top_n=5, min_price=2.0), ["OK"])
+        # A whole share must still fit once the half-tick cost is added.
+        edge = {"EDGE": {DATES[0]: (0.05, 35.0)}}
+        self.assertEqual(volatility_screen(edge, DATES[1], 35.0), ["EDGE"])
+        self.assertEqual(volatility_screen(edge, DATES[1], 35.0, tick_slippage=0.005), [])
 
     def test_budget_filter(self):
         ranges = {"CHEAP": {DATES[0]: (0.02, 5.0)}, "DEAR": {DATES[0]: (0.09, 60.0)}}
