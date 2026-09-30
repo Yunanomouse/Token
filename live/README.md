@@ -6,7 +6,7 @@ runs the engine after each US market close on real prices:
 | File | What it is |
 |---|---|
 | `config.json` | The bot's settings. Edit this to change what it trades. |
-| `prices.csv` | Daily adjusted closes, re-fetched every run (Yahoo, Stooq fallback; one source per run, never mixed). When a stock splits or goes ex-dividend the file's past changes; the engine re-bases its stored history to match and scales its paper shares the other way, so equity is unchanged and the bookkeeping shows up as noted, zero-price fills. |
+| `prices.csv` | Daily adjusted closes, re-fetched every run (FMP or Twelve Data with free keys, Yahoo and Stooq as fallbacks; one source per run, never mixed; `prices_sources.json` records it). When a stock splits or goes ex-dividend the file's past changes; the engine re-bases its stored history to match and scales its paper shares the other way, so equity is unchanged and the bookkeeping shows up as noted, zero-price fills. |
 | `state.json` | The engine's book and history; the run resumes from it. |
 | `snapshot.json`, `snapshot_prices.json` | What the dashboard shows, and the prices it re-checks against. |
 
@@ -78,3 +78,40 @@ What the broker code guarantees:
 
 Switch while the bot holds only cash (as it does until its first trade on
 or after `trade_from`), so the paper history and the Alpaca account agree.
+
+## Price sources (set these up once)
+
+Stooq and Yahoo, the free sources that need no sign-up, increasingly block
+GitHub's servers. Two free services with keys are far more reliable:
+
+1. Sign up at https://site.financialmodelingprep.com (free plan) and copy the
+   API key. Optionally also https://twelvedata.com (free plan).
+2. On GitHub: repository **Settings > Secrets and variables > Actions >
+   New repository secret**. Name `FMP_API_KEY` (and `TWELVEDATA_API_KEY`),
+   paste the key. Never paste keys into a chat.
+
+The bot tries them first and falls back to Stooq and Yahoo without them. It
+refuses to run on data older than six days or with a one-day move over 50%
+(the sign of an unadjusted split).
+
+The free plans of every price vendor forbid republishing their data, and
+this repository is public. Keeping `prices.csv` private (a private
+repository) is the owner's decision; see `docs/research_2026-09.md`.
+
+## Judging the bot: the stop rule
+
+Fixed on 2026-09-30, before any live result: after 756 trading days (about
+three years), stop the bot if the probability that it beats equal weight of
+the same stocks is below 50%. Until then every run prints, and the snapshot
+carries, the bot's return against equal weight and "too early to judge".
+Even a genuinely good strategy needs years to be told apart from luck (see
+`quantum/evaluation.py`).
+
+## When it runs, and when it stops
+
+It runs at 17:07 New York time on weekdays (15:07 in Calgary). GitHub can
+start it late, and switches scheduled runs off in a public repository after
+60 days without activity, without sending an email. The web page warns when
+the bot's report is more than four days old. To get an email when a run
+fails: your GitHub profile **Settings > Notifications > Actions > Email**,
+"Only notify for failed workflows".

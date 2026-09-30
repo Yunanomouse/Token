@@ -971,6 +971,7 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
         "adjusted": any(f.get("note") for f in st.fills),
         "fees": sum(f.get("fee", 0.0) for f in st.fills),
         "log": st.log[-60:],
+        "evaluation": _evaluation(engine),
     }
     keep = max(0, st.n_bars - price_days)
     prices = {
@@ -982,6 +983,11 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
         "full_history": keep == 0,
     }
     return status, prices
+
+
+def _evaluation(engine: "Engine") -> dict:
+    from .evaluation import evaluate_bot
+    return evaluate_bot(engine.state, engine.config.trade_from)
 
 
 def todays_orders(engine: "Engine", limit_pad: float = 0.01) -> dict:

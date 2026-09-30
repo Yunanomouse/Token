@@ -25,6 +25,10 @@ TradingView. Its `"mode"` line is the owner's paper/live switch; in live mode
 `tools/tradingview_orders.py` (run on the owner's PC) fills the TradingView
 ticket but never clicks Buy/Sell. Keep the person-clicks-the-button step.
 
+Research findings (brokers, costs, data sources, safety, quantum state of
+the art) as of 2026-09-30 are in `docs/research_2026-09.md`; read its
+"ten things" list before changing the bots.
+
 ## Where everything is
 
 | What | Where |
@@ -54,12 +58,14 @@ ticket but never clicks Buy/Sell. Keep the person-clicks-the-button step.
 
 ## How the live bot works
 
-1. After each US close (21:30 UTC weekdays) the `live bot` workflow fetches
-   real adjusted closes (Yahoo, then Stooq; one source per run), re-bases
-   its stored history if the feed re-adjusted for a split or dividend, runs
-   the engine over new bars, and commits `live/state.json`,
-   `live/snapshot.json` and `live/snapshot_prices.json`. Commits come from
-   `quantum-trading-bot` and
+1. After each US close (17:07 New York time, weekdays; the schedule carries
+   `timezone: America/New_York`) the `live bot` workflow fetches real
+   adjusted closes (FMP, Twelve Data, Yahoo, Stooq; keyed ones only if their
+   secret is set; one source per run, never mixed; today's bar dropped until
+   16:30 New York), re-bases its stored history if the feed re-adjusted for
+   a split or dividend, runs the engine over new bars, and commits
+   `live/state.json`, `live/snapshot.json` and `live/snapshot_prices.json`.
+   Commits come from `quantum-trading-bot` and
    only touch `live/`; pull them before pushing.
 2. A routine on the owner's account, "Sync live bot to dashboard"
    (weekdays 22:15 UTC, fresh session), copies those two snapshot files into

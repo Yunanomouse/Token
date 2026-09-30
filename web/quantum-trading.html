@@ -170,6 +170,7 @@ dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
       <p id="liveEmptyText">Reading the bot's latest report.</p>
     </div>
     <div id="liveBody" hidden>
+      <div class="banner halt" id="liveStale" hidden><span><b>The bot's report is out of date.</b> <span id="liveStaleText"></span> GitHub sends no email when a schedule stops: open the repository's Actions tab and check the "live bot" workflow.</span></div>
       <div class="banner halt" id="liveHalt" hidden><span><b>The bot's kill switch has tripped.</b> <span id="liveHaltReason"></span>. It sold everything and is not trading.</span></div>
       <div class="tiles">
         <div class="tile"><div class="label">Bot account value</div><div class="value" id="lEquity">–</div><div class="sub" id="lEquitySub"></div></div>
@@ -1164,6 +1165,9 @@ const BUILTIN = {"dates":["2006-05-25","2006-05-26","2006-05-30","2006-05-31","2
     $("liveEmpty").hidden = !!st; $("liveBody").hidden = !st;
     if (!st) return;
     const c = st.config, since = c.trade_from || (st.curve_dates[0] || "–");
+    const ageDays = st.updated_at ? (Date.now() - Date.parse(st.updated_at)) / 86400000 : 0;
+    $("liveStale").hidden = !(ageDays > 4);
+    if (ageDays > 4) $("liveStaleText").textContent = `Its last report was ${Math.floor(ageDays)} days ago (latest prices ${st.last_date || "–"}).`;
     const curve = st.curve, n = curve.length;
     const first = n ? curve[0] : c.initial_cash, last = st.equity;
     const total = last / c.initial_cash - 1;

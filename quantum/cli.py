@@ -24,7 +24,7 @@ from .portfolio import (
     solve_portfolio,
     unconstrained_mean_variance,
 )
-from .pricing import OptionSpec, classical_monte_carlo_price, price_european_option
+from .pricing import OptionSpec, classical_monte_carlo_price, price_european_option, quasi_monte_carlo_price
 from .qubo import QUBO
 from .risk import (
     parametric_var,
@@ -140,6 +140,12 @@ def cmd_price(args) -> int:
         rng=np.random.default_rng(args.seed),
     )
     print(f"\nclassical Monte Carlo at the same shot budget: {mc_price:.6f} +/- {mc_err:.6f}")
+    qmc_price, qmc_err = quasi_monte_carlo_price(
+        args.spot, args.strike, args.rate, args.volatility, args.maturity,
+        samples=args.shots * args.powers, option=args.option,
+        rng=np.random.default_rng(args.seed),
+    )
+    print(f"quasi-Monte Carlo (Sobol) at the same budget : {qmc_price:.6f} +/- {qmc_err:.6f}")
     print("(the quadratic advantage is in oracle calls, not wall-clock -- a CPU wins today)")
     return 0
 
@@ -472,6 +478,12 @@ def cmd_live(args) -> int:
         print("stopped; state is on disk and the next start resumes from it")
         return 0
     print(engine.summary())
+    from .evaluation import evaluate_bot
+    ev = evaluate_bot(engine.state, config.trade_from)
+    if "information_ratio_annual" in ev:
+        print(f"against equal weight: bot {ev['bot_return']:+.2%}, equal weight "
+              f"{ev['equal_weight_return']:+.2%}, information ratio {ev['information_ratio_annual']:+.2f}")
+    print(f"verdict : {ev['verdict']}")
     print(f"\nstate: {config.state_path}")
     if args.snapshot:
         from .live import snapshot

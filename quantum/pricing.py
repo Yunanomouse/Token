@@ -45,6 +45,7 @@ quantum-adder cost this simulator sidesteps.
 from __future__ import annotations
 
 import math
+from statistics import NormalDist
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -59,6 +60,7 @@ __all__ = [
     "black_scholes_call",
     "black_scholes_put",
     "classical_monte_carlo_price",
+    "quasi_monte_carlo_price",
     "integer_comparator",
     "build_european_payoff_circuit",
     "price_european_option",
@@ -111,6 +113,57 @@ def classical_monte_carlo_price(
     payoff = np.maximum(terminal - strike, 0.0) if option == "call" else np.maximum(strike - terminal, 0.0)
     discounted = math.exp(-rate * maturity) * payoff
     return float(discounted.mean()), float(discounted.std(ddof=1) / math.sqrt(samples))
+
+
+def _van_der_corput(n: int) -> np.ndarray:
+    """First ``n`` points of the base-2 van der Corput sequence in [0, 1)."""
+    idx = np.arange(1, n + 1, dtype=np.uint64)
+    out = np.zeros(n)
+    scale = 0.5
+    while idx.any():
+        out += (idx & 1) * scale
+        idx >>= np.uint64(1)
+        scale *= 0.5
+    return out
+
+
+def quasi_monte_carlo_price(
+    spot: float,
+    strike: float,
+    rate: float,
+    vol: float,
+    maturity: float,
+    samples: int = 100_000,
+    option: str = "call",
+    replicates: int = 16,
+    rng: np.random.Generator | None = None,
+) -> tuple[float, float]:
+    """Randomised quasi-Monte Carlo price and its standard error.
+
+    The fair classical baseline for amplitude estimation.  Plain Monte Carlo
+    converges as 1/sqrt(N); a low-discrepancy sequence does close to 1/N on a
+    smooth one-dimensional payoff, which is the same rate amplitude
+    estimation claims.  Uses the base-2 van der Corput sequence (the
+    one-dimensional Sobol sequence) with a random shift per replicate
+    (Cranley-Patterson), so the error bar is honest: the standard deviation
+    across ``replicates`` independent shifts, over sqrt(replicates).
+    ``samples`` is the total across replicates.
+    """
+    rng = rng or np.random.default_rng()
+    per = max(1, int(samples) // int(replicates))
+    base = _van_der_corput(per)
+    inv = np.vectorize(NormalDist().inv_cdf)
+    disc = math.exp(-rate * maturity)
+    prices = []
+    for _ in range(int(replicates)):
+        u = (base + rng.random()) % 1.0
+        u = np.clip(u, 1e-12, 1 - 1e-12)
+        z = inv(u)
+        terminal = spot * np.exp((rate - 0.5 * vol**2) * maturity + vol * math.sqrt(maturity) * z)
+        payoff = np.maximum(terminal - strike, 0.0) if option == "call" else np.maximum(strike - terminal, 0.0)
+        prices.append(disc * float(payoff.mean()))
+    prices = np.array(prices)
+    return float(prices.mean()), float(prices.std(ddof=1) / math.sqrt(len(prices)))
 
 
 # --------------------------------------------------------------------------
