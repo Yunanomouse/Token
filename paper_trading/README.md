@@ -2,30 +2,41 @@
 
 Paper Trading is a small program for practising trades yourself. You start an account with a
 balance you choose, look up a stock, and buy or sell it. Nothing is real: **there is no broker,
-no real money, and no keys**. It is plain Python with a page in your browser, and it runs only
-on your own computer.
+no real money, and no keys**. It is a normal Windows program with its own window, and it
+runs only on your own computer.
 
 > **Not financial advice.** This is a practice tool. Its results are not a prediction of what
 > real trading would make, and nothing in it is a recommendation to buy or sell anything.
 
-## Starting it (Windows)
+## Installing it (Windows)
 
-1. You need Python 3.10 or newer. If you don't have it,
-   install it from https://www.python.org/downloads/windows/ and tick
-   **"Add python.exe to PATH"** in the installer.
-2. Double-click **`Paper Trading.bat`** in this folder.
-3. The first start on Windows may ask to install `tzdata` (Windows' Python has no time-zone
-   data, and New York time decides when the market is open). Answer Y. Nothing else is needed.
-4. A black window opens and stays open: that is the program. The page opens in your browser
-   at **http://127.0.0.1:8778/**.
+1. Download **`Paper Trading Setup.exe`** from the
+   [paper-trading-latest release](https://github.com/Yunanomouse/Token/releases/tag/paper-trading-latest).
+2. Double-click it. If Windows says "Windows protected your PC", click **More info**, then
+   **Run anyway** (the installer isn't signed with a paid certificate).
+3. Click through the installer. It needs no administrator rights, adds Paper Trading to the
+   Start menu and, if you leave the box ticked, puts an icon on the desktop.
+4. Open **Paper Trading** from the Start menu or the desktop icon. It opens in its own
+   window. Python is included; there is nothing else to install.
 
-Keep the black window open while you use it. Close it to stop; your account is saved after
-every change, and open orders are checked again the next time you start it.
+Close the window to stop it. Your account is saved after every change, and open orders are
+checked again the next time you open it. If you open it while it is already running, a second
+window shows the same account.
 
-On macOS or Linux, run `python3 start.py` in this folder.
+To remove it: Settings > Apps > Installed apps > Paper Trading > Uninstall. Your account is
+**not** deleted (see "Where the files are"), so reinstalling or updating keeps it.
 
-If you start it twice, the second window says the port is in use and just opens the page
-of the one already running.
+The window is drawn by Microsoft Edge WebView2, which Windows 10 and 11 already include. On
+a PC without it, Paper Trading opens in your web browser instead and says so; installing
+WebView2 from https://developer.microsoft.com/microsoft-edge/webview2/ gives it its own window.
+
+### Running it from these files instead
+
+With Python 3.10 or newer (from https://www.python.org/downloads/, tick **"Add python.exe to
+PATH"**), double-click **`Paper Trading.bat`** in this folder, or run `python3 start.py` on
+macOS or Linux. The first start offers to install `tzdata` (Windows only: New York time
+decides when the market is open) and `pywebview` (the program window; without it the page
+opens in your browser). Answer Y.
 
 ## The page
 
@@ -126,25 +137,28 @@ deleted: it is kept in the account folder as `account.bak-<date>-<time>.json`.
 
 If the account file is ever damaged (for example the computer lost power while it was being
 saved), the program keeps the damaged file as `account.corrupt-<date>-<time>.json`, starts a
-fresh $100,000 account, and says so at the top of the page and in the black window.
+fresh $100,000 account, and says so at the top of the page.
 
 ## Where the files are
 
-Everything is in **`paper_data/`** in this folder: `account.json` (the account: cash, orders,
-fills, positions, settings) and any backups. The folder is listed in `.gitignore`, so it is
-not uploaded if you put this program in a git repository.
+The installed program keeps everything in **`%APPDATA%\Paper Trading`** (paste that into
+File Explorer's address bar, or press **Open folder** in the program): `account.json` (the
+account: cash, orders, fills, positions, settings), any backups, and `paper_trading.log` (what
+the program reports, for troubleshooting). Run from these files, it uses **`paper_data/`** in
+this folder instead; that folder is listed in `.gitignore`, so it is not uploaded if you put
+this program in a git repository.
 
 To keep the account somewhere else, set the Windows user environment variable
 `QT_PAPER_HOME` to a folder, or start it with `--home <folder>` (a full path such as
-`--home D:\practice`; a short name is taken inside this program's folder).
+`--home D:\practice`).
 
 ## Safety
 
 - No broker is connected and there is no broker code in this program. It cannot place a real
   order anywhere.
 - It reads no API keys or passwords.
-- The page is served only on this computer (127.0.0.1). Other computers on your network
-  can't open it, and other web sites can't send it orders.
+- The window talks to the program over this computer's own address (127.0.0.1) only. Other
+  computers on your network can't reach it, and web sites can't send it orders.
 - The only internet request is the price lookup described above.
 
 ## How realistic is it?
@@ -163,19 +177,20 @@ Treat the results as practice, not as proof of what you would have made:
 ## Command line
 
 ```
-python start.py                               # same as the .bat
-python start.py --port 8778 --home <folder> --no-browser
+"Paper Trading.exe" [--home <folder>] [--port 8778] [--browser]
+python start.py     [--home <folder>] [--port 8778] [--browser]   # from these files
 ```
 
-`--port` picks another port, `--home` another account folder, and `--no-browser` doesn't open
-the browser (open http://127.0.0.1:8778/ yourself).
+`--home` uses another account folder, `--port` another local port, and `--browser` opens it in
+your web browser instead of its own window. `--headless` runs it with no window at all (for
+testing; open http://127.0.0.1:8778/ yourself).
 
 ## Troubleshooting
 
-- **A window flashes and vanishes**: Python is probably not installed or not on PATH. Install
-  it as in step 1, then double-click again.
-- **"Port 8778 is in use"**: Paper Trading is already open in another window. Use that one, or
-  close it first.
+- **Nothing opens, or it closes at once**: look in `paper_trading.log` in the account folder
+  for the reason. Run from these files, a black window that flashes and vanishes means Python
+  isn't installed or not on PATH.
+- **It opened in the browser, not its own window**: WebView2 is missing; see "Installing it".
 - **"No price for ..."**: Yahoo couldn't be reached (check the internet connection) or the
   symbol doesn't exist. Switch to demo prices with a New account if you want to practise
   offline.
@@ -183,19 +198,17 @@ the browser (open http://127.0.0.1:8778/ yourself).
   fills after the next open, or turn on Practice fills to try things now.
 - **My limit order hasn't filled**: the price hasn't reached your limit. Day orders expire at
   the close.
-- **The page doesn't open**: open your browser yourself and go to http://127.0.0.1:8778/
-  while the black window is open.
-- **Windows protected your PC**: click "More info", then "Run anyway". The .bat is a plain
-  text file you can open in Notepad.
+- **Windows protected your PC**: click "More info", then "Run anyway".
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `Paper Trading.bat` | Double-click to start (Windows) |
-| `start.py` | Checks Python and `tzdata`, then starts the program |
-| `paper_app.py` | Accounts, orders, fills, prices and the local web server |
-| `paper_page.html` | The page in your browser |
+| `window.py` | The program: starts the engine and shows the screen in its own window |
+| `paper_app.py` | Accounts, orders, fills, prices and the local server the window talks to |
+| `paper_page.html` | The screen inside the window |
+| `Paper Trading.bat`, `start.py` | Run it from these files with Python (Windows / any system) |
+| `packaging/` | Builds `Paper Trading.exe` and `Paper Trading Setup.exe` (done by GitHub Actions) |
 
 ## License
 

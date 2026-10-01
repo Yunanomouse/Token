@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Double-click entry point for Paper Trading: buy and sell by hand with
-pretend money.
+"""Run Paper Trading from these source files (the installed program,
+Paper Trading Setup.exe, needs none of this).
 
-Starts the Paper Trading page (http://127.0.0.1:8778/), opens it in your
-default browser, and keeps running until this window is closed.  PRETEND
-MONEY ONLY: no broker is connected, no keys are read, and the only thing
-sent over the internet is a stock symbol when you ask for a price.
-Needs only Python 3.10+ (and tzdata on Windows).  See README.md.
+Opens Paper Trading in its own window (window.py) and keeps running until
+the window is closed.  PRETEND MONEY ONLY: no broker is connected, no keys
+are read, and the only thing sent over the internet is a stock symbol when
+you ask for a price.  Needs Python 3.10+, tzdata on Windows, and pywebview
+for the window (without it the page opens in the browser).  See README.md.
 """
+import importlib.util
 import os
 import subprocess
 import sys
@@ -64,7 +65,14 @@ if need:
         ask("press Enter to close")
         sys.exit(1)
 
-from paper_app import main  # noqa: E402
+if importlib.util.find_spec("webview") is None:  # pywebview draws the program window
+    print("Paper Trading opens in its own window with the pywebview package (not installed).")
+    if ask("Install it now with pip? Otherwise it opens in your browser. [Y/n] ",
+           no_keyboard="n").strip().lower() in ("", "y", "yes"):
+        if subprocess.call([sys.executable, "-m", "pip", "install", "pywebview>=5,<7"]) != 0:
+            print("That didn't work; opening in the browser instead.")
+
+from window import main  # noqa: E402
 
 if __name__ == "__main__":
     code = main(sys.argv[1:])
