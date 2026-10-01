@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quantum Station</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0:#f4f4f2; --surface-1:#fcfcfb; --surface-2:#ececea; --border:#dcdbd6;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#686761;
+  --series-1:#2a78d6; --series-2:#eb6834; --series-3:#7a5bd0; --series-8:#e34948;
+  --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
+  --good-text:#0a7a0a; --critical-text:#b52e2e; --warn-bg:#fff4d6; --warn-border:#e0a000;
+  --banner-bg:#fab219; --banner-text:#1a1200;
+  --grid:#e6e5e1; --focus:#1f5fbf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0:#121211; --surface-1:#1a1a19; --surface-2:#242422; --border:#33332f;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#9c9b93;
+    --series-1:#3987e5; --series-2:#d95926; --series-3:#a08ae8; --series-8:#e66767; --grid:#2a2a27;
+    --good-text:#55c955; --critical-text:#f07a7a; --warn-bg:#2e2508; --warn-border:#b88400;
+    --banner-bg:#fab219; --banner-text:#1a1200; --focus:#8ab8ff;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0:#121211; --surface-1:#1a1a19; --surface-2:#242422; --border:#33332f;
+  --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#9c9b93;
+  --series-1:#3987e5; --series-2:#d95926; --series-3:#a08ae8; --series-8:#e66767; --grid:#2a2a27;
+  --good-text:#55c955; --critical-text:#f07a7a; --warn-bg:#2e2508; --warn-border:#b88400;
+  --banner-bg:#fab219; --banner-text:#1a1200; --focus:#8ab8ff;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin:0; background:var(--surface-0); color:var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow-x:hidden; }
+:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.skip { position:absolute; left:-9999px; top:0; }
+.skip:focus { left:8px; top:8px; z-index:10; background:var(--surface-1); padding:6px 10px; border-radius:6px; }
+
+.top { position:sticky; top:0; z-index:5; }
+.banner { background:var(--banner-bg); color:var(--banner-text); text-align:center; font-weight:700;
+  letter-spacing:.04em; padding:7px 16px; font-size:14px; }
+.banner small { font-weight:500; letter-spacing:0; }
+header { display:flex; align-items:center; gap:10px 18px; padding:10px 16px; background:var(--surface-1);
+  border-bottom:1px solid var(--border); flex-wrap:wrap; }
+header h1 { font-size:18px; margin:0; font-weight:600; white-space:nowrap; }
+.hgroup { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:13px; min-width:0; }
+.hgroup .k { color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+.path { font:12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--text-secondary);
+  overflow-wrap:anywhere; max-width:46ch; }
+.spacer { flex:1; }
+.badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; letter-spacing:.03em;
+  border:1px solid var(--border); color:var(--text-secondary); white-space:nowrap; }
+.badge.good { border-color:var(--good); color:var(--good-text); }
+.badge.bad { border-color:var(--critical); color:var(--critical-text); }
+.badge.warn { border-color:var(--warn-border); color:var(--text-primary); background:var(--warn-bg); }
+.badge.run { border-color:var(--series-1); color:var(--text-primary); }
+
+.callout { border:1px solid var(--warn-border); background:var(--warn-bg); border-radius:8px; padding:9px 12px; margin:0 0 12px; }
+.callout.bad { border-color:var(--critical); background:transparent; }
+.callout b { font-weight:700; }
+
+nav.tabs { display:flex; gap:4px; padding:10px 16px 0; max-width:1500px; margin:0 auto; overflow-x:auto; }
+nav.tabs button { border:1px solid transparent; border-bottom:none; background:transparent; border-radius:8px 8px 0 0;
+  padding:9px 14px; font-weight:600; color:var(--text-secondary); white-space:nowrap; }
+nav.tabs button[aria-selected="true"] { background:var(--surface-1); border-color:var(--border); color:var(--text-primary); }
+.tabline { border-bottom:1px solid var(--border); max-width:1500px; margin:0 auto; }
+main { padding:16px; max-width:1500px; margin:0 auto; }
+[role="tabpanel"][hidden] { display:none; }
+
+.card { background:var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:14px 16px; min-width:0; }
+.card h2 { font-size:13px; font-weight:600; color:var(--text-secondary); margin:0 0 10px; text-transform:uppercase; letter-spacing:.06em; }
+.card h3 { font-size:13px; font-weight:600; color:var(--text-secondary); margin:14px 0 6px; }
+section.bot > h2.big, .panel-title { font-size:17px; font-weight:600; margin:0 0 12px; text-transform:none; letter-spacing:0; color:var(--text-primary); }
+.stack { display:grid; gap:16px; }
+.grid3 { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media (max-width: 1000px) { .two { grid-template-columns:1fr; } }
+.tiles { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:10px; }
+.tile { background:var(--surface-0); border:1px solid var(--border); border-radius:8px; padding:9px 12px; min-width:0; }
+.tile .label { font-size:12px; color:var(--text-secondary); }
+.tile .value { font-size:20px; font-weight:600; margin-top:1px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.tile .sub { font-size:12px; color:var(--text-muted); margin-top:1px; overflow-wrap:anywhere; }
+.tile.big { grid-column: span 2; }
+.big .value { font-size:26px; }
+.pos { color:var(--good-text); } .neg { color:var(--critical-text); }
+.muted { color:var(--text-muted); }
+.note { color:var(--text-muted); font-size:12px; margin-top:8px; }
+.statusline { font-size:13px; color:var(--text-secondary); margin-top:10px; padding-top:8px; border-top:1px solid var(--grid); overflow-wrap:anywhere; }
+.chart { position:relative; height:240px; margin-top:6px; }
+.chart.small { height:170px; }
+.chart canvas { width:100%; height:100%; display:block; }
+.tip { position:absolute; pointer-events:none; background:var(--surface-1); border:1px solid var(--border);
+  border-radius:6px; padding:6px 9px; font-size:12px; display:none; box-shadow:0 2px 8px rgba(0,0,0,.12); white-space:nowrap; z-index:1; }
+.legend { display:flex; gap:14px; font-size:12px; color:var(--text-secondary); flex-wrap:wrap; }
+.legend i { display:inline-block; width:14px; height:3px; border-radius:2px; vertical-align:middle; margin-right:5px; }
+.tablewrap { overflow-x:auto; max-width:100%; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--grid); vertical-align:top; }
+th { color:var(--text-secondary); font-weight:600; font-size:12px; white-space:nowrap; }
+td.num, th.num { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+td.empty { color:var(--text-muted); }
+tr.clickable { cursor:pointer; }
+tr.clickable:hover td, tr.selected td { background:var(--surface-2); }
+button { padding:8px 13px; border-radius:7px; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-primary); font:inherit; font-weight:600; cursor:pointer; }
+button.primary { background:var(--series-1); border-color:var(--series-1); color:#fff; }
+button.danger { border-color:var(--critical); color:var(--critical-text); background:transparent; }
+button.small { padding:4px 10px; font-size:12px; }
+button.link { background:none; border:none; padding:0; color:var(--series-1); text-decoration:underline; font-weight:600; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+.buttons { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+select { padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface-0); color:var(--text-primary); font:inherit; }
+label.inline { font-size:12px; color:var(--text-secondary); display:inline-flex; gap:6px; align-items:center; }
+pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space:pre-wrap; overflow-wrap:anywhere;
+  color:var(--text-secondary); max-height:420px; overflow:auto; background:var(--surface-0); border:1px solid var(--grid); border-radius:6px; padding:8px; }
+pre.short { max-height:220px; }
+.verdict { font-weight:600; font-size:14px; margin:4px 0 8px; }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:3px 14px; font-size:13px; }
+.kv dt { color:var(--text-secondary); } .kv dd { margin:0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.chips { display:flex; gap:6px; flex-wrap:wrap; }
+.chip { border:1px solid var(--border); border-radius:6px; padding:2px 8px; font-size:12px; font-weight:600; }
+.jobgrid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+.job { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--surface-0); display:flex; flex-direction:column; gap:6px; }
+.job .t { font-weight:600; }
+.job .a { font-size:12px; color:var(--text-secondary); }
+.job .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:auto; }
+.toast { position:fixed; right:16px; bottom:16px; max-width:min(420px, calc(100vw - 32px)); background:var(--surface-1);
+  border:1px solid var(--border); border-radius:8px; padding:10px 14px; box-shadow:0 4px 16px rgba(0,0,0,.18); z-index:20; display:none; }
+.toast.bad { border-color:var(--critical); }
+.cardhead { display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.cardhead h2 { margin:0; }
+@media (max-width: 600px) {
+  header { padding:8px 12px; gap:8px 12px; }
+  main { padding:12px; }
+  nav.tabs { padding:8px 12px 0; }
+  .tile .value { font-size:18px; }
+  .big .value { font-size:22px; }
+  .chart { height:200px; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="top">
+  <div class="banner" role="note" aria-label="Paper trading only">PAPER TRADING — nothing is sent to any broker <small>· every job runs with the broker settings removed and <code>--broker paper</code></small></div>
+  <header>
+    <h1>Quantum Station</h1>
+    <span id="conn" class="badge" role="status">connecting…</span>
+    <div class="hgroup" aria-label="Scheduler">
+      <span class="k">Scheduler</span>
+      <span id="schedBadge" class="badge">–</span>
+      <button id="btnPause" class="small" type="button" aria-pressed="false" disabled>Pause</button>
+    </div>
+    <div class="hgroup" aria-label="Market">
+      <span class="k">Market</span>
+      <span id="mktBadge" class="badge">–</span>
+      <span id="mktText"></span>
+    </div>
+    <div class="hgroup" aria-label="Next scheduled runs">
+      <span class="k">Next</span>
+      <span id="nextText">–</span>
+    </div>
+    <span class="spacer"></span>
+    <div class="hgroup" aria-label="New York time">
+      <span class="k">New York</span>
+      <span id="clock" style="font-variant-numeric:tabular-nums">–</span>
+    </div>
+  </header>
+</div>
+
+<nav class="tabs" role="tablist" aria-label="Sections" id="tablist">
+  <button role="tab" type="button" id="tab-overview" aria-controls="panel-overview" data-tab="overview">Overview</button>
+  <button role="tab" type="button" id="tab-daily" aria-controls="panel-daily" data-tab="daily">Daily bots</button>
+  <button role="tab" type="button" id="tab-intraday" aria-controls="panel-intraday" data-tab="intraday">Intraday</button>
+  <button role="tab" type="button" id="tab-tools" aria-controls="panel-tools" data-tab="tools">Tools</button>
+  <button role="tab" type="button" id="tab-jobs" aria-controls="panel-jobs" data-tab="jobs">Jobs &amp; logs</button>
+</nav>
+<div class="tabline"></div>
+
+<main id="main">
+  <div id="calWarn" class="callout" hidden role="alert"></div>
+  <div id="loadErr" class="callout bad" hidden role="alert"></div>
+
+  <!-- Overview -->
+  <section role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" class="stack">
+    <div class="grid3" id="ovCards"></div>
+    <div class="two">
+      <div class="card">
+        <h2>Station</h2>
+        <dl class="kv">
+          <dt>Data folder</dt><dd><span class="path" id="homePath">–</span></dd>
+          <dt>Last completed session</dt><dd id="lastSession">–</dd>
+          <dt>Daily bots done through</dt><dd id="dailyDone">–</dd>
+          <dt>Intraday archived through</dt><dd id="archived">–</dd>
+          <dt>Retries waiting</dt><dd id="retries">–</dd>
+        </dl>
+        <div class="buttons"><button id="btnFolder" type="button">Open folder</button></div>
+      </div>
+      <div class="card">
+        <h2>Run now</h2>
+        <div class="jobgrid" id="ovJobs"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Daily bots -->
+  <section role="tabpanel" id="panel-daily" aria-labelledby="tab-daily" class="stack" hidden>
+    <div id="dailyBots" class="stack"></div>
+  </section>
+
+  <!-- Intraday -->
+  <section role="tabpanel" id="panel-intraday" aria-labelledby="tab-intraday" class="stack" hidden>
+    <div class="card">
+      <div class="cardhead"><h2 id="idTitle">$50 intraday bot — today</h2><span id="idBadges"></span></div>
+      <div id="idEmpty" class="note" hidden></div>
+      <div class="tiles" id="idTiles" style="margin-top:10px"></div>
+      <div class="statusline" id="idStatusLine"></div>
+    </div>
+    <div class="two">
+      <div class="card">
+        <div class="cardhead"><h2>Screened stocks: price and KAMA</h2>
+          <label class="inline">Stock <select id="idChartSel" aria-label="Stock to chart"></select></label></div>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>close</span><span><i style="background:var(--series-2)"></i>KAMA</span></div>
+        <div class="chart"><canvas id="idChart" role="img" aria-label="Price and KAMA of the selected stock today"></canvas><div class="tip"></div></div>
+      </div>
+      <div class="card">
+        <h2>Screened stocks, open position and pending buys</h2>
+        <h3>Screen</h3><div class="chips" id="idScreen"></div>
+        <h3>Open positions</h3>
+        <div class="tablewrap" id="idPositions"></div>
+        <h3>Pending buys</h3><div class="chips" id="idPending"></div>
+        <div class="note" id="idFailed"></div>
+      </div>
+    </div>
+    <div class="card"><h2>Today's trades</h2><div class="tablewrap" id="idTrades"></div></div>
+    <div class="two">
+      <div class="card">
+        <h2>Past days</h2>
+        <div class="tablewrap" id="idHistory"></div>
+      </div>
+      <div class="card">
+        <h2>Cumulative return</h2>
+        <div class="chart small"><canvas id="idCumChart" role="img" aria-label="Cumulative return of the intraday bot over archived days"></canvas><div class="tip"></div></div>
+        <div class="note">Each archived day starts from the configured cash again; the line compounds the daily returns.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tools -->
+  <section role="tabpanel" id="panel-tools" aria-labelledby="tab-tools" class="stack" hidden>
+    <div class="card">
+      <h2>Downloaded intraday bars</h2>
+      <div id="barsInfo">–</div>
+      <div class="jobgrid" id="toolJobs" style="margin-top:10px"></div>
+    </div>
+    <div id="toolResults" class="stack"></div>
+  </section>
+
+  <!-- Jobs -->
+  <section role="tabpanel" id="panel-jobs" aria-labelledby="tab-jobs" class="stack" hidden>
+    <div class="card"><h2>Jobs</h2><div class="jobgrid" id="allJobs"></div></div>
+    <div class="card"><h2>Running now</h2><div id="runningList"></div></div>
+    <div class="card">
+      <h2>History</h2>
+      <div class="note" style="margin:0 0 6px">Runs since the station started, newest first. Select a run to see its output.</div>
+      <div class="tablewrap" id="historyTable"></div>
+    </div>
+    <div class="card">
+      <div class="cardhead"><h2 id="logTitle">Output</h2><span class="buttons" style="margin:0" id="logButtons"></span></div>
+      <pre id="logOut" tabindex="0" aria-label="Job output">Select a run above, or a job's "Last output" button.</pre>
+    </div>
+    <div class="card"><h2>Messages</h2><pre id="messages" class="short" tabindex="0" aria-label="Station messages"></pre></div>
+  </section>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const NY = 'America/New_York';
+  const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const nf0 = new Intl.NumberFormat('en-US', {maximumFractionDigits: 0});
+  const fin = v => typeof v === 'number' && isFinite(v);
+  const money = v => !fin(v) ? '–' : (v < 0 ? '−$' : '$') + nf2.format(Math.abs(v));
+  const smoney = v => !fin(v) ? '–' : (v > 0 ? '+$' : v < 0 ? '−$' : '$') + nf2.format(Math.abs(v));
+  const spct = (v, d) => !fin(v) ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + (Math.abs(v) * 100).toFixed(d == null ? 2 : d) + '%';
+  const pct = (v, d) => !fin(v) ? '–' : (v * 100).toFixed(d == null ? 0 : d) + '%';
+  const num = (v, d) => !fin(v) ? '–' : v.toFixed(d == null ? 2 : d);
+  const shares = v => !fin(v) ? '–' : Math.abs(v - Math.round(v)) < 1e-9 ? nf0.format(v) : v.toFixed(4);
+  const signCls = v => fin(v) ? (v > 0 ? 'pos' : v < 0 ? 'neg' : '') : '';
+  const dtf = new Intl.DateTimeFormat('en-US', {timeZone: NY, weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false});
+  const tf = new Intl.DateTimeFormat('en-US', {timeZone: NY, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
+  const clockf = new Intl.DateTimeFormat('en-US', {timeZone: NY, weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
+  const when = iso => { const t = Date.parse(iso || ''); return isNaN(t) ? (iso || '–') : dtf.format(t); };
+  const clockTime = iso => { const t = Date.parse(iso || ''); return isNaN(t) ? (iso || '–') : tf.format(t); };
+  const dur = s => !fin(s) ? '–' : s < 60 ? s.toFixed(0) + 's' : s < 3600 ? Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's' : Math.floor(s / 3600) + 'h ' + Math.round((s % 3600) / 60) + 'm';
+  const runSeconds = r => { const a = Date.parse(r.started), b = r.finished ? Date.parse(r.finished) : Date.now(); return isNaN(a) || isNaN(b) ? null : Math.max(0, (b - a) / 1000); };
+  const hhmm = s => { s = String(s || ''); return s.length >= 16 ? s.slice(11, 16) : s; };
+
+  // ---- DOM helpers: data only ever goes in as text ---------------------
+  function h(tag, props, ...kids) {
+    const el = document.createElement(tag);
+    if (props) for (const [k, v] of Object.entries(props)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? '' : String(v));
+    }
+    for (const c of kids.flat()) {
+      if (c == null || c === false) continue;
+      el.appendChild(typeof c === 'object' ? c : document.createTextNode(String(c)));
+    }
+    return el;
+  }
+  const clear = el => { while (el.firstChild) el.removeChild(el.firstChild); return el; };
+  const fill = (el, ...kids) => { clear(el); kids.flat().forEach(k => k != null && el.appendChild(typeof k === 'object' ? k : document.createTextNode(String(k)))); return el; };
+  function tile(label, value, sub, cls) {
+    return h('div', {class: 'tile'}, h('div', {class: 'label', text: label}),
+      h('div', {class: 'value ' + (cls || ''), text: value}), sub ? h('div', {class: 'sub', text: sub}) : null);
+  }
+  // headers: [label | {t, num}]; rows: [[cell]] where cell = text | {t, num, cls, title}
+  function table(headers, rows, empty, caption) {
+    const head = h('tr', null, headers.map(x => typeof x === 'object' ? h('th', {class: x.num ? 'num' : null, scope: 'col', text: x.t}) : h('th', {scope: 'col', text: x})));
+    const body = h('tbody');
+    if (!rows.length) body.appendChild(h('tr', null, h('td', {class: 'empty', colspan: headers.length, text: empty || 'none'})));
+    rows.forEach(r => {
+      const tr = r.tr || h('tr');
+      (r.cells || r).forEach(c => {
+        const o = c != null && typeof c === 'object' ? c : {t: c};
+        tr.appendChild(h('td', {class: [o.num ? 'num' : '', o.cls || ''].join(' ').trim() || null, title: o.title, text: o.t == null ? '–' : o.t}));
+      });
+      body.appendChild(tr);
+    });
+    return h('table', null, caption ? h('caption', {class: 'sr-only', text: caption}) : null, h('thead', null, head), body);
+  }
+  // Re-render a part only when its data changed, so focus and scroll stay put.
+  const memo = new Map();
+  function changed(key, data) {
+    const s = JSON.stringify(data === undefined ? null : data);
+    if (memo.get(key) === s) return false;
+    memo.set(key, s); return true;
+  }
+
+  // ---- JSON from the server (Python writes NaN / Infinity) -------------
+  function parseJSON(text) {
+    try { return JSON.parse(text); } catch (e) {
+      return JSON.parse(text.replace(/"(?:[^"\\]|\\.)*"|-?\bInfinity\b|\bNaN\b/g, m => m[0] === '"' ? m : 'null'));
+    }
+  }
+  async function getJSON(path) {
+    const r = await fetch(path, {cache: 'no-store'});
+    const t = await r.text();
+    const d = parseJSON(t);
+    if (!r.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    return d;
+  }
+  async function post(path, body) {
+    try {
+      const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+      const d = parseJSON(await r.text());
+      if (!r.ok && d && d.ok === undefined) d.ok = false;
+      return d || {ok: false, error: 'empty reply'};
+    } catch (e) { return {ok: false, error: 'could not reach the station: ' + e.message}; }
+  }
+  let toastTimer = null;
+  function toast(msg, bad) {
+    const t = $('toast'); t.textContent = msg; t.className = 'toast' + (bad ? ' bad' : ''); t.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, bad ? 8000 : 3500);
+  }
+
+  // ---- charts ----------------------------------------------------------
+  const charts = new Map(); // canvas -> spec
+  function chart(canvas, spec) { charts.set(canvas, spec); drawChart(canvas); }
+  function drawChart(canvas) {
+    const spec = charts.get(canvas); if (!spec) return;
+    const w = canvas.clientWidth, hgt = canvas.clientHeight;
+    if (!w || !hgt) return; // hidden tab: drawn when shown
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(hgt * dpr);
+    const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, hgt);
+    const xs = spec.labels || [];
+    const series = (spec.series || []).filter(s => s.values && s.values.some(fin));
+    const padL = spec.padL || 64, padR = 12, padT = 10, padB = 22;
+    spec.geom = null;
+    if (!series.length) {
+      ctx.fillStyle = css('--text-muted'); ctx.font = '12px system-ui'; ctx.fillText(spec.empty || 'no data yet', 12, hgt / 2); return;
+    }
+    const all = series.flatMap(s => s.values.filter(fin));
+    if (spec.baseline != null) all.push(spec.baseline);
+    let lo = Math.min(...all), hi = Math.max(...all);
+    if (hi === lo) { const pad = Math.abs(hi) * 0.01 || 1; hi += pad; lo -= pad; }
+    const span = hi - lo; hi += span * 0.05; lo -= span * 0.05;
+    const n = Math.max(...series.map(s => s.values.length));
+    const X = i => padL + (i / Math.max(n - 1, 1)) * (w - padL - padR);
+    const Y = v => padT + (1 - (v - lo) / (hi - lo)) * (hgt - padT - padB);
+    ctx.strokeStyle = css('--grid'); ctx.lineWidth = 1; ctx.fillStyle = css('--text-secondary'); ctx.font = '11px system-ui';
+    for (let k = 0; k <= 4; k++) {
+      const v = lo + (hi - lo) * k / 4, y = Math.round(Y(v)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.fillText(spec.axis(v, hi - lo), padL - 6, y + 4);
+    }
+    if (spec.baseline != null) {
+      ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = css('--text-muted');
+      const y = Math.round(Y(spec.baseline)) + 0.5; ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke(); ctx.restore();
+    }
+    ctx.textAlign = 'left';
+    if (xs.length) { ctx.fillText(String(xs[0]), padL, hgt - 6); ctx.textAlign = 'right'; ctx.fillText(String(xs[xs.length - 1]), w - padR, hgt - 6); }
+    series.forEach((s, si) => {
+      const color = css(s.color);
+      if (si === 0 && spec.fill) {
+        ctx.beginPath(); let started = false, first = 0, lastI = 0;
+        s.values.forEach((v, i) => { if (!fin(v)) return; if (!started) { ctx.moveTo(X(i), Y(lo)); first = i; started = true; } ctx.lineTo(X(i), Y(v)); lastI = i; });
+        ctx.lineTo(X(lastI), Y(lo)); ctx.lineTo(X(first), Y(lo)); ctx.closePath();
+        ctx.globalAlpha = 0.12; ctx.fillStyle = color; ctx.fill(); ctx.globalAlpha = 1;
+      }
+      ctx.beginPath(); let pen = false;
+      s.values.forEach((v, i) => { if (!fin(v)) { pen = false; return; } if (pen) ctx.lineTo(X(i), Y(v)); else { ctx.moveTo(X(i), Y(v)); pen = true; } });
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+      if (n === 1) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(X(0), Y(s.values[0]), 3, 0, 7); ctx.fill(); }
+    });
+    spec.geom = {padL, padR, w, n, X, Y};
+  }
+  function attachTip(canvas) {
+    const tip = canvas.parentElement.querySelector('.tip');
+    canvas.addEventListener('pointermove', e => {
+      const spec = charts.get(canvas); if (!spec || !spec.geom) return;
+      const g = spec.geom, rect = canvas.getBoundingClientRect(), x = e.clientX - rect.left;
+      const i = Math.max(0, Math.min(g.n - 1, Math.round((x - g.padL) / (g.w - g.padL - g.padR) * (g.n - 1))));
+      clear(tip);
+      tip.appendChild(h('div', {class: 'muted', text: String((spec.labels || [])[i] ?? '')}));
+      spec.series.forEach(s => { if (s.values && fin(s.values[i])) tip.appendChild(h('div', null, h('b', {text: (spec.tipFmt || spec.fmt)(s.values[i])}), ' ' + (s.name || ''))); });
+      tip.style.display = 'block';
+      tip.style.left = Math.max(0, Math.min(x + 12, g.w - tip.offsetWidth - 4)) + 'px'; tip.style.top = '6px';
+    });
+    canvas.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+  }
+  const axisMoney = (v, span) => span < 20 ? '$' + v.toFixed(2) : '$' + nf0.format(v);
+  const axisPct = (v, span) => (v * 100).toFixed(span < 0.05 ? 1 : 0) + '%';
+  function redrawVisible() { charts.forEach((_, c) => drawChart(c)); }
+  window.addEventListener('resize', () => { clearTimeout(redrawVisible.t); redrawVisible.t = setTimeout(redrawVisible, 120); });
+  if (window.matchMedia) { const mq = window.matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', redrawVisible) : mq.addListener(redrawVisible)); }
+
+  // ---- tabs ------------------------------------------------------------
+  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+  function showTab(name, focus) {
+    if (!tabs.some(t => t.dataset.tab === name)) name = 'overview';
+    tabs.forEach(t => {
+      const on = t.dataset.tab === name;
+      t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1;
+      $(t.getAttribute('aria-controls')).hidden = !on;
+      if (on && focus) t.focus();
+    });
+    try { history.replaceState(null, '', '#' + name); } catch (e) { /* file:// or sandbox */ }
+    try { localStorage.setItem('qs-tab', name); } catch (e) { /* storage blocked */ }
+    redrawVisible();
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => showTab(t.dataset.tab));
+    t.addEventListener('keydown', e => {
+      let j = null;
+      if (e.key === 'ArrowRight') j = (i + 1) % tabs.length; else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') j = 0; else if (e.key === 'End') j = tabs.length - 1;
+      if (j != null) { e.preventDefault(); showTab(tabs[j].dataset.tab, true); }
+    });
+  });
+  let firstTab = (location.hash || '').slice(1);
+  if (!firstTab) { try { firstTab = localStorage.getItem('qs-tab') || ''; } catch (e) { firstTab = ''; } }
+  showTab(firstTab || 'overview');
+
+  // ---- state -----------------------------------------------------------
+  let D = null;              // last overview
+  const starting = new Set(); // jobs clicked, not yet seen running
+  const jobButtons = [];     // {btn, job}
+  const jobBadges = [];      // {el, job}
+
+  function lastRun(job) { return D && (D.history || []).find(r => r.job === job) || null; }
+  function runOf(jobs) {
+    if (!D) return null;
+    for (const j of jobs) if (D.running && D.running[j]) return D.running[j];
+    return (D.history || []).find(r => jobs.includes(r.job)) || null;
+  }
+  function runText(r, title) {
+    if (!r) return null;
+    const name = title || (D.jobs[r.job] || {}).title || r.job;
+    if (r.ok == null) return {text: name + ': running for ' + dur(runSeconds(r)) + (r.steps && r.steps.length ? ' (' + r.steps.length + ' step' + (r.steps.length > 1 ? 's' : '') + ' done)' : ''), cls: ''};
+    const failed = (r.steps || []).filter(s => s.code !== 0).map(s => s.cmd);
+    if (r.ok) return {text: name + ': ok, finished ' + when(r.finished) + ' in ' + dur(runSeconds(r)), cls: 'pos'};
+    return {text: name + ': FAILED ' + when(r.finished) + (failed.length ? ' at ' + failed.join('; ') : '') + ' — see Jobs & logs', cls: 'neg'};
+  }
+  function badgeFor(job) {
+    const el = h('span', {class: 'badge', 'aria-live': 'polite'});
+    jobBadges.push({el, job}); paintBadge(el, job); return el;
+  }
+  function paintBadge(el, job) {
+    if (!D) { el.textContent = '–'; el.className = 'badge'; return; }
+    if (D.running && D.running[job]) { el.textContent = 'running ' + dur(runSeconds(D.running[job])); el.className = 'badge run'; return; }
+    if (starting.has(job)) { el.textContent = 'starting…'; el.className = 'badge run'; return; }
+    const r = lastRun(job);
+    if (!r) { el.textContent = 'not run yet'; el.className = 'badge'; el.title = 'no run since the station started'; return; }
+    el.textContent = (r.ok ? 'ok' : 'failed') + ' · ' + clockTime(r.finished) + ' · ' + dur(runSeconds(r));
+    el.className = 'badge ' + (r.ok ? 'good' : 'bad'); el.title = 'finished ' + when(r.finished);
+  }
+  function jobButton(job, label, cls) {
+    const btn = h('button', {type: 'button', class: cls || null, 'data-job': job, text: label});
+    btn.dataset.label = label;
+    btn.addEventListener('click', () => runJob(job));
+    jobButtons.push({btn, job}); paintButton(btn, job); return btn;
+  }
+  function paintButton(btn, job) {
+    const busy = !!(D && D.running && D.running[job]) || starting.has(job);
+    btn.disabled = busy || !D; btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    btn.textContent = busy ? 'Running…' : btn.dataset.label;
+  }
+  function paintJobs() {
+    jobButtons.forEach(x => { if (x.btn.isConnected) paintButton(x.btn, x.job); });
+    jobBadges.forEach(x => { if (x.el.isConnected) paintBadge(x.el, x.job); });
+  }
+  async function runJob(job) {
+    starting.add(job); paintJobs();
+    const r = await post('/api/run', {job});
+    if (!r.ok) { starting.delete(job); toast('Could not start ' + job + ': ' + (r.error || 'unknown error'), true); }
+    else toast('Started: ' + ((D && D.jobs[job] || {}).title || job));
+    paintJobs(); refresh();
+  }
+  function jobCard(job, extra) {
+    const j = (D && D.jobs[job]) || {title: job, about: ''};
+    const logBtn = h('button', {type: 'button', class: 'small', text: 'Last output', 'aria-label': 'Show the last output of ' + j.title, onclick: () => { showTab('jobs'); showLog(job, null); }});
+    return h('div', {class: 'job'},
+      h('div', {class: 't', text: j.title}),
+      h('div', {class: 'a', text: j.about + (j.scheduled ? ' · runs on a timer' : ' · on demand')}),
+      extra || null,
+      h('div', {class: 'row'}, jobButton(job, 'Run', 'primary'), badgeFor(job), logBtn));
+  }
+
+  // ---- header ----------------------------------------------------------
+  function renderHeader() {
+    const s = D.scheduler || {}, m = D.market || {};
+    const paused = !!s.paused;
+    $('schedBadge').textContent = paused ? 'PAUSED' : 'RUNNING';
+    $('schedBadge').className = 'badge ' + (paused ? 'warn' : 'good');
+    const bp = $('btnPause'); bp.disabled = false;
+    bp.textContent = paused ? 'Resume' : 'Pause';
+    bp.setAttribute('aria-pressed', paused ? 'true' : 'false');
+    bp.setAttribute('aria-label', paused ? 'Resume the scheduler' : 'Pause the scheduler');
+    $('mktBadge').textContent = m.open ? 'OPEN' : 'CLOSED';
+    $('mktBadge').className = 'badge ' + (m.open ? 'good' : '');
+    $('mktText').textContent = m.trading_day ? 'trading day · closes ' + (m.close || '–') + ' NY' : 'not a trading day';
+    const nx = D.next || {};
+    $('nextText').textContent = 'daily ' + (nx.daily ? when(nx.daily) : '–') + ' · intraday ' + (nx.intraday ? when(nx.intraday) : '–');
+    const cw = $('calWarn');
+    if (m.calendar_known === false) {
+      cw.hidden = false;
+      fill(cw, h('b', {text: 'Holiday calendar unknown for this year. '}), 'Every weekday is treated as a trading day; a holiday just finds no new bar. Update the holiday list in quantum/local.py.');
+    } else cw.hidden = true;
+    $('homePath').textContent = D.home || '–';
+    $('lastSession').textContent = m.last_completed_session || '–';
+    $('dailyDone').textContent = s.daily_done || 'not yet';
+    $('archived').textContent = s.archived || 'not yet';
+    const retry = Object.entries(s.retry || {});
+    $('retries').textContent = retry.length ? retry.map(([j, t]) => j + ' at ' + when(t)).join(', ') : 'none';
+  }
+  $('btnPause').addEventListener('click', async () => {
+    const paused = !(D && D.scheduler && D.scheduler.paused);
+    $('btnPause').disabled = true;
+    const r = await post('/api/pause', {paused});
+    if (!r.ok) toast('Could not change the scheduler: ' + (r.error || 'error'), true); else toast(paused ? 'Scheduler paused: no job starts on its own.' : 'Scheduler resumed.');
+    refresh();
+  });
+  $('btnFolder').addEventListener('click', async () => {
+    const r = await post('/api/open-folder', {});
+    toast(r.ok ? 'Opened the folder in the file manager.' : 'Could not open the folder: ' + (r.error || 'error'), !r.ok);
+  });
+
+  // ---- bot numbers ---------------------------------------------------------
+  function botStats(s) {
+    if (!s) return null;
+    const start = (s.config && fin(s.config.initial_cash)) ? s.config.initial_cash : (s.curve && s.curve[0]);
+    const curve = (s.curve || []).filter(fin);
+    let peak = -Infinity, maxdd = 0;
+    curve.forEach(v => { peak = Math.max(peak, v); if (peak > 0) maxdd = Math.max(maxdd, 1 - v / peak); });
+    const pk = Math.max(fin(s.peak_equity) ? s.peak_equity : 0, peak);
+    return {start, equity: s.equity, change: s.equity - start, ret: start ? s.equity / start - 1 : null,
+      ddNow: pk > 0 ? -(1 - s.equity / pk) : null, maxdd: -maxdd, peak: pk};
+  }
+  function intradayStats() {
+    const id = D.intraday || {}, st = id.status, hist = (id.history || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    let cum = 1, peak = 1, maxdd = 0; const cumCurve = [];
+    hist.forEach(x => { cum *= 1 + (fin(x.return) ? x.return : 0); peak = Math.max(peak, cum); maxdd = Math.max(maxdd, 1 - cum / peak); cumCurve.push(cum - 1); });
+    return {st, hist, cum: hist.length ? cum - 1 : null, ddNow: hist.length ? -(1 - cum / peak) : null, maxdd: -maxdd, cumCurve};
+  }
+
+  // ---- overview ----------------------------------------------------------
+  function renderOverview() {
+    const B = D.bots || {};
+    const id = intradayStats();
+    const key = {b: Object.fromEntries(Object.entries(B).map(([k, v]) => [k, v.snapshot ? [v.title, v.snapshot.equity, v.snapshot.last_date, v.snapshot.peak_equity, v.snapshot.halted, v.snapshot.updated_at] : v.title])),
+      i: id.st ? [id.st.equity, id.st.date, id.st.last_bar, id.st.session_open, id.st.updated_at] : null, ih: id.hist, run: runSig(['daily', 'intraday', 'intraday_close'])};
+    if (!changed('ov', key)) return;
+    const cards = [];
+    ['main', 'small'].forEach(k => {
+      const b = B[k]; if (!b) return;
+      const s = b.snapshot, st = botStats(s);
+      const c = h('div', {class: 'card'}, h('div', {class: 'cardhead'}, h('h2', {text: b.title}), s && s.halted ? h('span', {class: 'badge bad', text: 'HALTED'}) : null));
+      if (!s) c.appendChild(h('p', {class: 'muted', text: 'No data yet: press Run the daily bots.'}));
+      else c.appendChild(h('div', {class: 'tiles'},
+        h('div', {class: 'tile big'}, h('div', {class: 'label', text: 'Equity'}), h('div', {class: 'value', text: money(s.equity)}), h('div', {class: 'sub', text: 'started with ' + money(st.start)})),
+        tile('Change since start', smoney(st.change), spct(st.ret), signCls(st.change)),
+        tile('Drawdown', spct(st.ddNow), 'worst ' + spct(st.maxdd), st.ddNow < 0 ? 'neg' : ''),
+        tile('Last bar', s.last_date || '–', (s.live_bars || 0) + ' trading days live')));
+      const rt = runText(runOf(['daily']), 'Daily run');
+      c.appendChild(h('div', {class: 'statusline ' + (rt ? rt.cls : '')}, rt ? rt.text : 'Daily run: none since the station started' + (s ? ' · snapshot written ' + when(s.updated_at) : '')));
+      cards.push(c);
+    });
+    const st = id.st;
+    const cfgCash = (D.intraday && D.intraday.config && D.intraday.config.cash);
+    const c = h('div', {class: 'card'}, h('div', {class: 'cardhead'}, h('h2', {text: (fin(cfgCash) ? '$' + nf0.format(cfgCash) : '$50') + ' intraday bot'}), st ? h('span', {class: 'badge ' + (st.session_open ? 'good' : ''), text: st.session_open ? 'session open' : 'session closed'}) : null));
+    if (!st) c.appendChild(h('p', {class: 'muted', text: 'No data yet: press Run the intraday bot.'}));
+    else {
+      const chg = st.equity - st.start_cash;
+      c.appendChild(h('div', {class: 'tiles'},
+        h('div', {class: 'tile big'}, h('div', {class: 'label', text: 'Equity ' + (st.date || '')}), h('div', {class: 'value', text: money(st.equity)}), h('div', {class: 'sub', text: 'started the day with ' + money(st.start_cash)})),
+        tile('Change today', smoney(chg), spct(st.start_cash ? st.equity / st.start_cash - 1 : null), signCls(chg)),
+        tile('Since first archived day', spct(id.cum), id.hist.length + ' day' + (id.hist.length === 1 ? '' : 's') + ' archived', signCls(id.cum)),
+        tile('Drawdown', spct(id.ddNow), id.hist.length ? 'worst ' + spct(id.maxdd) : 'over archived days', id.ddNow < 0 ? 'neg' : ''),
+        tile('Last bar', hhmm(st.last_bar) || '–', (st.trades || []).length + ' trades today')));
+    }
+    const rt = runText(runOf(['intraday', 'intraday_close']));
+    c.appendChild(h('div', {class: 'statusline ' + (rt ? rt.cls : '')}, rt ? rt.text : 'Intraday run: none since the station started' + (st ? ' · status written ' + when(st.updated_at) : '')));
+    cards.push(c);
+    fill($('ovCards'), cards);
+  }
+  function runSig(jobs) { const r = runOf(jobs); return r ? [r.job, r.started, r.finished, r.ok, (r.steps || []).length, r.ok == null ? Math.floor(runSeconds(r) / 3) : 0] : null; }
+
+  // ---- daily bots ------------------------------------------------------
+  const botRefs = {};
+  function buildBot(k) {
+    const R = botRefs[k] = {};
+    R.title = h('h2', {class: 'panel-title'});
+    R.halt = h('div', {class: 'callout bad', role: 'alert', hidden: true});
+    R.empty = h('p', {class: 'muted', hidden: true, text: 'No data yet: press Run the daily bots.'});
+    R.tiles = h('div', {class: 'tiles'});
+    R.canvas = h('canvas', {role: 'img'});
+    R.chartCard = h('div', {class: 'card'}, h('h2', {text: 'Equity since the first tradable day'}), h('div', {class: 'chart'}, R.canvas, h('div', {class: 'tip'})));
+    attachTip(R.canvas);
+    R.positions = h('div', {class: 'tablewrap'}); R.cash = h('div', {class: 'note'});
+    R.fills = h('div', {class: 'tablewrap'});
+    R.evalBox = h('div');
+    R.orders = h('div');
+    R.status = h('div', {class: 'statusline'});
+    const reset = h('button', {type: 'button', class: 'danger', text: 'Reset this bot…'});
+    reset.addEventListener('click', () => resetBot(k));
+    R.reset = reset;
+    const sec = h('section', {class: 'bot stack', 'aria-label': k},
+      h('div', {class: 'card'}, h('div', {class: 'cardhead'}, R.title, h('span', {class: 'buttons', style: 'margin:0'}, jobButton('daily', 'Run the daily bots'), reset)),
+        R.halt, R.empty, R.tiles, R.status),
+      R.chartCard,
+      k === 'small' ? h('div', {class: 'card'}, h('h2', {text: "Today's orders to place by hand"}), R.orders) : null,
+      h('div', {class: 'two'},
+        h('div', {class: 'card'}, h('h2', {text: 'Positions'}), R.positions, R.cash),
+        h('div', {class: 'card'}, h('h2', {text: 'Evaluation'}), R.evalBox)),
+      h('div', {class: 'card'}, h('h2', {text: 'Recent fills'}), R.fills));
+    $('dailyBots').appendChild(sec);
+  }
+  async function resetBot(k) {
+    const b = D && D.bots && D.bots[k];
+    const title = b ? b.title : k;
+    if (!confirm('Reset the ' + title + '?\n\nIts state, snapshot and orders are moved aside (renamed to .bak, not deleted). The next daily run rebuilds the paper book from the start.')) return;
+    const r = await post('/api/reset', {bot: k});
+    toast(r.ok ? title + ' reset (' + ((r.moved || []).join(', ') || 'nothing to move') + '). Run the daily bots to rebuild it.' : 'Reset refused: ' + (r.error || 'error'), !r.ok);
+    memo.clear(); refresh();
+  }
+  function renderDaily() {
+    ['main', 'small'].forEach(k => {
+      const b = (D.bots || {})[k]; if (!b) return;
+      if (!botRefs[k]) buildBot(k);
+      const R = botRefs[k], s = b.snapshot;
+      R.reset.disabled = !!(D.running && D.running.daily);
+      R.reset.title = R.reset.disabled ? 'wait for the daily run to finish' : '';
+      const rt = runText(runOf(['daily']), 'Daily run');
+      R.status.textContent = rt ? rt.text : 'Daily run: none since the station started' + (s ? ' · snapshot written ' + when(s.updated_at) : '');
+      R.status.className = 'statusline ' + (rt ? rt.cls : '');
+      if (!changed('bot-' + k, [b.title, s, b.orders])) return;
+      R.title.textContent = b.title;
+      R.empty.hidden = !!s; R.chartCard.hidden = !s;
+      if (!s) {
+        clear(R.tiles); R.halt.hidden = true; clear(R.positions); clear(R.cash); clear(R.fills); clear(R.orders);
+        fill(R.evalBox, h('p', {class: 'muted', text: 'No data yet: press Run the daily bots.'}));
+        if (k === 'small') fill(R.orders, h('p', {class: 'muted', text: 'No orders yet: press Run the daily bots.'}));
+        charts.delete(R.canvas); return;
+      }
+      const st = botStats(s), pnl = s.pnl || {};
+      R.halt.hidden = !s.halted;
+      if (s.halted) fill(R.halt, h('b', {text: 'Kill switch tripped: the bot is in cash and not trading. '}), s.halt_reason || '');
+      fill(R.tiles,
+        h('div', {class: 'tile big'}, h('div', {class: 'label', text: 'Equity'}), h('div', {class: 'value', text: money(s.equity)}), h('div', {class: 'sub', text: 'cash ' + money(s.cash)})),
+        tile('Change since start', smoney(st.change), spct(st.ret) + ' from ' + money(st.start), signCls(st.change)),
+        tile('Drawdown now', spct(st.ddNow), 'worst ' + spct(st.maxdd) + ' · kill at ' + spct(-(((s.config || {}).limits || {}).max_drawdown)), st.ddNow < 0 ? 'neg' : ''),
+        tile('Gains / losses', smoney(pnl.total_pnl), 'realized ' + smoney(pnl.realized_pnl) + ' · open ' + smoney(pnl.unrealized_pnl), signCls(pnl.total_pnl)),
+        tile('Last bar', s.last_date || '–', (s.live_bars || 0) + ' days live · ' + (s.bars_seen || 0) + ' bars seen'),
+        tile('Trades', String(s.n_fills || 0), 'fees ' + money(s.fees) + (s.adjusted ? ' · split/dividend adjusted' : '')),
+        tile('Status', s.halted ? 'HALTED' : 'trading', (s.mode || 'paper') + ' · ' + ((s.config || {}).strategy || ''), s.halted ? 'neg' : ''));
+      R.canvas.setAttribute('aria-label', b.title + ' equity from ' + money((s.curve || [])[0]) + ' to ' + money(s.equity) + ' between ' + ((s.curve_dates || [])[0] || '') + ' and ' + (s.last_date || ''));
+      chart(R.canvas, {labels: s.curve_dates || [], series: [{values: s.curve || [], color: '--series-1', name: 'equity'}], fill: true,
+        baseline: st.start, axis: axisMoney, fmt: money});
+      // positions
+      const pp = pnl.positions || {}, lp = s.last_prices || {};
+      const names = Object.keys(s.positions || {}).sort((a, b2) => ((pp[b2] || {}).market_value || 0) - ((pp[a] || {}).market_value || 0));
+      fill(R.positions, table(['Ticker', {t: 'Shares', num: 1}, {t: 'Price', num: 1}, {t: 'Value', num: 1}, {t: 'Avg cost', num: 1}, {t: 'Open gain', num: 1}, {t: 'Weight', num: 1}, 'Since'],
+        names.map(t => {
+          const p = pp[t] || {}; const q = s.positions[t]; const px = fin(p.price) ? p.price : lp[t]; const val = fin(p.market_value) ? p.market_value : q * px;
+          return [t, {t: shares(q), num: 1}, {t: money(px), num: 1}, {t: money(val), num: 1}, {t: money(p.avg_cost), num: 1},
+            {t: fin(p.unrealized_pnl) ? smoney(p.unrealized_pnl) + ' (' + spct(p.unrealized_pct) + ')' : '–', num: 1, cls: signCls(p.unrealized_pnl)},
+            {t: s.equity ? pct(val / s.equity, 1) : '–', num: 1}, p.since || '–'];
+        }), 'all cash', b.title + ' positions'));
+      const tw = Object.entries(s.target_weights || {});
+      R.cash.textContent = 'Cash ' + money(s.cash) + (tw.length ? ' · target weights: ' + tw.map(([t, w]) => t + ' ' + pct(w, 1)).join(', ') : '');
+      // fills
+      const fl = (s.fills || []).slice(-20).reverse();
+      fill(R.fills, table(['Date', 'Ticker', 'Side', {t: 'Shares', num: 1}, {t: 'Price', num: 1}, {t: 'Fee', num: 1}, {t: 'Realized', num: 1}],
+        fl.map(f => [f.date, f.ticker + (f.note ? ' · ' + f.note : ''), f.note ? 'adjust' : f.quantity > 0 ? 'buy' : 'sell', {t: shares(Math.abs(f.quantity)), num: 1},
+          {t: money(f.price), num: 1}, {t: money(f.fee), num: 1},
+          {t: f.quantity < 0 ? smoney(f.realized_pnl) : '', num: 1, cls: f.quantity < 0 ? signCls(f.realized_pnl) : ''}]), 'no fills yet', b.title + ' fills'));
+      // evaluation
+      const ev = s.evaluation || {};
+      const verdict = ev.verdict || 'no evaluation';
+      fill(R.evalBox,
+        h('div', {class: 'verdict ' + (/^STOP/.test(verdict) ? 'neg' : /^keep/.test(verdict) ? 'pos' : '')}, verdict),
+        h('dl', {class: 'kv'},
+          h('dt', {text: 'Days judged'}), h('dd', {text: String(ev.days ?? '–')}),
+          h('dt', {text: 'Bot return'}), h('dd', {class: signCls(ev.bot_return), text: spct(ev.bot_return)}),
+          h('dt', {text: 'Equal weight, same stocks'}), h('dd', {class: signCls(ev.equal_weight_return), text: spct(ev.equal_weight_return)}),
+          h('dt', {text: 'Sharpe (bot / equal weight)'}), h('dd', {text: num(ev.bot_sharpe_annual) + ' / ' + num(ev.equal_weight_sharpe_annual)}),
+          h('dt', {text: 'Chance it beats equal weight'}), h('dd', {text: pct(ev.probability_beats_equal_weight)})),
+        ev.stop_rule ? h('p', {class: 'note', text: 'Stop rule: ' + ev.stop_rule}) : null);
+      // orders (small)
+      if (k === 'small') {
+        const o = b.orders;
+        if (!o) fill(R.orders, h('p', {class: 'muted', text: 'No orders file yet: press Run the daily bots.'}));
+        else {
+          const os = o.orders || [];
+          fill(R.orders,
+            h('div', {class: 'callout'}, h('b', {text: 'Information only. '}), 'In paper mode nothing is sent to any broker, and the paper book already assumes these filled at the close of ' + (o.date || 'the last bar') + '. If you mirror the bot at a real broker, you place these yourself next morning as limit orders.'),
+            table(['Side', 'Ticker', {t: 'Shares', num: 1}, {t: 'Close', num: 1}, {t: 'Limit', num: 1}],
+              os.map(x => [{t: String(x.side).toUpperCase(), cls: x.side === 'sell' ? 'neg' : 'pos'}, x.ticker, {t: shares(x.shares), num: 1}, {t: money(x.close), num: 1}, {t: money(x.limit), num: 1}]),
+              'No orders from ' + (o.date || 'the last bar') + ': keep what is held.', "Today's orders"),
+            h('p', {class: 'note', text: 'From the bar of ' + (o.date || '–') + ' · written ' + when(o.generated_at) + ' · holdings after: ' +
+              (Object.entries(o.holdings_after || {}).map(([t, q]) => t + ' ' + shares(q)).join(', ') || 'none') + ' · cash after ' + money(o.cash_after) + ' · budget ' + money(o.budget) + (o.whole_shares ? ' · whole shares' : '')}));
+        }
+      }
+    });
+  }
+
+  // ---- intraday ----------------------------------------------------------
+  attachTip($('idChart')); attachTip($('idCumChart'));
+  $('idChartSel').addEventListener('change', () => { memo.delete('id-chart'); renderIntradayChart(); });
+  function renderIntradayChart() {
+    const st = (D.intraday || {}).status, ch = (st && st.charts) || {};
+    const sel = $('idChartSel'), names = Object.keys(ch);
+    if (changed('id-chart-opts', names)) {
+      const cur = sel.value; clear(sel);
+      names.forEach(t => sel.appendChild(h('option', {value: t, text: t})));
+      if (names.includes(cur)) sel.value = cur;
+      sel.disabled = !names.length;
+    }
+    const t = sel.value, c = ch[t];
+    if (!changed('id-chart', [t, c])) return;
+    $('idChart').setAttribute('aria-label', c ? t + ' price and KAMA today, last close ' + money(c.close[c.close.length - 1]) : 'no chart data');
+    chart($('idChart'), {labels: c ? c.time : [], series: c ? [{values: c.close, color: '--series-1', name: 'close'}, {values: c.kama, color: '--series-2', name: 'KAMA'}] : [],
+      axis: (v, span) => '$' + v.toFixed(span < 1 ? 3 : 2), fmt: v => '$' + v.toFixed(3), empty: st ? 'no bars for today' : 'no data yet: press Run the intraday bot'});
+  }
+  function renderIntraday() {
+    const id = D.intraday || {}, st = id.status, S = intradayStats();
+    const rt = runText(runOf(['intraday', 'intraday_close']));
+    $('idStatusLine').textContent = rt ? rt.text : 'Intraday run: none since the station started' + (st ? ' · status written ' + when(st.updated_at) : '');
+    $('idStatusLine').className = 'statusline ' + (rt ? rt.cls : '');
+    renderIntradayChart();
+    if (!changed('id', [st, id.history, id.config])) return;
+    const cfg = id.config || {};
+    $('idTitle').textContent = (fin(cfg.cash) ? '$' + nf0.format(cfg.cash) : '$50') + ' intraday bot — ' + (st ? st.date : 'today');
+    $('idEmpty').hidden = !!st; $('idEmpty').textContent = 'No data yet: press Run the intraday bot (Jobs & logs, or Overview).';
+    if (st) {
+      fill($('idBadges'), h('span', {class: 'badge ' + (st.session_open ? 'good' : ''), text: st.session_open ? 'session open' : 'session closed'}), ' ', h('span', {class: 'badge', text: st.mode || ''}));
+      const chg = st.equity - st.start_cash;
+      fill($('idTiles'),
+        h('div', {class: 'tile big'}, h('div', {class: 'label', text: 'Equity'}), h('div', {class: 'value', text: money(st.equity)}), h('div', {class: 'sub', text: 'from ' + money(st.start_cash)})),
+        tile('Change today', smoney(chg), spct(st.start_cash ? st.equity / st.start_cash - 1 : null), signCls(chg)),
+        tile('Cash settled', money(st.cash_settled), 'unsettled ' + money(st.cash_unsettled)),
+        tile('Entries today', (st.entries_today ?? 0) + ' of ' + (st.max_trades_per_day ?? '–'), (st.trades || []).length + ' closed trades'),
+        tile('Last bar', hhmm(st.last_bar) || '–', (st.bar_minutes || 5) + '-minute bars · ' + when(st.updated_at)));
+    } else { clear($('idBadges')); clear($('idTiles')); }
+    const screen = (st && st.screen) || [];
+    fill($('idScreen'), screen.length ? screen.map(x => h('span', {class: 'chip', text: typeof x === 'object' ? (x.ticker || JSON.stringify(x)) : String(x)})) : h('span', {class: 'muted', text: st ? 'nothing passed the screen' : '–'}));
+    const pos = (st && st.positions) || [];
+    fill($('idPositions'), table(['Ticker', {t: 'Shares', num: 1}, 'Entry', {t: 'Entry price', num: 1}, {t: 'Last', num: 1}, {t: 'Open gain', num: 1}, 'Exit'],
+      pos.map(p => [p.ticker, {t: shares(p.shares), num: 1}, hhmm(p.entry_time), {t: money(p.entry_price), num: 1}, {t: money(p.last), num: 1},
+        {t: smoney(p.unrealized), num: 1, cls: signCls(p.unrealized)}, p.exit_pending ? 'sell pending' : '']), st ? 'flat: no open position' : '–', 'Open positions'));
+    const pend = (st && st.pending_buys) || [];
+    fill($('idPending'), pend.length ? pend.map(t => h('span', {class: 'chip', text: String(t)})) : h('span', {class: 'muted', text: st ? 'none' : '–'}));
+    $('idFailed').textContent = st && (st.failed_tickers || []).length ? 'Could not fetch: ' + st.failed_tickers.join(', ') : '';
+    const tr = (st && st.trades) || [];
+    fill($('idTrades'), table(['Ticker', 'In', 'Out', {t: 'Shares', num: 1}, {t: 'Entry', num: 1}, {t: 'Exit', num: 1}, {t: 'Gain', num: 1}, 'Reason', {t: 'Bars', num: 1}],
+      tr.map(t => [t.ticker, hhmm(t.entry_time), hhmm(t.exit_time), {t: shares(t.shares), num: 1}, {t: money(t.entry_price), num: 1}, {t: money(t.exit_price), num: 1},
+        {t: smoney(t.pnl) + ' (' + spct(t.pnl_pct) + ')', num: 1, cls: signCls(t.pnl)}, t.reason || '', {t: String(t.bars_held ?? '–'), num: 1}]),
+      st ? 'no trades today' : 'no data yet', "Today's trades"));
+    const hist = S.hist;
+    fill($('idHistory'), table(['Date', {t: 'Start', num: 1}, {t: 'End', num: 1}, {t: 'Return', num: 1}, {t: 'Cumulative', num: 1}, {t: 'Trades', num: 1}],
+      hist.map((x, i) => [x.date, {t: money(x.start_cash), num: 1}, {t: money(x.equity), num: 1}, {t: spct(x.return), num: 1, cls: signCls(x.return)},
+        {t: spct(S.cumCurve[i]), num: 1, cls: signCls(S.cumCurve[i])}, {t: String(x.trades ?? '–'), num: 1}]).reverse(),
+      'No archived days yet: a day is archived after the close.', 'Past intraday days'));
+    chart($('idCumChart'), {labels: hist.map(x => x.date), series: [{values: S.cumCurve, color: '--series-1', name: 'cumulative'}], baseline: 0,
+      axis: axisPct, fmt: v => spct(v), empty: 'no archived days yet'});
+  }
+
+  // ---- tools -------------------------------------------------------------
+  const TOOLS = ['fetch_bars', 'backtest_main', 'backtest_small', 'backtest_intraday', 'indicator_test'];
+  let toolsBuilt = false; const toolRefs = {};
+  function buildTools() {
+    toolsBuilt = true;
+    TOOLS.forEach(j => $('toolJobs').appendChild(jobCard(j)));
+    [['backtest_main', 'Backtest: $100k bot'], ['backtest_small', 'Backtest: $40 bot'], ['backtest_intraday', 'Backtest: intraday bot'], ['indicator_test', 'Indicator test']].forEach(([k, t]) => {
+      const body = h('div');
+      const card = h('div', {class: 'card'}, h('div', {class: 'cardhead'}, h('h2', {text: t}), badgeFor(k)), body);
+      toolRefs[k] = {body};
+      $('toolResults').appendChild(card);
+    });
+  }
+  function renderTools() {
+    if (!toolsBuilt) buildTools();
+    const bf = D.bars_file || {};
+    if (changed('bars', bf)) fill($('barsInfo'), bf.exists ? h('span', null, h('span', {class: 'badge good', text: 'downloaded'}), ' 5-minute bars, last downloaded ' + when(bf.modified))
+      : h('span', null, h('span', {class: 'badge warn', text: 'not downloaded'}), ' Press Run on "Download intraday bars" before the intraday backtest or the indicator test.'));
+    const T = D.tools || {};
+    ['backtest_main', 'backtest_small'].forEach(k => {
+      if (!changed('tool-' + k, T[k])) return;
+      const s = T[k], body = toolRefs[k].body;
+      if (!s) { fill(body, h('p', {class: 'muted', text: 'No result yet: press Run above (needs one daily run first for the price file).'})); return; }
+      const st = botStats(s), ev = s.evaluation || {}, pnl = s.pnl || {};
+      const cv = h('canvas', {role: 'img', 'aria-label': 'Backtest equity from ' + money(st.start) + ' to ' + money(s.equity)});
+      fill(body,
+        h('div', {class: 'tiles'},
+          tile('Final equity', money(s.equity), 'from ' + money(st.start)),
+          tile('Return', spct(st.ret), smoney(st.change), signCls(st.ret)),
+          tile('Worst drawdown', spct(st.maxdd), 'now ' + spct(st.ddNow), 'neg'),
+          tile('Period', ((s.curve_dates || [])[0] || '–') + ' → ' + (s.last_date || '–'), (s.bars_seen || 0) + ' bars'),
+          tile('Trades', String(s.n_fills || 0), 'fees ' + money(s.fees) + (pnl.n_round_trips ? ' · ' + pnl.n_wins + '/' + pnl.n_round_trips + ' round trips won' : '')),
+          tile('Bot minus equal weight', fin(ev.bot_return) && fin(ev.equal_weight_return) ? spct(ev.bot_return - ev.equal_weight_return) : '–', 'equal weight of the same stocks ' + spct(ev.equal_weight_return), fin(ev.bot_return) && fin(ev.equal_weight_return) ? signCls(ev.bot_return - ev.equal_weight_return) : '')),
+        s.halted ? h('div', {class: 'callout bad', style: 'margin-top:10px'}, h('b', {text: 'Kill switch tripped in the backtest. '}), s.halt_reason || '') : null,
+        h('div', {class: 'chart'}, cv, h('div', {class: 'tip'})),
+        h('p', {class: 'note', text: 'Paper replay of the bot\'s rules over the price file it already has, from a fresh book; fills at the close, no slippage. Written ' + when(s.updated_at) + '.'}));
+      attachTip(cv);
+      chart(cv, {labels: s.curve_dates || [], series: [{values: s.curve || [], color: '--series-1', name: 'equity'}], fill: true, baseline: st.start, axis: axisMoney, fmt: money});
+    });
+    if (changed('tool-bi', T.backtest_intraday)) {
+      const r = T.backtest_intraday, body = toolRefs.backtest_intraday.body;
+      if (!r) fill(body, h('p', {class: 'muted', text: 'No result yet: download the bars, then press Run.'}));
+      else {
+        const ses = r.sessions || [];
+        const eq = (r.equity_curve || []);
+        const cv = h('canvas', {role: 'img', 'aria-label': 'Intraday backtest equity by day'});
+        const edge = fin(r.total_return) && fin(r.random_median) ? r.total_return - r.random_median : null;
+        fill(body,
+          h('div', {class: 'callout', role: 'note'}, h('b', {text: r.note || 'In-sample result: a check of the machinery, not evidence of an edge.'})),
+          h('div', {class: 'tiles'},
+            h('div', {class: 'tile big'}, h('div', {class: 'label', text: 'Return'}), h('div', {class: 'value ' + signCls(r.total_return), text: spct(r.total_return)}), h('div', {class: 'sub', text: (ses[2] || 0) + ' sessions, ' + (ses[0] || '–') + ' → ' + (ses[1] || '–')})),
+            tile('Random entries (median)', spct(r.random_median), r.random_runs + ' runs with the same number of trades', signCls(r.random_median)),
+            tile('Bot minus random', spct(edge), 'beats ' + pct(r.beats_random) + ' of random runs', signCls(edge)),
+            tile('Trades', String(r.n_trades ?? '–'), 'win rate ' + pct(r.win_rate)),
+            tile('Worst daily drawdown', spct(fin(r.max_drawdown) ? -r.max_drawdown : null), '', 'neg')),
+          h('div', {class: 'chart small'}, cv, h('div', {class: 'tip'})),
+          h('h3', {text: 'Last trades'}),
+          h('div', {class: 'tablewrap'}, table(['Ticker', 'In', 'Out', {t: 'Gain', num: 1}, 'Reason'],
+            (r.trades || []).slice(-12).reverse().map(t => [t.ticker, String(t.entry_time || '').slice(0, 16), hhmm(t.exit_time), {t: smoney(t.pnl) + ' (' + spct(t.pnl_pct) + ')', num: 1, cls: signCls(t.pnl)}, t.reason || '']), 'no trades')));
+        attachTip(cv);
+        chart(cv, {labels: eq.map(e => e.date), series: [{values: eq.map(e => e.equity), color: '--series-1', name: 'equity'}], fill: true,
+          baseline: eq.length ? (D.intraday.config || {}).cash : null, axis: (v, span) => '$' + v.toFixed(2), fmt: money});
+      }
+    }
+    if (changed('tool-it', T.indicator_test)) {
+      const r = T.indicator_test, body = toolRefs.indicator_test.body;
+      if (!r) fill(body, h('p', {class: 'muted', text: 'No result yet: download the bars, then press Run.'}));
+      else {
+        const w = r.windows || [];
+        const rows = (r.reports || []).map(x => {
+          if (x.error) return [{t: String(x.path || '').split(/[\\/]/).pop()}, {t: 'error: ' + x.error, cls: 'neg'}, '', '', '', '', ''];
+          const g = x.gates || {}, gk = Object.keys(g), ok = gk.filter(k => g[k]);
+          const failed = gk.filter(k => !g[k]).map(k => k.replace(/_/g, ' '));
+          const cz = x.causality || [];
+          return [x.name || '–', x.timeframe || '–',
+            {t: spct((x.test || {}).return), num: 1, cls: signCls((x.test || {}).return)},
+            {t: String((x.test || {}).trades ?? '–'), num: 1},
+            {t: ok.length + ' / ' + gk.length, num: 1, title: failed.length ? 'failed: ' + failed.join(', ') : 'all gates passed'},
+            {t: cz.length ? 'FOUND (' + cz.length + ')' : 'none found', cls: cz.length ? 'neg' : 'pos', title: cz.length ? JSON.stringify(cz).slice(0, 400) : null},
+            {t: x.passed ? 'passed' : 'not passed', cls: x.passed ? 'pos' : ''}];
+        });
+        fill(body,
+          h('div', {class: 'callout', role: 'note'}, h('b', {text: r.note || 'Unofficial result.'})),
+          h('p', {class: 'note', text: 'Training ' + ((w[0] || [])[0] || '–') + ' → ' + ((w[0] || [])[1] || '–') + ' · test ' + ((w[1] || [])[0] || '–') + ' → ' + ((w[1] || [])[1] || '–') + '. Hover "Gates" to see which failed.'}),
+          h('div', {class: 'tablewrap'}, table(['Indicator', 'Timeframe', {t: 'Test return', num: 1}, {t: 'Test trades', num: 1}, {t: 'Gates passed', num: 1}, 'Look-ahead', 'Result'], rows, 'no indicator files found', 'Indicator test')),
+          h('details', null, h('summary', {text: 'Failed gates per indicator'}),
+            h('ul', null, (r.reports || []).filter(x => x.gates).map(x => h('li', {text: (x.name || '?') + ': ' + (Object.keys(x.gates).filter(k => !x.gates[k]).map(k => k.replace(/_/g, ' ')).join(', ') || 'none')})))));
+      }
+    }
+  }
+
+  // ---- jobs & logs ---------------------------------------------------------
+  let jobsBuilt = false, selectedRun = null;
+  function buildJobs() {
+    jobsBuilt = true;
+    Object.keys(D.jobs || {}).forEach(j => $('allJobs').appendChild(jobCard(j)));
+    ['daily', 'intraday', 'intraday_close'].forEach(j => D.jobs[j] && $('ovJobs').appendChild(jobCard(j)));
+  }
+  async function showLog(job, run) {
+    const title = (D && D.jobs[job] || {}).title || job;
+    selectedRun = run ? run.job + '@' + run.started : null;
+    memo.delete('hist');
+    fill($('logButtons'), h('button', {type: 'button', class: 'small', text: 'Full last output of this job', onclick: () => showLog(job, null)}));
+    if (run) {
+      $('logTitle').textContent = title + ' · started ' + when(run.started) + (run.ok == null ? ' (running)' : run.ok ? ' · ok' : ' · FAILED');
+      $('logOut').textContent = (run.output || '(no output yet)') + (run.output && run.output.length >= 4000 ? '\n\n[last 4000 characters of this run; the button above loads the full output]' : '');
+    } else {
+      $('logTitle').textContent = title + ' · last output';
+      $('logOut').textContent = 'loading…';
+      try { const d = await getJSON('/api/log/' + encodeURIComponent(job)); $('logOut').textContent = d.output || '(no output saved for this job yet)'; }
+      catch (e) { $('logOut').textContent = 'could not load: ' + e.message; }
+    }
+    renderJobsTables();
+  }
+  function renderJobsTables() {
+    const running = Object.values(D.running || {});
+    if (changed('running', running.map(r => [r.job, r.started, (r.steps || []).length, Math.floor(runSeconds(r) / 3)]))) {
+      fill($('runningList'), running.length ? table(['Job', 'Started', {t: 'Running for', num: 1}, 'Steps done', ''],
+        running.map(r => [(D.jobs[r.job] || {}).title || r.job, when(r.started), {t: dur(runSeconds(r)), num: 1},
+          (r.steps || []).map(s => s.cmd + ' → ' + s.code).join('; ') || '–', '']), '') : h('p', {class: 'muted', text: 'Nothing is running.'}));
+      // the last cell gets a button
+      $('runningList').querySelectorAll('tbody tr').forEach((tr, i) => { const r = running[i]; if (!r) return; const td = tr.lastChild; td.appendChild(h('button', {type: 'button', class: 'small', text: 'Output so far', onclick: () => showLog(r.job, r)})); });
+    }
+    const hist = D.history || [];
+    if (!changed('hist', [hist.map(r => [r.job, r.started, r.ok]), selectedRun])) return;
+    const rows = hist.map(r => {
+      const tr = h('tr', {class: 'clickable' + (selectedRun === r.job + '@' + r.started ? ' selected' : '')});
+      tr.addEventListener('click', () => showLog(r.job, r));
+      const badge = h('span', {class: 'badge ' + (r.ok ? 'good' : 'bad'), text: r.ok ? 'ok' : 'failed'});
+      const failed = (r.steps || []).filter(s => s.code !== 0);
+      const btn = h('button', {type: 'button', class: 'link', text: (D.jobs[r.job] || {}).title || r.job, 'aria-label': 'Show output of ' + ((D.jobs[r.job] || {}).title || r.job) + ' started ' + when(r.started)});
+      btn.addEventListener('click', e => { e.stopPropagation(); showLog(r.job, r); });
+      tr.appendChild(h('td', null, btn));
+      tr.appendChild(h('td', null, badge));
+      tr.appendChild(h('td', {text: when(r.started)}));
+      tr.appendChild(h('td', {class: 'num', text: dur(runSeconds(r))}));
+      tr.appendChild(h('td', {text: (r.steps || []).length + ' step' + ((r.steps || []).length === 1 ? '' : 's') + (failed.length ? ' · failed: ' + failed.map(s => s.cmd + ' (exit ' + s.code + ')').join('; ') : '')}));
+      return {tr, cells: []};
+    });
+    fill($('historyTable'), table(['Job', 'Result', 'Started', {t: 'Took', num: 1}, 'Steps'], rows, 'No runs since the station started. Earlier output is still under "Last output".', 'Job history'));
+  }
+  function renderJobs() {
+    if (!jobsBuilt) buildJobs();
+    renderJobsTables();
+    const msgs = (D.messages || []).slice().reverse();
+    if (changed('msgs', msgs)) $('messages').textContent = msgs.length ? msgs.join('\n') : 'No messages yet.';
+  }
+
+  // ---- loop --------------------------------------------------------------
+  function render() {
+    renderHeader();
+    for (const [name, fn] of [['overview', renderOverview], ['daily', renderDaily], ['intraday', renderIntraday], ['tools', renderTools], ['jobs', renderJobs]]) {
+      try { fn(); } catch (e) { console.error(name, e); memo.clear(); }
+    }
+    Object.keys(D.running || {}).forEach(j => starting.delete(j));
+    paintJobs();
+  }
+  let failures = 0, timer = null;
+  async function refresh() {
+    clearTimeout(timer);
+    try {
+      D = await getJSON('/api/overview');
+      failures = 0;
+      $('conn').textContent = 'connected'; $('conn').className = 'badge good';
+      $('loadErr').hidden = true;
+      render();
+    } catch (e) {
+      failures++;
+      $('conn').textContent = 'disconnected'; $('conn').className = 'badge bad';
+      if (failures >= 2) { $('loadErr').hidden = false; $('loadErr').textContent = 'Cannot reach the station (' + e.message + '). Is its window still open? Retrying every 3 seconds; the figures below are from the last good update.'; }
+    }
+    timer = setTimeout(refresh, 3000);
+  }
+  function tick() { $('clock').textContent = clockf.format(new Date()); }
+  tick(); setInterval(tick, 1000);
+  refresh();
+})();
+</script>
+</body>
+</html>
