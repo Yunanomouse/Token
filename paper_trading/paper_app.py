@@ -235,7 +235,10 @@ def _num(value, name: str, lo: float, hi: float, allow_zero: bool = False) -> fl
     if not math.isfinite(v):
         raise ValueError(f"{name} must be a number")
     if v < lo or v > hi or (v == 0 and not allow_zero):
-        raise ValueError(f"{name} must be between {lo:g} and {hi:g}")
+        def plain(x: float) -> str:
+            return f"{int(x):,}" if x == int(x) else f"{x:,}"
+        low = f"at least {plain(lo)}" if allow_zero or lo > 0 else f"more than {plain(lo)}"
+        raise ValueError(f"{name} must be {low} and at most {plain(hi)}")
     return v
 
 
@@ -254,6 +257,13 @@ class SaveError(OSError):
 
 def _real(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _iso_time(v) -> bool:
+    try:
+        return isinstance(v, str) and datetime.fromisoformat(v).tzinfo is not None
+    except ValueError:
+        return False
 
 
 def _check_account(acct) -> list[str]:
@@ -333,8 +343,8 @@ def _check_account(acct) -> list[str]:
     good = [t for t in wl if isinstance(t, str) and TICKER_RE.match(t)] if isinstance(wl, list) else []
     acct["watchlist"] = list(dict.fromkeys(good))[:MAX_WATCH]
     eq = acct.get("equity")
-    acct["equity"] = [p for p in eq if isinstance(p, dict) and isinstance(p.get("t"), str) and _real(p.get("equity"))] \
-        if isinstance(eq, list) else []
+    acct["equity"] = [p for p in eq if isinstance(p, dict) and _iso_time(p.get("t")) and _real(p.get("equity"))
+                      and abs(p["equity"]) < MAX_CASH * 1e4] if isinstance(eq, list) else []
     if not isinstance(acct.get("demo_state"), dict):
         acct["demo_state"] = {}
     return notes
@@ -540,7 +550,7 @@ class Book:
             self.acct["orders"].append(order)
             self._try_fill(order, q, now)
             if order["status"] == "open" and not self._can_fill_now(now):
-                order["note"] = (f"Market closed: waits for the {order['session']} session"
+                order["note"] = (f"Market closed: waits for the {_day_name(order['session'])} session"
                                  if otype == "market" else "Market closed: checked again once it opens")
             self._trim()
             self._record_equity(now, force=True)
@@ -723,6 +733,7 @@ class Book:
                 "total_pl_pct": equity / start - 1, "realized": a["realized"], "fees": a["fees"],
                 "positions": rows, "open_orders": [o for o in orders if o["status"] == "open"],
                 "orders": orders[:300], "fills": list(reversed(a["fills"]))[:300], "equity_curve": a["equity"],
+                "orders_total": len(orders), "fills_total": len(a["fills"]),
                 "watchlist": watch, "quote_errors": dict(self.quote_errors), "notes": list(self.notes),
             }
 
@@ -783,6 +794,13 @@ class Book:
         add = _strict_bool(add)
         if add is None:
             return {"ok": False, "error": "add must be true or false"}
+        if add:
+            try:
+                self.quote(ticker)
+            except ValueError as exc:  # Yahoo says there's no such symbol
+                return {"ok": False, "error": str(exc)}
+            except OSError:
+                pass  # offline: add it anyway; its row says no price
         with self._changing():
             wl = self.acct["watchlist"]
             if add and ticker not in wl:
@@ -792,6 +810,13 @@ class Book:
             elif not add and ticker in wl:
                 wl.remove(ticker)
             return {"ok": True, "watchlist": list(wl)}
+
+
+def _day_name(iso: str) -> str:
+    """2026-09-30 -> "Wed, Sep 30" (in English whatever the computer's language)."""
+    d = date.fromisoformat(iso)
+    return f"{'Mon Tue Wed Thu Fri Sat Sun'.split()[d.weekday()]}, " \
+           f"{'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split()[d.month - 1]} {d.day}"
 
 
 def _expired(o: dict, now: datetime) -> bool:
@@ -857,8 +882,8 @@ def open_folder(path: Path) -> dict:
         else:
             subprocess.Popen(["xdg-open", str(path)])
         return {"ok": True}
-    except OSError as exc:
-        return {"ok": False, "error": str(exc)}
+    except OSError:
+        return {"ok": False, "error": f"Couldn't open the folder here. It is: {path}"}
 
 
 def _finite(obj):

@@ -67,8 +67,8 @@ program runs.
 
 **Costs.** Every fill pays the **slippage** you set: buys fill that much above the price,
 sells that much below (in basis points; 1 bp = 0.01%, default 2 bp). Each order also pays the
-**commission** you set (dollars per order, default $0). Both are shown on every fill, and the
-total fees are on the account summary.
+**commission** you set (dollars per order, default $0). Each fill shows its price, with the
+slippage already in it, and its commission; the total commission is on the account summary.
 
 **Market hours.** Real-price orders fill only during the regular New York session, 9:30 am to
 4:00 pm Eastern, Monday to Friday, except market holidays. On the half days (2026-11-27,

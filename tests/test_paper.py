@@ -49,7 +49,7 @@ class FakeQuotes:
     unknown symbol and OSError when ``offline``."""
 
     def __init__(self, prices=None, time=None):
-        self.prices = dict(prices or {"AAPL": 100.0, "MSFT": 400.0, "SPY": 500.0})
+        self.prices = dict(prices or {"AAPL": 100.0, "MSFT": 400.0, "SPY": 500.0, "TSLA": 250.0})
         self.time = time
         self.offline = False
         self.calls = []
@@ -351,7 +351,7 @@ class TestMarketClosed(BookCase):
         self.now = CLOSED_THU
         o = self.ok(qty=5)
         self.assertEqual(o["status"], "open")
-        self.assertIn("2026-10-02", o["note"])
+        self.assertIn("Fri, Oct 2", o["note"])
         self.assertEqual(o["session"], "2026-10-02")
         self.now = ny(2026, 10, 2, 9, 0)
         self.book.refresh()
@@ -611,6 +611,7 @@ class TestWatchlist(BookCase):
         self.assertEqual(self.make().acct["watchlist"], ["MSFT", "SPY", "TSLA"])
 
     def test_cap(self):
+        self.q.prices.update({f"T{i}": 10.0 for i in range(47)}, ONE=1.0)
         for i in range(47):
             self.assertTrue(self.book.watch(f"T{i}", True)["ok"])
         self.assertEqual(len(self.book.acct["watchlist"]), 50)
@@ -625,8 +626,15 @@ class TestWatchlist(BookCase):
         self.assertFalse(self.book.watch("TSLA", "maybe")["ok"])
         self.assertNotIn("TSLA", self.book.acct["watchlist"])
 
-    def test_unknown_watched_symbol_shows_an_error(self):
-        self.book.watch("ZZZZ", True)
+    def test_unknown_symbol_is_not_added(self):
+        r = self.book.watch("ZZZZ", True)
+        self.assertEqual((r["ok"], r["error"]), (False, "ZZZZ: no such symbol"))
+        self.assertNotIn("ZZZZ", self.book.acct["watchlist"])
+
+    def test_offline_adds_it_anyway_and_its_row_says_why(self):
+        self.q.offline = True
+        self.assertTrue(self.book.watch("ZZZZ", True)["ok"])
+        self.q.offline = False
         self.book.refresh()
         w = {x["ticker"]: x for x in self.book.snapshot()["watchlist"]}
         self.assertIn("no such symbol", w["ZZZZ"]["error"])
@@ -1091,6 +1099,12 @@ class TestReviewFindings(BookCase):
         self.assertEqual(len(book.notes), 3)
         self.assertFalse(list(self.home.glob("account.corrupt-*.json")))
 
+    def test_absurd_chart_points_are_dropped(self):
+        book = self.damaged(lambda a: a.update(equity=[{"t": "2026-10-01T15:00:00+00:00", "equity": 1e308},
+                                                       {"t": "soon", "equity": 5.0},
+                                                       {"t": "2026-10-01T15:05:00+00:00", "equity": 99.0}]))
+        self.assertEqual(book.acct["equity"], [{"t": "2026-10-01T15:05:00+00:00", "equity": 99.0}])
+
     def test_order_numbers_never_repeat(self):
         self.ok(qty=1)
         book = self.damaged(lambda a: a.update(next_id=1))
@@ -1137,6 +1151,23 @@ class TestReviewFindings(BookCase):
         self.assertIn("above the current price", r["error"])
         r = self.order(side="sell", qty=1, type="stop", stop_price=110)
         self.assertIn("below the current price", r["error"])
+
+    def test_limits_are_written_plainly(self):
+        self.assertEqual(self.order(qty=1e21)["error"], "Quantity must be more than 0 and at most 10,000,000")
+        self.assertEqual(self.book.update_settings({"slippage_bps": 501})["error"],
+                         "Slippage must be at least 0 and at most 500")
+
+    def test_counts_for_the_page(self):
+        self.ok(qty=1)
+        self.ok(qty=1, type="limit", limit_price=50, tif="gtc")
+        snap = self.book.snapshot()
+        self.assertEqual((snap["orders_total"], snap["fills_total"]), (2, 1))
+
+    def test_folder_error_names_the_folder(self):
+        with mock.patch("subprocess.Popen", side_effect=OSError("[Errno 2] xdg-open")), \
+                mock.patch.object(sys, "platform", "linux"):
+            r = paper.open_folder(self.home)
+        self.assertEqual(r["error"], f"Couldn't open the folder here. It is: {self.home}")
 
     def test_underscores_are_not_numbers(self):
         self.assertIn("must be a number", self.order(qty="1_000")["error"])

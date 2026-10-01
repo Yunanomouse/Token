@@ -15,6 +15,7 @@
   --good-bg:#e8f6e8; --bad-bg:#fbeaea;
   --banner-bg:#fab219; --banner-text:#1a1200; --demo-bg:#7a5bd0; --demo-text:#ffffff;
   --grid:#e6e5e1; --focus:#1f5fbf;
+  --btn-primary-bg:#1f63bd; --btn-primary-text:#ffffff; --link:#1d5fb5;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -25,6 +26,7 @@
     --good-text:#55c955; --critical-text:#f07a7a; --warn-bg:#2e2508; --warn-border:#b88400;
     --good-bg:#132a13; --bad-bg:#2f1616;
     --banner-bg:#fab219; --banner-text:#1a1200; --demo-bg:#a08ae8; --demo-text:#120a2a; --focus:#8ab8ff;
+    --btn-primary-bg:#2e6bc6; --btn-primary-text:#ffffff; --link:#8ab8ff;
   }
 }
 :root[data-theme="dark"] {
@@ -35,6 +37,7 @@
   --good-text:#55c955; --critical-text:#f07a7a; --warn-bg:#2e2508; --warn-border:#b88400;
   --good-bg:#132a13; --bad-bg:#2f1616;
   --banner-bg:#fab219; --banner-text:#1a1200; --demo-bg:#a08ae8; --demo-text:#120a2a; --focus:#8ab8ff;
+  --btn-primary-bg:#2e6bc6; --btn-primary-text:#ffffff; --link:#8ab8ff;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -88,9 +91,11 @@ main { padding:16px; max-width:1300px; margin:0 auto; }
 .two { display:grid; grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); gap:16px; align-items:start; }
 @media (max-width: 900px) { .two { grid-template-columns:minmax(0, 1fr); } }
 .tiles { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
-.tile { background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:9px 12px; min-width:0; }
+.tile { background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:9px 12px; min-width:0; container-type:inline-size; }
 .tile .label { font-size:12px; color:var(--text-secondary); }
-.tile .value { font-size:20px; font-weight:600; margin-top:1px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+/* One line, never broken inside a number: the size shrinks with the tile and the length of the figure (--n characters). */
+.tile .value { font-size:20px; font-size:clamp(11px, calc(100cqi / (var(--n, 10) * 0.64)), 20px); font-weight:600; margin-top:1px;
+  font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tile .sub { font-size:12px; color:var(--text-muted); margin-top:1px; overflow-wrap:anywhere; }
 .tile.approx { border-color:var(--warn-border); }
 .pos { color:var(--good-text); } .neg { color:var(--critical-text); }
@@ -103,12 +108,13 @@ th { color:var(--text-secondary); font-weight:600; font-size:12px; white-space:n
 td.num, th.num { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
 td.empty { color:var(--text-muted); }
 td.wrap { min-width:14ch; overflow-wrap:anywhere; }
+td.time { white-space:nowrap; }
 button { padding:8px 13px; border-radius:7px; border:1px solid var(--border); background:var(--surface-2);
   color:var(--text-primary); font:inherit; font-weight:600; cursor:pointer; }
-button.primary { background:var(--series-1); border-color:var(--series-1); color:#fff; }
+button.primary { background:var(--btn-primary-bg); border-color:var(--btn-primary-bg); color:var(--btn-primary-text); }
 button.danger { border-color:var(--critical); color:var(--critical-text); background:transparent; }
 button.small { padding:4px 10px; font-size:12px; }
-button.link { background:none; border:none; padding:0; color:var(--series-1); text-decoration:underline; font-weight:600; }
+button.link { background:none; border:none; padding:0; color:var(--link); text-decoration:underline; font-weight:600; }
 button:disabled { opacity:.5; cursor:not-allowed; }
 .buttons { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px; }
 
@@ -166,9 +172,31 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   header { padding:8px 16px; gap:8px 12px; }
   main { padding:12px 16px; }
   .summary { padding:12px 16px 0; }
-  nav.tabs { padding:8px 16px 0; }
+  nav.tabs { padding:8px 16px 0; gap:2px; flex-wrap:wrap; overflow-x:visible; }
+  nav.tabs button { padding:8px 4px; font-size:13px; flex:1 1 auto; }
+  /* Tables marked .cards stack as one card per row, so their buttons need no sideways scroll. */
+  table.cards thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  table.cards, table.cards tbody, table.cards tr, table.cards td { display:block; width:100%; }
+  table.cards tr { border-bottom:1px solid var(--grid); padding:6px 0; }
+  table.cards td { border:none; padding:2px 0; display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+    text-align:right; min-width:0; white-space:normal; }
+  table.cards td::before { content:attr(data-label); color:var(--text-secondary); font-weight:600; font-size:12px; text-align:left; flex:none; }
+  table.cards td.wrap { min-width:0; }
+  table.cards td.act { justify-content:flex-end; padding-top:4px; }
+  table.cards td.empty { display:block; text-align:left; }
+  /* The watchlist: symbol, price and change on one line, the name under them, Remove on the right. */
+  table.cards.compact tr { display:grid; grid-template-columns:auto 1fr auto auto; grid-template-areas:"sym px ch act" "name name name act";
+    column-gap:12px; align-items:center; }
+  table.cards.compact td { display:block; width:auto; padding:1px 0; }
+  table.cards.compact td::before { content:none; }
+  table.cards.compact td:nth-child(1) { grid-area:sym; text-align:left; }
+  table.cards.compact td:nth-child(2) { grid-area:px; }
+  table.cards.compact td:nth-child(3) { grid-area:ch; }
+  table.cards.compact td:nth-child(4) { grid-area:name; text-align:left; font-size:12px; }
+  table.cards.compact td:nth-child(5) { grid-area:act; padding:0; }
+  table.cards.compact td.empty { grid-column:1 / -1; }
   .tiles { grid-template-columns:repeat(2, minmax(0, 1fr)); }
-  .tile .value { font-size:17px; }
+  .tile .value { font-size:17px; font-size:clamp(11px, calc(100cqi / (var(--n, 10) * 0.64)), 17px); }
   .top { position:static; }
   .banner { position:sticky; top:0; z-index:5; font-size:13px; padding:6px 12px; }
   .hpath { max-width:60vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -223,7 +251,7 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
         <div class="field">
           <label for="sym">Stock symbol</label>
           <div class="row">
-            <input type="text" id="sym" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10" placeholder="e.g. AAPL">
+            <input type="text" id="sym" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. AAPL">
             <button type="button" id="btnQuote">Get quote</button>
           </div>
         </div>
@@ -247,17 +275,17 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
           </div>
           <div class="field" id="limitRow" hidden>
             <label for="limitPx">Limit price ($)</label>
-            <input type="number" id="limitPx" min="0" step="0.01" inputmode="decimal">
+            <input type="number" id="limitPx" min="0" max="1000000" step="0.01" inputmode="decimal">
             <span class="hint" id="limitHint"></span>
           </div>
           <div class="field" id="stopRow" hidden>
             <label for="stopPx">Stop price ($)</label>
-            <input type="number" id="stopPx" min="0" step="0.01" inputmode="decimal">
+            <input type="number" id="stopPx" min="0" max="1000000" step="0.01" inputmode="decimal">
             <span class="hint" id="stopHint"></span>
           </div>
           <div class="field">
             <label for="qty">Quantity (shares)</label>
-            <input type="number" id="qty" min="0" step="1" value="1" inputmode="numeric">
+            <input type="number" id="qty" min="0" max="10000000" step="1" value="1" inputmode="numeric">
             <span class="hint" id="qtyHint">Whole shares</span>
           </div>
           <div class="field">
@@ -279,13 +307,13 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
       <div id="ticketMsg" class="callout ok msg" role="status" hidden></div>
     </div>
     <div class="card">
-      <div class="cardhead"><h2>Watchlist</h2></div>
+      <div class="cardhead"><h2 id="watchHead" tabindex="-1">Watchlist</h2></div>
       <form id="watchForm" class="row" novalidate>
         <label for="watchSym" class="sr-only">Symbol to add to the watchlist</label>
-        <input type="text" id="watchSym" autocomplete="off" spellcheck="false" maxlength="10" placeholder="Add a symbol">
+        <input type="text" id="watchSym" autocomplete="off" spellcheck="false" placeholder="Add a symbol">
         <button type="submit" id="btnWatchAdd">Add</button>
       </form>
-      <div id="watchErr" class="callout bad msg" role="alert" hidden></div>
+      <div id="watchErr" class="callout bad msg" role="alert" tabindex="-1" hidden></div>
       <div class="tablewrap" id="watchTable" style="margin-top:10px"></div>
       <div class="note">Click a symbol to put it on the order ticket. Prices update every 30 seconds while this program runs.</div>
     </div>
@@ -307,8 +335,8 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
 
   <!-- Orders -->
   <section role="tabpanel" id="panel-orders" aria-labelledby="tab-orders" class="stack" hidden>
-    <div id="ordErr" class="callout bad" role="alert" hidden></div>
-    <div id="ordMsg" class="callout ok" role="status" hidden></div>
+    <div id="ordErr" class="callout bad" role="alert" tabindex="-1" hidden></div>
+    <div id="ordMsg" class="callout ok" role="status" tabindex="-1" hidden></div>
     <div class="card">
       <h2>Open orders</h2>
       <div class="tablewrap" id="openTable"></div>
@@ -316,7 +344,8 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     <div class="card">
       <h2>Order history</h2>
       <div class="tablewrap" id="histTable"></div>
-      <div class="note">Newest first. Day orders that don't fill expire at the close of their session.</div>
+      <div class="note" id="histMore" hidden></div>
+      <div class="note">Newest first. Times are New York time (ET). Day orders that don't fill expire at the close of their session.</div>
     </div>
   </section>
 
@@ -325,6 +354,7 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     <div class="card">
       <h2>Fills</h2>
       <div class="tablewrap" id="fillTable"></div>
+      <div class="note" id="fillMore" hidden></div>
       <div class="note">Realized P/L is shown for sells: what you got (after commission) minus what those shares cost on average.</div>
     </div>
   </section>
@@ -380,7 +410,7 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     </div>
   </section>
 </main>
-<footer class="foot">Practice only, not financial advice. Live prices come from Yahoo Finance, delayed about 15 minutes, for your personal use on this computer.</footer>
+<footer class="foot" id="foot">Practice only, not financial advice.</footer>
 
 <dialog id="confirmDlg" aria-labelledby="dlgTitle">
   <h2 id="dlgTitle">Please confirm</h2>
@@ -414,7 +444,13 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   const tf = new Intl.DateTimeFormat('en-US', {timeZone: NY, hour: 'numeric', minute: '2-digit', second: '2-digit'});
   const dayf = new Intl.DateTimeFormat('en-US', {timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric'});
   const shortDay = new Intl.DateTimeFormat('en-US', {timeZone: NY, month: 'short', day: 'numeric'});
-  const when = iso => { const t = Date.parse(iso || ''); return isNaN(t) ? (iso ? String(iso) : '–') : dtf.format(t) + ' ET'; };
+  // Only ISO-8601 times with a zone (what the program writes); anything else, such as a hand-edited
+  // "Dec 31, 7:00 PM ET" that Date.parse would guess at, shows as "–".
+  const ISO_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
+  const isoT = v => { if (typeof v !== 'string' || !ISO_RE.test(v)) return NaN; const t = Date.parse(v.replace(' ', 'T')); return isNaN(t) ? NaN : t; };
+  const when = iso => { const t = isoT(iso); return isNaN(t) ? '–' : dtf.format(t) + ' ET'; };
+  const tblTime = new Intl.DateTimeFormat('en-US', {timeZone: NY, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: false});
+  const whenShort = iso => { const t = isoT(iso); return isNaN(t) ? '–' : tblTime.format(t).replace(',', ''); };  // "Sep 29 11:00" (ET, in the header)
   const day = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? dayf.format(Date.UTC(+m[1], +m[2] - 1, +m[3])) : (s ? String(s) : '–'); };
   const str = v => v == null ? '' : String(v);
 
@@ -444,25 +480,33 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     return el;
   }
   // headers: [label | {t, num}]; rows: [[cell]]; cell = text | Node | {t, num, cls, node, title}
-  function table(headers, rows, empty, caption) {
-    const head = h('tr', null, headers.map(x => typeof x === 'object'
-      ? h('th', {class: x.num ? 'num' : null, scope: 'col', text: x.t}, x.sr ? h('span', {class: 'sr-only', text: x.sr}) : null)
-      : h('th', {scope: 'col', text: x})));
-    const body = h('tbody');
-    if (!rows.length) body.appendChild(h('tr', null, h('td', {class: 'empty', colspan: headers.length, text: empty || 'none'})));
+  // cards: on a phone the rows stack as cards (CSS), so the explicit roles keep it a table for screen readers.
+  function table(headers, rows, empty, caption, cards) {
+    const R = role => cards ? role : null;
+    const labels = headers.map(x => typeof x === 'object' ? str(x.t) : str(x));
+    const head = h('tr', {role: R('row')}, headers.map(x => typeof x === 'object'
+      ? h('th', {class: x.num ? 'num' : null, scope: 'col', role: R('columnheader'), text: x.t}, x.sr ? h('span', {class: 'sr-only', text: x.sr}) : null)
+      : h('th', {scope: 'col', role: R('columnheader'), text: x})));
+    const body = h('tbody', {role: R('rowgroup')});
+    if (!rows.length) body.appendChild(h('tr', {role: R('row')}, h('td', {class: 'empty', colspan: headers.length, role: R('cell'), text: empty || 'none'})));
     rows.forEach(r => {
-      const tr = h('tr');
-      r.forEach(c => {
-        if (c instanceof Node) { tr.appendChild(h('td', null, c)); return; }
+      const tr = h('tr', {role: R('row')});
+      r.forEach((c, i) => {
+        const label = labels[i] || null;
+        if (c instanceof Node) { tr.appendChild(h('td', {class: label ? null : 'act', 'data-label': label, role: R('cell')}, c)); return; }
         const o = c != null && typeof c === 'object' ? c : {t: c};
-        const td = h('td', {class: [o.num ? 'num' : '', o.cls || ''].join(' ').trim() || null, title: o.title});
+        const td = h('td', {class: [o.num ? 'num' : '', o.cls || ''].join(' ').trim() || null, title: o.title, 'data-label': label, role: R('cell')});
         if (o.node) td.appendChild(o.node); else td.textContent = o.t == null || o.t === '' ? '–' : String(o.t);
         tr.appendChild(td);
       });
       body.appendChild(tr);
     });
-    return h('table', null, caption ? h('caption', {class: 'sr-only', text: caption}) : null, h('thead', null, head), body);
+    return h('table', {class: cards ? 'cards' + (cards === 'compact' ? ' compact' : '') : null, role: R('table'), 'aria-label': cards ? caption : null},
+      caption ? h('caption', {class: 'sr-only', text: caption}) : null, h('thead', {role: R('rowgroup')}, head), body);
   }
+  // Rewrite text only when it differs, so live regions are not re-announced on every poll.
+  const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+  const setClass = (el, c) => { if (el.className !== c) el.className = c; };
   const memo = new Map();
   function changed(key, data) {
     const v = JSON.stringify(data === undefined ? null : data);
@@ -507,8 +551,9 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   // ---- confirmation dialog ----------------------------------------------
   const dlg = $('confirmDlg');
   let dlgResolve = null;
-  function confirmBox(title, lines, okLabel, danger) {
+  function confirmBox(title, lines, okLabel, danger, cancelLabel) {
     fill($('dlgTitle'), title);
+    $('dlgCancel').textContent = cancelLabel || 'Cancel';
     fill($('dlgBody'), h('ul', null, lines.filter(Boolean).map(l => h('li', null, l))));
     $('dlgOk').textContent = okLabel || 'OK';
     $('dlgOk').className = danger ? 'danger' : 'primary';
@@ -525,6 +570,13 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   $('dlgOk').addEventListener('click', () => closeDlg(true));
   $('dlgCancel').addEventListener('click', () => closeDlg(false));
   dlg.addEventListener('cancel', e => { e.preventDefault(); closeDlg(false); });
+
+  // ---- state (declared before the first showTab, which reads snap) -------
+  let snap = null;           // the last good /api/account answer
+  let lastGood = null;       // Date of that answer
+  let connected = null;      // null until the first answer, then true / false
+  const quotes = {};         // ticker -> quote fetched with "Get quote", kept fresh by polling
+  const settings = () => (snap && snap.settings) || {};
 
   // ---- tabs ------------------------------------------------------------
   const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
@@ -553,12 +605,6 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   if (!startTab) { try { startTab = localStorage.getItem('paper-tab') || ''; } catch (e) { startTab = ''; } }
   showTab(startTab || 'trade');
 
-  // ---- state -------------------------------------------------------------
-  let snap = null;           // the last good /api/account answer
-  let lastGood = null;       // Date of that answer
-  const quotes = {};         // ticker -> quote fetched with "Get quote"
-  const settings = () => (snap && snap.settings) || {};
-
   // ---- header, banner, summary --------------------------------------------
   function renderHeader(d) {
     const demo = d.prices === 'demo';
@@ -566,12 +612,15 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     $('banner').setAttribute('aria-label', demo ? 'Paper trading only, demo prices' : 'Paper trading only');
     const m = d.market || {};
     const b = $('mktBadge');
-    if (demo) { b.textContent = 'Demo: always open'; b.className = 'badge run'; }
-    else if (m.open) { b.textContent = 'Open'; b.className = 'badge good'; }
-    else { b.textContent = 'Closed — next session ' + day(m.next_session); b.className = 'badge warn'; }
+    if (demo) { setText(b, 'Demo: always open'); setClass(b, 'badge run'); }
+    else if (m.open) { setText(b, 'Open'); setClass(b, 'badge good'); }
+    else { setText(b, 'Closed — next session ' + day(m.next_session)); setClass(b, 'badge warn'); }
     $('practiceBadge').hidden = !(d.settings && d.settings.practice_fills === true);
-    $('homePath').textContent = str(d.home) || '–';
+    setText($('homePath'), str(d.home) || '–');
     $('homePath').title = str(d.home);
+    setText($('foot'), 'Practice only, not financial advice. ' + (demo
+      ? 'This account uses demo prices: made up by this program, not real market prices.'
+      : 'Live prices come from Yahoo Finance, delayed up to about 15 minutes, for your personal use on this computer.'));
     const notes = (Array.isArray(d.notes) ? d.notes : []).map(str).filter(Boolean);
     // Watchlist rows show their own errors; here only what you hold or have orders for
     // (the program keeps an error for every symbol ever looked up, typos included).
@@ -586,7 +635,8 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   }
   function tile(label, value, sub, cls, extra) {
     return h('div', {class: 'tile' + (extra ? ' ' + extra : '')}, h('div', {class: 'label', text: label}),
-      h('div', {class: 'value ' + (cls || ''), text: value}), sub ? h('div', {class: 'sub', text: sub}) : null);
+      h('div', {class: 'value ' + (cls || ''), style: '--n:' + Math.max(8, String(value).length), title: value, text: value}),
+      sub ? h('div', {class: 'sub', text: sub}) : null);
   }
   function renderSummary(d) {
     const unknown = d.equity_unknown === true;
@@ -619,6 +669,26 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     }
     return null;
   }
+  // Polling: a watchlist row newer than the cached quote replaces its price.
+  function syncQuotes(d) {
+    (d.watchlist || []).forEach(w => {
+      const q = w && quotes[w.ticker];
+      if (!q || !fin(w.price)) return;
+      const tw = isoT(w.time), tq = isoT(q.time);
+      if (!isNaN(tw) && (isNaN(tq) || tw > tq)) Object.assign(q, {price: w.price, prev_close: fin(w.prev_close) ? w.prev_close : q.prev_close, time: w.time});
+    });
+  }
+  // ... and the symbol on the ticket is re-quoted (the program caches quotes for 20 seconds).
+  let requoting = false;
+  async function requote() {
+    const t = ticker();
+    if (!t || !quotes[t] || requoting) return;
+    requoting = true;
+    try {
+      const d = await getQuote(t);
+      if (d && d.ok && d.quote && quotes[t]) { quotes[t] = d.quote; if (ticker() === t) { renderQuote(t); renderEstimate(); } }
+    } finally { requoting = false; }
+  }
   function ticketPrice() {
     const type = $('otype').value;
     if (type === 'limit') { const v = parseFloat($('limitPx').value); return fin(v) && v > 0 ? v : null; }
@@ -635,22 +705,25 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   }
   function renderEstimate() {
     const box = $('estimate'), e = estimate(), type = $('otype').value;
-    if (!ticker()) { fill(box, 'Enter a symbol and press Get quote to see the price and an estimate.'); return; }
-    if (!e) {
-      fill(box, type === 'market' ? 'Press Get quote to see an estimate.' : 'Enter the ' + type + ' price and a quantity to see an estimate.');
-      return;
+    let parts;
+    if (!ticker()) parts = ['Enter a symbol and press Get quote to see the price and an estimate.'];
+    else if (!e) parts = [type === 'market' ? 'Press Get quote to see an estimate.' : 'Enter the ' + type + ' price and a quantity to see an estimate.'];
+    else {
+      const at = type === 'market' ? 'the last price' : type + ' price';
+      parts = [(e.buy ? 'Estimated cost: ' : 'Estimated proceeds: '), money(e.total),
+        qtyS(e.q) + ' × ' + pxf(e.px) + ' (' + at + ') = ' + money(e.gross) +
+        (e.buy ? ' + ' : ' − ') + 'slippage ≈ ' + money(e.slipAmt) + (e.buy ? ' + ' : ' − ') + 'commission ' + money(e.fee)];
     }
-    const at = type === 'market' ? 'the last price' : type + ' price';
-    fill(box, (e.buy ? 'Estimated cost: ' : 'Estimated proceeds: '), h('b', {text: money(e.total)}),
-      h('br'), h('span', {class: 'muted', text: qtyS(e.q) + ' × ' + pxf(e.px) + ' (' + at + ') = ' + money(e.gross) +
-        (e.buy ? ' + ' : ' − ') + 'slippage ≈ ' + money(e.slipAmt) + (e.buy ? ' + ' : ' − ') + 'commission ' + money(e.fee)}));
+    if (!changed('estimate', parts) && box.firstChild) return;  // aria-live: only real changes are announced
+    if (parts.length === 1) fill(box, parts[0]);
+    else fill(box, parts[0], h('b', {text: parts[1]}), h('br'), h('span', {class: 'muted', text: parts[2]}));
   }
   function renderTicketContext(d) {
     const st = d.settings || {}, m = d.market || {};
     const frac = st.fractional === true;
-    $('qty').step = frac ? 'any' : '1';
-    $('qty').setAttribute('inputmode', frac ? 'decimal' : 'numeric');
-    $('qtyHint').textContent = frac ? 'Fractional shares allowed' : 'Whole shares (fractional shares can be turned on in Settings)';
+    if ($('qty').step !== (frac ? 'any' : '1')) $('qty').step = frac ? 'any' : '1';
+    if ($('qty').getAttribute('inputmode') !== (frac ? 'decimal' : 'numeric')) $('qty').setAttribute('inputmode', frac ? 'decimal' : 'numeric');
+    setText($('qtyHint'), frac ? 'Fractional shares allowed' : 'Whole shares (fractional shares can be turned on in Settings)');
     const note = $('closedNote');
     const key = [d.prices, m.open, m.can_fill, m.next_session, st.practice_fills];
     if (changed('closed', key)) {
@@ -669,11 +742,15 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   }
   function renderQuote(t) {
     const box = $('quoteBox'), q = quotes[t];
+    if (!changed('quoteBox', q ? [t, q] : null) && (q ? !box.hidden : box.hidden)) return;
     if (!q) { box.hidden = true; clear(box); return; }
+    const tk = str(q.ticker), nm = str(q.name);
+    // Demo quotes are named "AAPL (demo)": the symbol and "demo price" already say that.
+    const name = nm && nm.replace(/\s*\(demo\)\s*$/i, '').trim() !== tk ? nm : '';
     const ch = fin(q.price) && fin(q.prev_close) && q.prev_close > 0 ? q.price - q.prev_close : null;
     const chPct = ch != null ? ch / q.prev_close : null;
     fill(box,
-      h('div', {class: 'qn'}, h('b', {text: str(q.ticker)}), q.name ? ' · ' + str(q.name) : '', q.source === 'demo' ? ' · demo price' : ''),
+      h('div', {class: 'qn'}, h('b', {text: tk}), name ? ' · ' + name : '', q.source === 'demo' ? ' · demo price' : ''),
       h('div', {class: 'qp', text: pxf(q.price)}),
       h('div', {class: signCls(ch)}, ch == null ? 'change today: –' : 'Today ' + smoney(ch) + ' (' + spct(chPct) + ') vs previous close ' + pxf(q.prev_close)),
       h('div', {class: 'note', text: 'Price time: ' + when(q.time) + (q.source === 'yahoo' ? ' · Yahoo, may be delayed ~15 min' : '')}));
@@ -705,9 +782,15 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     $('tifHint').textContent = $('tif').value === 'gtc' ? 'Stays open until it fills or you cancel it.' : 'Cancelled at the close if not filled.';
     renderEstimate();
   }
+  let prefillSym = null;  // the symbol a Sell button put on the ticket
+  function resetSideType() {
+    $('sideBuy').checked = true; $('otype').value = 'market';
+  }
   function setTicket(t, sd, q) {
     $('sym').value = t;
     if (sd) (sd === 'sell' ? $('sideSell') : $('sideBuy')).checked = true;
+    else resetSideType();
+    prefillSym = sd === 'sell' ? t : null;
     if (q != null) $('qty').value = String(q);
     show($('ticketErr'), ''); show($('ticketMsg'), '');
     renderQuote(t); updateTypeFields();
@@ -717,17 +800,21 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   }
   $('btnQuote').addEventListener('click', () => fetchQuote());
   $('sym').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fetchQuote(); } });
-  $('sym').addEventListener('input', () => { renderQuote(ticker()); renderEstimate(); });
+  $('sym').addEventListener('input', () => {
+    if (prefillSym && ticker() !== prefillSym) { prefillSym = null; resetSideType(); updateTypeFields(); }
+    renderQuote(ticker()); renderEstimate();
+  });
   $('otype').addEventListener('change', updateTypeFields);
   $('tif').addEventListener('change', updateTypeFields);
   document.querySelectorAll('input[name=side]').forEach(r => r.addEventListener('change', updateTypeFields));
   ['qty', 'limitPx', 'stopPx'].forEach(id => $(id).addEventListener('input', renderEstimate));
   $('btnClearTicket').addEventListener('click', () => {
     $('sym').value = ''; $('qty').value = '1'; $('limitPx').value = ''; $('stopPx').value = '';
-    $('otype').value = 'market'; $('tif').value = 'day'; $('sideBuy').checked = true;
+    $('otype').value = 'market'; $('tif').value = 'day'; $('sideBuy').checked = true; prefillSym = null;
     show($('ticketErr'), ''); show($('ticketMsg'), ''); renderQuote(''); updateTypeFields();
   });
 
+  const MAX_QTY = 10000000, MAX_PX = 1000000;
   function describeType(type, lim, stop, t, buy) {
     if (type === 'limit') return 'Limit at ' + pxf(lim) + ': fills only at ' + pxf(lim) + ' or ' + (buy ? 'lower' : 'higher');
     if (type === 'stop') return 'Stop at ' + pxf(stop) + ': becomes a market order once ' + t + (buy ? ' rises' : ' falls') + ' to ' + pxf(stop);
@@ -743,10 +830,14 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     if (!/^[A-Z0-9][A-Z0-9.\-]{0,9}$/.test(t)) err = 'Enter a stock symbol such as AAPL (letters, digits, "." or "-", up to 10).';
     else if (!fin(qty) || qty <= 0) err = 'Enter how many shares (more than 0).';
     else if (st.fractional !== true && qty !== Math.floor(qty)) err = 'Whole shares only (turn on fractional shares in Settings).';
+    else if (qty > MAX_QTY) err = 'That is too many shares: at most 10,000,000 per order.';
     else if (type === 'limit' && !(fin(lim) && lim > 0)) err = 'Enter the limit price.';
+    else if (type === 'limit' && lim > MAX_PX) err = 'The limit price can be at most $1,000,000.';
     else if (type === 'stop' && !(fin(stop) && stop > 0)) err = 'Enter the stop price.';
+    else if (type === 'stop' && stop > MAX_PX) err = 'The stop price can be at most $1,000,000.';
     if (err) { show($('ticketErr'), err); return; }
     const buy = sd === 'buy', est = estimate();
+    const reviewed = type === 'market' ? knownPrice(t) : null;
     const waits = snap && snap.prices !== 'demo' && m.can_fill === false;
     const ok = await confirmBox('Place this ' + (buy ? 'buy' : 'sell') + ' order?', [
       h('b', {text: (buy ? 'Buy ' : 'Sell ') + qtyS(qty) + ' ' + t}),
@@ -759,6 +850,21 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     ], 'Place ' + (buy ? 'buy' : 'sell') + ' order');
     if (!ok) { $('btnReview').focus(); return; }
     $('btnReview').disabled = true;
+    if (reviewed != null) {
+      // A market order fills at the price then: if it moved more than 2% since the review, ask again.
+      const d = await getQuote(t);
+      const now = d && d.ok && d.quote && fin(d.quote.price) ? d.quote.price : null;
+      if (now != null) { quotes[t] = d.quote; if (ticker() === t) { renderQuote(t); renderEstimate(); } }
+      if (now != null && Math.abs(now / reviewed - 1) > 0.02) {
+        const e2 = estimate();
+        const again = await confirmBox('The price moved. Place the order anyway?', [
+          h('b', {text: t + ' was ' + pxf(reviewed) + ' when you reviewed the order; it is now ' + pxf(now) + ' (' + spct(now / reviewed - 1) + ').'}),
+          (buy ? 'Buy ' : 'Sell ') + qtyS(qty) + ' ' + t + ' at market',
+          e2 ? (buy ? 'Estimated cost now: about ' : 'Estimated proceeds now: about ') + money(e2.total) : null,
+        ], 'Place ' + (buy ? 'buy' : 'sell') + ' order');
+        if (!again) { $('btnReview').disabled = false; $('btnReview').focus(); return; }
+      }
+    }
     const body = {ticker: t, side: sd, type, tif, qty};
     if (type === 'limit') body.limit_price = lim;
     if (type === 'stop') body.stop_price = stop;
@@ -794,14 +900,16 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
           w.error ? {t: 'no price: ' + str(w.error), cls: 'wrap neg'} : {t: str(w.name) || (fin(w.price) ? '' : 'waiting for a price'), cls: 'wrap muted'},
           h('button', {type: 'button', class: 'small', 'aria-label': 'Remove ' + t + ' from the watchlist', onclick: () => watch(t, false), text: 'Remove'}),
         ];
-      }), 'Nothing on the watchlist yet. Add a symbol above.', 'Watchlist'));
+      }), 'Nothing on the watchlist yet. Add a symbol above.', 'Watchlist', 'compact'));
   }
   async function watch(t, add) {
     show($('watchErr'), '');
     const r = await post('/api/watch', {ticker: t, add});
-    if (!r || !r.ok) { show($('watchErr'), str((r && r.error) || 'could not change the watchlist')); return; }
+    if (!r || !r.ok) { show($('watchErr'), str((r && r.error) || 'could not change the watchlist')); if (!add) $('watchErr').focus(); return; }
     if (add) { $('watchSym').value = ''; await getQuote(t.toUpperCase()); }
     await load();
+    // The Remove button that had focus is gone with its row: keep focus in the watchlist.
+    if (!add && (document.activeElement === document.body || !document.activeElement || !document.activeElement.isConnected)) $('watchHead').focus();
   }
   $('watchForm').addEventListener('submit', e => {
     e.preventDefault();
@@ -825,12 +933,13 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
           {t: spct(p.unrealized_pct), num: true, cls: signCls(p.unrealized_pct, 4)},
           {t: smoney(p.day_change), num: true, cls: signCls(p.day_change)},
           h('button', {type: 'button', class: 'small', 'aria-label': 'Sell ' + t, onclick: () => setTicket(t, 'sell', p.shares), text: 'Sell'})];
-      }), 'You have no positions yet. Buy something on the Trade tab.', 'Positions'));
+      }), 'You have no positions yet. Buy something on the Trade tab.', 'Positions', true));
   }
   function drawEquity(d) {
     const box = $('eqChart');
     if ($('panel-portfolio').hidden) return;
-    const pts = (Array.isArray(d.equity_curve) ? d.equity_curve : []).filter(p => p && fin(p.equity));
+    // Hand-edited files can hold absurd values (1e308) or junk times: such points are skipped.
+    const pts = (Array.isArray(d.equity_curve) ? d.equity_curve : []).filter(p => p && fin(p.equity) && Math.abs(p.equity) < 1e13);
     // The saved curve gets a point every few minutes; end it at the value shown above.
     if (pts.length && d.equity_unknown !== true && fin(d.equity) && typeof d.now === 'string') pts.push({t: d.now, equity: d.equity});
     const start = fin(d.starting_cash) ? d.starting_cash : null;
@@ -842,25 +951,34 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
       $('eqNote').textContent = '';
       return;
     }
-    const padL = W < 500 ? 62 : 76, padR = 12, padT = 12, padB = 24;
+    const padR = 12, padT = 12, padB = 24;
     const vals = pts.map(p => p.equity);
     const all = start != null ? vals.concat([start]) : vals.slice();
     let lo = Math.min(...all), hi = Math.max(...all);
     if (hi === lo) { const pad = Math.abs(hi) * 0.01 || 1; hi += pad; lo -= pad; }
     const span = hi - lo; hi += span * 0.08; lo -= span * 0.08;
-    const ts = pts.map(p => Date.parse(p.t));
+    const ts = pts.map(p => isoT(p.t));
     const useTime = ts.every(t => !isNaN(t)) && ts[ts.length - 1] > ts[0];
     const n = pts.length;
+    // y labels: compact ($110.8M, $100.2K) for big accounts, with enough decimals to tell the lines apart;
+    // the left margin is sized to the longest one.
+    const mag = Math.max(Math.abs(hi), Math.abs(lo)), step = (hi - lo) / 4;
+    const unit = mag >= 1e9 ? [1e9, 'B'] : mag >= 1e6 ? [1e6, 'M'] : mag >= 1e5 ? [1e3, 'K'] : null;
+    const dec = unit ? Math.min(3, Math.max(1, Math.ceil(-Math.log10(step / unit[0])))) : 0;
+    const fmtAxis = v => !unit ? ((hi - lo) < 20 ? usd.format(v) : usd0.format(v))
+      : (v < 0 ? MINUS : '') + '$' + (Math.abs(v) / unit[0]).toFixed(dec) + unit[1];
+    const ticks = [0, 1, 2, 3, 4].map(k => lo + (hi - lo) * k / 4);
+    const padL = Math.max(W < 500 ? 48 : 56, 12 + Math.max(...ticks.map(v => fmtAxis(v).length)) * 7);
     const X = i => padL + (useTime ? (ts[i] - ts[0]) / (ts[n - 1] - ts[0]) : (n > 1 ? i / (n - 1) : 0.5)) * (W - padL - padR);
     const Y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
     const first = pts[0], last = pts[n - 1];
+    if (![0, n - 1].every(i => Number.isFinite(X(i)) && Number.isFinite(Y(pts[i].equity)))) return;  // nothing drawable
     const label = 'Account value over time: ' + money(first.equity) + ' on ' + when(first.t) + ', ' + money(last.equity) + ' on ' + when(last.t) +
       (start != null ? '; starting balance ' + money(start) : '') + '.';
     const svg = s('svg', {viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', 'aria-label': label});
     svg.appendChild(s('title', null, label));
-    const fmtAxis = v => (hi - lo) < 20 ? usd.format(v) : usd0.format(v);
-    for (let k = 0; k <= 4; k++) {
-      const v = lo + (hi - lo) * k / 4, y = Math.round(Y(v)) + 0.5;
+    for (const v of ticks) {
+      const y = Math.round(Y(v)) + 0.5;
       svg.appendChild(s('line', {x1: padL, x2: W - padR, y1: y, y2: y, stroke: 'var(--grid)', 'stroke-width': 1}));
       svg.appendChild(s('text', {x: padL - 6, y: y + 4, 'text-anchor': 'end'}, fmtAxis(v)));
     }
@@ -877,7 +995,7 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
       svg.appendChild(s('line', {x1: padL, x2: W - padR, y1: y, y2: y, stroke: 'var(--text-muted)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4'}));
       svg.appendChild(s('text', {x: W - padR, y: y - 5, 'text-anchor': 'end'}, 'start ' + money(start)));
     }
-    const lab = t => { const v = Date.parse(t); return isNaN(v) ? '' : shortDay.format(v); };
+    const lab = t => { const v = isoT(t); return isNaN(v) ? '' : shortDay.format(v); };
     svg.appendChild(s('text', {x: padL, y: H - 6, 'text-anchor': 'start'}, lab(first.t)));
     if (n > 1) svg.appendChild(s('text', {x: W - padR, y: H - 6, 'text-anchor': 'end'}, lab(last.t)));
     box.appendChild(svg);
@@ -893,39 +1011,50 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   function renderOrders(d) {
     const open = (d.open_orders || []).filter(o => o && typeof o === 'object');
     if (changed('open', open)) {
-      fill($('openTable'), table([{t: '#', num: true}, 'Placed', 'Symbol', 'Side', {t: 'Qty', num: true}, 'Type', 'TIF', 'Session', 'Note', {t: '', sr: 'Cancel'}],
-        open.map(o => [{t: str(o.id), num: true}, {t: when(o.created)}, {t: str(o.ticker)}, sideCell(o.side), {t: qtyS(o.qty), num: true},
+      fill($('openTable'), table([{t: '#', num: true}, 'Placed (ET)', 'Symbol', 'Side', {t: 'Qty', num: true}, 'Type', 'TIF', 'Session', 'Note', {t: '', sr: 'Cancel'}],
+        open.map(o => [{t: str(o.id), num: true}, {t: whenShort(o.created), cls: 'time'}, {t: str(o.ticker)}, sideCell(o.side), {t: qtyS(o.qty), num: true},
           {t: typeText(o)}, {t: str(o.tif).toUpperCase()}, {t: day(o.session)}, {t: str(o.note), cls: 'wrap muted'},
           h('button', {type: 'button', class: 'small danger', 'aria-label': 'Cancel order ' + str(o.id), onclick: () => cancelOrder(o), text: 'Cancel'})]),
-        'No open orders.', 'Open orders'));
+        'No open orders.', 'Open orders', true));
     }
     const all = (d.orders || []).filter(o => o && typeof o === 'object');
     if (changed('hist', all)) {
-      fill($('histTable'), table([{t: '#', num: true}, 'Placed', 'Symbol', 'Side', {t: 'Qty', num: true}, 'Type', 'TIF', 'Status',
+      fill($('histTable'), table([{t: '#', num: true}, 'Placed (ET)', 'Symbol', 'Side', {t: 'Qty', num: true}, 'Type', 'TIF', 'Status',
         {t: 'Fill price', num: true}, {t: 'Fee', num: true}, 'Note'],
-        all.map(o => [{t: str(o.id), num: true}, {t: when(o.created)}, {t: str(o.ticker)}, sideCell(o.side), {t: qtyS(o.qty), num: true},
+        all.map(o => [{t: str(o.id), num: true}, {t: whenShort(o.created), cls: 'time'}, {t: str(o.ticker)}, sideCell(o.side), {t: qtyS(o.qty), num: true},
           {t: typeText(o)}, {t: str(o.tif).toUpperCase()}, statusBadge(o.status), {t: pxf(o.fill_price), num: true},
           {t: fin(o.fee) ? money(o.fee) : '–', num: true}, {t: str(o.note), cls: 'wrap muted'}]),
         'No orders yet.', 'Order history'));
     }
+    moreNote($('histMore'), all.length, d.orders_total, 'orders');
+  }
+  // The program sends at most the latest 300 orders and fills.
+  function moreNote(el, shown, total, what) {
+    let t = '';
+    if (fin(total) && total > shown) t = 'Showing the latest ' + qtyS(shown) + ' of ' + qtyS(total) + ' ' + what + '.';
+    else if (!fin(total) && shown >= 300) t = 'Showing the latest ' + qtyS(shown) + ' ' + what + '.';
+    setText(el, t); el.hidden = !t;
   }
   async function cancelOrder(o) {
     show($('ordErr'), ''); show($('ordMsg'), '');
     const ok = await confirmBox('Cancel order #' + str(o.id) + '?', [
       h('b', {text: (o.side === 'sell' ? 'Sell ' : 'Buy ') + qtyS(o.qty) + ' ' + str(o.ticker) + ', ' + typeText(o)}),
-      'It will not fill after this. You can place a new order any time.'], 'Cancel order', true);
+      'It will not fill after this. You can place a new order any time.'], 'Cancel order', true, 'Keep order');
     if (!ok) return;
     const r = await post('/api/cancel', {id: o.id});
-    if (r && r.ok) show($('ordMsg'), 'Order #' + str(o.id) + ' cancelled.');
-    else show($('ordErr'), str((r && r.error) || 'could not cancel'));
-    load();
+    const box = r && r.ok ? $('ordMsg') : $('ordErr');
+    if (r && r.ok) show(box, 'Order #' + str(o.id) + ' cancelled.');
+    else show(box, str((r && r.error) || 'could not cancel'));
+    await load();
+    box.focus();  // its row (and the button that had focus) is gone
   }
   function renderFills(d) {
     const fills = (d.fills || []).filter(f => f && typeof f === 'object');
+    moreNote($('fillMore'), fills.length, d.fills_total, 'fills');
     if (!changed('fills', fills)) return;
-    fill($('fillTable'), table(['Time', 'Symbol', 'Side', {t: 'Qty', num: true}, {t: 'Price', num: true}, {t: 'Value', num: true},
+    fill($('fillTable'), table(['Time (ET)', 'Symbol', 'Side', {t: 'Qty', num: true}, {t: 'Price', num: true}, {t: 'Value', num: true},
       {t: 'Fee', num: true}, {t: 'Realized P/L', num: true}, {t: 'Order', num: true}, 'Prices'],
-      fills.map(f => [{t: when(f.time)}, {t: str(f.ticker)}, sideCell(f.side), {t: qtyS(f.qty), num: true}, {t: pxf(f.price), num: true},
+      fills.map(f => [{t: whenShort(f.time), cls: 'time'}, {t: str(f.ticker)}, sideCell(f.side), {t: qtyS(f.qty), num: true}, {t: pxf(f.price), num: true},
         {t: fin(f.qty) && fin(f.price) ? money(f.qty * f.price) : '–', num: true}, {t: money(f.fee), num: true},
         {t: fin(f.realized) ? smoney(f.realized) : '–', num: true, cls: signCls(f.realized)}, {t: '#' + str(f.order_id), num: true},
         {t: f.source === 'demo' ? 'demo' : f.source === 'yahoo' ? 'Yahoo' : str(f.source)}]),
@@ -999,25 +1128,29 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
   $('btnFolder').addEventListener('click', async () => {
     const r = await post('/api/open-folder', {});
     if (r && r.ok !== false && !r.error) toast('Opened the account folder.');
-    else toast('Could not open the folder: ' + str((r && r.error) || 'unknown error') + '. It is: ' + str(snap && snap.home), true);
+    else toast(r && r.error ? str(r.error) : 'Could not open the folder. It is: ' + str(snap && snap.home), true);
   });
 
   // ---- polling -------------------------------------------------------------------
   function setConn(ok) {
     const c = $('conn');
+    if (connected === ok) return;  // role=status / role=alert: announce transitions only
+    connected = ok;
     if (ok) {
-      c.textContent = 'connected'; c.className = 'badge good';
+      setText(c, 'connected'); setClass(c, 'badge good');
       show($('loadErr'), '');
     } else {
-      c.textContent = 'disconnected'; c.className = 'badge bad';
+      setText(c, 'disconnected'); setClass(c, 'badge bad');
       show($('loadErr'), '', [h('b', {text: 'Cannot reach Paper Trading. '}),
-        'Its window may have been closed. ' + (lastGood ? 'The figures below are from the last good update at ' + tf.format(lastGood) + '. ' : '') +
+        'Its window may have been closed. ' + (lastGood ? 'The figures below are from the last good update at ' + tf.format(lastGood) + ' ET. ' : '') +
         'Start Paper Trading again; this page reconnects by itself.']);
     }
   }
   function render(d) {
+    syncQuotes(d);
     renderHeader(d);
     renderSummary(d);
+    if (ticker()) renderQuote(ticker());
     renderTicketContext(d);
     renderWatch(d);
     renderPositions(d);
@@ -1042,7 +1175,7 @@ dialog .buttons { justify-content:flex-end; margin-top:16px; }
     })();
     return loading;
   }
-  function poll() { load().finally(() => setTimeout(poll, 5000)); }
+  function poll() { load().finally(() => { requote(); setTimeout(poll, 5000); }); }
   updateTypeFields();
   post('/api/refresh', {}).then(() => load());
   poll();
