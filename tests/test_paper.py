@@ -302,12 +302,14 @@ class TestOrderTypes(BookCase):
         self.q.prices["AAPL"] = 96
         self.book.refresh()
         self.assertEqual(self.book.acct["orders"][0]["status"], "open")
-        self.q.prices["AAPL"] = 94.97
+        self.q.prices["AAPL"] = 94.97  # 94.97 * 1.001 = 95.06: over the limit once slippage is paid
+        self.assertEqual(self.book.refresh()["changed"], 0)
+        self.q.prices["AAPL"] = 94.9
         self.assertEqual(self.book.refresh()["changed"], 1)
         o = self.book.acct["orders"][0]
         self.assertEqual(o["status"], "filled")
         self.assertLessEqual(o["fill_price"], 95)
-        self.assertAlmostEqual(o["fill_price"], 95.0)  # 94.97 * 1.001 is above the limit: capped
+        self.assertAlmostEqual(o["fill_price"], 94.9949)  # the slippage is paid, not waived
 
     def test_limit_buy_below(self):
         o = self.ok(qty=1, type="limit", limit_price=150)  # marketable at once
@@ -318,7 +320,10 @@ class TestOrderTypes(BookCase):
         self.ok(qty=10)
         o = self.ok(side="sell", qty=10, type="limit", limit_price=105)
         self.assertEqual(o["status"], "open")
-        self.q.prices["AAPL"] = 105.05
+        self.q.prices["AAPL"] = 105.05  # minus 10 bp = 104.94: under the limit
+        self.book.refresh()
+        self.assertEqual(self.book.acct["orders"][-1]["status"], "open")
+        self.q.prices["AAPL"] = 105.2
         self.book.refresh()
         o = self.book.acct["orders"][-1]
         self.assertEqual(o["status"], "filled")
@@ -724,7 +729,7 @@ class TestDemoQuotes(unittest.TestCase):
             p1 = book.acct["demo_state"]["DEMO"]["price"]
             again = Book(Path(tmp), quotes=q, clock=lambda: now[0])
             self.assertEqual(again.acct["demo_state"]["DEMO"]["price"], p1)
-            self.assertEqual(again.quote("DEMO")["price"], p1)
+            self.assertEqual(again.quote("DEMO")["price"], round(p1, 2))
             self.assertGreater(p0, 0)
             self.assertEqual(q.calls, [])
 
@@ -983,6 +988,193 @@ class TestRefresh(BookCase):
             self.assertTrue(json.loads(conn.getresponse().read())["ok"])
             spy.assert_called_once_with(fresh=True)
 
+
+class TestReviewFindings(BookCase):
+    """Bugs an independent test pass found; each test failed before its fix."""
+
+    def yahoo(self, ticker="AAPL", **meta):
+        with mock.patch("urllib.request.urlopen") as m:
+            m.return_value = _Resp(_payload(**meta))
+            q = yahoo_quote(ticker)
+        return q, m.call_args[0][0].full_url
+
+    def test_non_dollar_prices_are_refused(self):
+        with self.assertRaisesRegex(ValueError, "JPY"):
+            self.yahoo("7203.T", currency="JPY")
+        with self.assertRaisesRegex(ValueError, "GBp"):
+            self.yahoo("VOD.L", currency="GBp")
+        self.assertEqual(self.yahoo()[0]["currency"], "USD")
+
+    def test_previous_close_is_yesterdays(self):
+        # With range=5d Yahoo's chartPreviousClose is the close before the
+        # five days, so "today's change" was a 5-day change.
+        self.assertIn("range=1d", self.yahoo()[1])
+
+    def test_class_shares_use_yahoos_spelling(self):
+        self.assertIn("/chart/BRK-B?", self.yahoo("BRK.B")[1])
+        self.assertIn("/chart/SHOP.TO?", self.yahoo("SHOP.TO")[1])
+
+    def test_failed_save_changes_nothing(self):
+        (self.home / "account.json.tmp").mkdir()  # the save can't write its temporary file
+        cash = self.book.acct["cash"]
+        with self.assertRaises(paper.SaveError):
+            self.order(qty=1)
+        self.assertEqual((self.book.acct["cash"], self.book.acct["orders"]), (cash, []))
+        with self.assertRaises(paper.SaveError):
+            self.book.reset({"starting_cash": 50})
+        self.assertTrue((self.home / "account.json").exists())  # the old file is put back
+        self.assertEqual(self.book.acct["cash"], cash)
+        (self.home / "account.json.tmp").rmdir()
+        self.ok(qty=1)
+        self.assertEqual(len(Book(self.home, quotes=self.q, clock=lambda: self.now).acct["orders"]), 1)
+
+    def test_failed_save_is_a_json_error_not_an_empty_reply(self):
+        server = PaperServer(("127.0.0.1", 0), self.book)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        (self.home / "account.json.tmp").mkdir()
+        port = server.server_address[1]
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        with mock.patch("traceback.print_exc"):
+            conn.request("POST", "/api/order", body=json.dumps({"ticker": "AAPL", "side": "buy", "qty": 1}),
+                         headers={"Content-Type": "application/json", "Host": f"127.0.0.1:{port}"})
+            r = conn.getresponse()
+        body = json.loads(r.read())
+        self.assertEqual(r.status, 500)
+        self.assertIn("Could not save", body["error"])
+
+    def damaged(self, change):
+        acct = json.loads((self.home / "account.json").read_text())
+        change(acct)
+        (self.home / "account.json").write_text(json.dumps(acct))
+        return Book(self.home, quotes=self.q, clock=lambda: self.now)
+
+    def test_damaged_money_or_orders_start_a_fresh_account(self):
+        self.ok(qty=2)
+        self.ok(qty=1, type="limit", limit_price=50, tif="gtc")
+        cases = {
+            "cash as text": lambda a: a.update(cash="100000"),
+            "zero shares": lambda a: a["positions"]["AAPL"].update(shares=0),
+            "shares as text": lambda a: a["positions"]["AAPL"].update(shares="2"),
+            "missing cost": lambda a: a["positions"]["AAPL"].pop("cost"),
+            "bare number position": lambda a: a["positions"].update(AAPL=5),
+            "order without status": lambda a: a["orders"][0].pop("status"),
+            "qty as text": lambda a: a["orders"][0].update(qty="1"),
+            "order as text": lambda a: a["orders"].append("x"),
+            "duplicate id": lambda a: a["orders"].append(dict(a["orders"][0])),
+            "realized NaN": lambda a: a.update(realized=float("nan")),
+            "bad session": lambda a: a["orders"][1].update(session="soon"),
+        }
+        for name, change in cases.items():
+            with self.subTest(name):
+                for f in self.home.glob("account.*-*.json"):
+                    f.unlink()
+                self.book = self.make()  # the good account, written again
+                self.book._write()
+                book = self.damaged(change)
+                self.assertEqual(book.acct["cash"], DEFAULT_CASH)
+                self.assertTrue(list(self.home.glob("account.corrupt-*.json")))
+                self.assertTrue(book.notes)
+                json.dumps(book.snapshot(), allow_nan=False)
+                book._write()  # put a good file back for the next case
+                (self.home / "account.json").write_text(json.dumps(self.book.acct))
+
+    def test_bad_settings_watchlist_and_chart_are_repaired_not_lost(self):
+        self.ok(qty=2)
+        book = self.damaged(lambda a: (a["settings"].update(slippage_bps="abc", commission=-50, fractional="maybe"),
+                                       a.update(watchlist=None, equity={}, demo_state=None, next_id="7")))
+        self.assertIn("AAPL", book.acct["positions"])
+        self.assertEqual(book.acct["settings"], paper.DEFAULT_SETTINGS)
+        self.assertEqual((book.acct["watchlist"], book.acct["equity"], book.acct["demo_state"]), ([], [], {}))
+        self.assertEqual(book.acct["next_id"], 2)
+        self.assertEqual(len(book.notes), 3)
+        self.assertFalse(list(self.home.glob("account.corrupt-*.json")))
+
+    def test_order_numbers_never_repeat(self):
+        self.ok(qty=1)
+        book = self.damaged(lambda a: a.update(next_id=1))
+        self.book = book
+        o = self.ok(qty=1, type="limit", limit_price=50, tif="gtc")
+        self.assertEqual(o["id"], 2)
+        self.assertTrue(book.cancel(2)["ok"])
+
+    def test_day_orders_expire_on_demo_prices_and_with_practice_fills(self):
+        self.book.update_settings({"practice_fills": True})
+        o = self.ok(qty=1, type="limit", limit_price=50)  # Day
+        self.now = OPEN_THU + timedelta(days=1, hours=8)  # Friday after the close
+        self.book.refresh()
+        self.assertEqual(self.book.acct["orders"][-1]["status"], "expired", o)
+        self.book.reset({"prices": "demo"})
+        self.ok(qty=1, type="limit", limit_price=1)
+        self.now += timedelta(days=4)
+        self.book.refresh()
+        self.assertEqual(self.book.acct["orders"][-1]["status"], "expired")
+
+    def test_fractional_cannot_be_turned_off_with_fractional_orders_open(self):
+        self.book.update_settings({"fractional": True})
+        self.ok(qty=0.5, type="limit", limit_price=50, tif="gtc")
+        r = self.book.update_settings({"fractional": False})
+        self.assertFalse(r["ok"])
+        self.assertIn("open orders", r["error"])
+
+    def test_all_in_buy_that_passes_the_check_fills(self):
+        self.book.update_settings({"fractional": True, "commission": 0, "slippage_bps": 7})
+        rejected = 0
+        for i in range(300):
+            self.book.reset({"starting_cash": 1})
+            self.q.prices["AAPL"] = 3 + i * 0.0137
+            p = self.q.prices["AAPL"]
+            qty = round(1 / (p * 1.0007), 6)
+            r = self.order(qty=qty)
+            if r["ok"]:
+                rejected += r["order"]["status"] == "rejected"
+        self.assertEqual(rejected, 0)
+
+    def test_stops_on_the_wrong_side_are_refused(self):
+        self.ok(qty=2)
+        r = self.order(qty=1, type="stop", stop_price=90)  # buy stop under 100
+        self.assertIn("above the current price", r["error"])
+        r = self.order(side="sell", qty=1, type="stop", stop_price=110)
+        self.assertIn("below the current price", r["error"])
+
+    def test_underscores_are_not_numbers(self):
+        self.assertIn("must be a number", self.order(qty="1_000")["error"])
+
+
+class TestDemoReview(unittest.TestCase):
+    def test_cheap_demo_stocks_still_move(self):
+        state, now = {}, [SATURDAY]
+        demo = DemoQuotes(state, lambda: now[0])
+        state["PENNY"] = {"price": 0.6, "open": 0.6, "t": now[0].timestamp(), "day": "2026-10-03"}
+        prices = []
+        for _ in range(2880):  # a day of 30-second steps
+            now[0] += timedelta(seconds=30)
+            prices.append(demo("PENNY")["price"])
+        self.assertGreater(len(set(prices)), 1)
+
+    def test_today_is_measured_from_the_day_before(self):
+        state, now = {}, [SATURDAY]
+        demo = DemoQuotes(state, lambda: now[0])
+        first = demo("XYZ")
+        now[0] += timedelta(days=200)
+        before = demo("XYZ")
+        now[0] += timedelta(days=1)
+        later = demo("XYZ")
+        self.assertEqual(later["prev_close"], before["price"])
+        self.assertNotEqual(later["prev_close"], first["price"])
+
+
+class TestSecondCopy(unittest.TestCase):
+    def test_port_in_use_leaves_the_account_folder_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = PaperServer(("127.0.0.1", 0), None)
+            self.addCleanup(first.server_close)
+            home = Path(tmp) / "second"
+            with mock.patch("builtins.print"), self.assertRaises(OSError):
+                paper.serve(first.server_address[1], open_browser=False, home=home, block=False)
+            self.assertFalse(home.exists())
+
 # --------------------------------------------------------------------------
 # Safety
 # --------------------------------------------------------------------------
@@ -1020,7 +1212,7 @@ class TestSafety(unittest.TestCase):
         self.assertEqual(out.stdout.strip(), "[]")
 
     def test_listens_on_loopback_only(self):
-        self.assertIn('PaperServer(("127.0.0.1", port), book)', self.SRC)
+        self.assertIn('PaperServer(("127.0.0.1", port), None)', self.SRC)
         self.assertNotIn("0.0.0.0", self.SRC)
 
     def test_env_home(self):

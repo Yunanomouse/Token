@@ -16,10 +16,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(HERE)
 sys.path.insert(0, HERE)
 
+def ask(prompt: str, no_keyboard: str = "") -> str:
+    """input(), or ``no_keyboard`` when there is none (started from another program)."""
+    try:
+        return input(prompt)
+    except EOFError:
+        return no_keyboard
+
+
 if sys.version_info < (3, 10):
     print(f"Python 3.10 or newer is required; this is {sys.version.split()[0]}.")
     print("Install it from https://www.python.org/downloads/ and run this again.")
-    input("press Enter to close")
+    ask("press Enter to close")
     sys.exit(1)
 
 # tzdata on Windows, whose Python has no time-zone database of its own (New
@@ -46,14 +54,14 @@ def missing() -> list[str]:
 need = missing()
 if need:
     print(f"Paper Trading needs these Python packages: {', '.join(need)}")
-    answer = input("Install them now with pip? [Y/n] ").strip().lower()
+    answer = ask("Install them now with pip? [Y/n] ", no_keyboard="n").strip().lower()
     if answer not in ("", "y", "yes") or subprocess.call([sys.executable, "-m", "pip", "install", *need]) != 0:
         print(f"Run:  python -m pip install {' '.join(need)}   and start this again.")
-        input("press Enter to close")
+        ask("press Enter to close")
         sys.exit(1)
     if missing():
         print("The packages were installed but still cannot be loaded; restart this window.")
-        input("press Enter to close")
+        ask("press Enter to close")
         sys.exit(1)
 
 from paper_app import main  # noqa: E402
@@ -61,5 +69,5 @@ from paper_app import main  # noqa: E402
 if __name__ == "__main__":
     code = main(sys.argv[1:])
     if code:
-        input("press Enter to close")
+        ask("press Enter to close")
     sys.exit(code)

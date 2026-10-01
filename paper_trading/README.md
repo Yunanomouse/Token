@@ -49,16 +49,20 @@ program runs.
 **Order types**
 
 - **Market**: fills at the current price.
-- **Limit**: fills only at your price or better. A buy limit fills once the price is at or
-  below your limit, and never above it; a sell limit fills at or above your limit.
+- **Limit**: fills only at your price or better, slippage included. A buy limit fills once
+  the price plus slippage is at or below your limit; a sell limit once the price minus
+  slippage is at or above it. (Slippage stands for the gap between buyers' and sellers'
+  prices, so a limit order at today's price doesn't avoid it.)
 - **Stop**: waits until the price reaches your stop, then fills like a market order. A buy
   stop triggers when the price rises to the stop; a sell stop (a "stop-loss") when it falls to
-  it. The fill can be worse than the stop if the price jumped past it.
+  it. The fill can be worse than the stop if the price jumped past it. A buy stop must be
+  above the current price and a sell stop below it; otherwise use a market or limit order.
 
 **Time in force**
 
 - **Day**: if it hasn't filled by the close of its session, it expires. An order placed while
-  the market is closed belongs to the next session.
+  the market is closed belongs to the next session. This holds on demo prices and with
+  practice fills too.
 - **GTC** (good till cancelled): stays open until it fills or you cancel it.
 
 **Costs.** Every fill pays the **slippage** you set: buys fill that much above the price,
@@ -71,7 +75,12 @@ total fees are on the account summary.
 2026-12-24 and 2027-11-26) the market closes at 1:00 pm. An order placed while the market is
 closed waits, with a note saying so, and is checked again once it opens. Just after the open,
 an order also waits until the quote shows a price from the new day, so it doesn't fill at last
-night's closing price.
+night's closing price. Market holidays are listed for 2026 and 2027; after that, every
+weekday counts as a trading day until the list is updated.
+
+**US-dollar stocks only.** A symbol priced in another currency (for example Toyota, 7203.T, in
+yen) is refused, because the account is in dollars. Class shares can be typed either way:
+BRK.B or BRK-B.
 
 **Buying power.** Cash minus the money set aside for your open buy orders (at their limit or
 stop price, or the last price for a market order, plus slippage and commission). A buy that
@@ -89,8 +98,8 @@ shares cost on average (including the commission you paid buying them).
 
 ## Live prices or demo prices
 
-- **Live** (the default): real prices from Yahoo Finance's public chart service, **delayed by
-  about 15 minutes**. That service is unofficial and meant for personal use: Yahoo can change
+- **Live** (the default): real prices from Yahoo Finance's public chart service, **delayed by up
+  to about 15 minutes**. That service is unofficial and meant for personal use: Yahoo can change
   or block it at any time, and its terms don't allow republishing the prices. This program only
   shows them to you on your own computer and doesn't store or share them.
   The only thing sent is the stock symbol you look up; nothing about you or your account is

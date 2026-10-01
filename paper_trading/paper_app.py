@@ -15,28 +15,29 @@ file (or ``QT_PAPER_HOME``, or ``--home``).  See README.md.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
 import os
 import random
-import subprocess
 import re
+import subprocess
 import sys
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
-from http.server import ThreadingHTTPServer
+from datetime import time as dtime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
-
-from datetime import time as dtime
-from http.server import BaseHTTPRequestHandler
 from zoneinfo import ZoneInfo
 
 __all__ = ["Book", "PaperServer", "market_open", "next_session", "yahoo_quote", "DemoQuotes", "serve", "main"]
@@ -49,6 +50,7 @@ PAGE_FILE = Path(__file__).with_name("paper_page.html")
 SCHEMA = 1
 
 TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
+CLASS_SHARE_RE = re.compile(r"^[A-Z]{1,5}\.[A-Z]$")  # BRK.B, BF.A
 DEFAULT_CASH = 100_000.0
 MAX_CASH = 100_000_000.0
 MAX_QTY = 10_000_000.0
@@ -64,6 +66,10 @@ DEFAULT_SETTINGS = {"commission": 0.0, "slippage_bps": 2.0, "fractional": False,
 ORDER_TYPES = ("market", "limit", "stop")
 SIDES = ("buy", "sell")
 TIFS = ("day", "gtc")
+ORDER_STATUSES = ("open", "filled", "cancelled", "rejected", "expired")
+MAX_COMMISSION = 100.0
+MAX_SLIPPAGE_BPS = 500.0
+MAX_WATCH = 50
 
 
 # --------------------------------------------------------------------------
@@ -130,8 +136,12 @@ def yahoo_quote(ticker: str, timeout: float = 15.0) -> dict:
 
     Raises ValueError for an unknown symbol, OSError when Yahoo can't be
     reached.  Nothing about the user is sent: only the symbol."""
+    # Class shares are written BRK.B in the US and BRK-B at Yahoo.
+    symbol = ticker.replace(".", "-") if CLASS_SHARE_RE.match(ticker) else ticker
+    # range=1d: chartPreviousClose is then the previous session's close (with
+    # a longer range it is the close before the whole range).
     url = ("https://query1.finance.yahoo.com/v8/finance/chart/"
-           f"{urllib.parse.quote(ticker, safe='')}?interval=1d&range=5d")
+           f"{urllib.parse.quote(symbol, safe='')}?interval=1d&range=1d")
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -153,6 +163,9 @@ def yahoo_quote(ticker: str, timeout: float = 15.0) -> dict:
         raise OSError("Yahoo sent an unreadable answer") from None
     if isinstance(price, bool) or not isinstance(price, (int, float)) or not math.isfinite(price) or price <= 0:
         raise ValueError(f"{ticker}: Yahoo has no price")
+    currency = str(meta.get("currency") or "USD")[:8]
+    if currency != "USD":
+        raise ValueError(f"{ticker} is priced in {currency}; this program trades US-dollar stocks only")
     prev = meta.get("chartPreviousClose", meta.get("previousClose"))
     ts = meta.get("regularMarketTime")
     return {
@@ -161,7 +174,7 @@ def yahoo_quote(ticker: str, timeout: float = 15.0) -> dict:
         "prev_close": float(prev) if isinstance(prev, (int, float)) and math.isfinite(prev) and prev > 0 else None,
         "time": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds") if isinstance(ts, (int, float)) else None,
         "name": str(meta.get("longName") or meta.get("shortName") or "")[:80],
-        "currency": str(meta.get("currency") or "")[:8],
+        "currency": currency,
         "source": "yahoo",
     }
 
@@ -182,18 +195,22 @@ class DemoQuotes:
 
     def __call__(self, ticker: str) -> dict:
         now = self.clock()
+        day = now.astimezone(NY).date().isoformat()
         last = self.state.get(ticker)
-        if not isinstance(last, dict) or not all(isinstance(last.get(k), (int, float)) for k in ("price", "t", "open")):
+        if not isinstance(last, dict) or not all(
+                isinstance(last.get(k), (int, float)) and not isinstance(last.get(k), bool)
+                and math.isfinite(last[k]) and last[k] > 0 for k in ("price", "t", "open")):
             price = self.base(ticker)
-            last = {"price": price, "open": price, "t": now.timestamp()}
+            last = {"price": price, "open": price, "t": now.timestamp(), "day": day}
         dt_days = max(0.0, now.timestamp() - last["t"]) / 86400.0
-        price = last["price"]
+        price = last["price"]  # kept unrounded, so small steps on a cheap stock add up
         if dt_days > 0:
             rng = random.Random(f"{ticker}:{int(now.timestamp())}")
             price = max(0.5, price * math.exp(0.02 * math.sqrt(dt_days) * rng.gauss(0, 1)))
-            price = round(price, 2)
-        self.state[ticker] = {"price": price, "open": last["open"], "t": now.timestamp()}
-        return {"ticker": ticker, "price": price, "prev_close": last["open"],
+        # "Today" is measured from the last price seen on an earlier New York day.
+        prev = last["open"] if last.get("day") == day else last["price"]
+        self.state[ticker] = {"price": price, "open": prev, "t": max(now.timestamp(), last["t"]), "day": day}
+        return {"ticker": ticker, "price": round(price, 2), "prev_close": round(prev, 2),
                 "time": now.isoformat(timespec="seconds"), "name": f"{ticker} (demo)", "currency": "USD",
                 "source": "demo"}
 
@@ -209,7 +226,7 @@ def _now_iso(now: datetime) -> str:
 
 def _num(value, name: str, lo: float, hi: float, allow_zero: bool = False) -> float:
     """``value`` as a finite float in range, else ValueError with a plain message."""
-    if isinstance(value, bool):
+    if isinstance(value, bool) or (isinstance(value, str) and "_" in value):
         raise ValueError(f"{name} must be a number")
     try:
         v = float(value)
@@ -231,14 +248,96 @@ def new_account(now: datetime, starting_cash: float = DEFAULT_CASH, prices: str 
     }
 
 
-def _valid_account(acct) -> bool:
-    try:
-        return (acct.get("schema") == SCHEMA and math.isfinite(float(acct["cash"]))
-                and float(acct["starting_cash"]) > 0 and acct.get("prices") in ("live", "demo")
-                and isinstance(acct["positions"], dict) and isinstance(acct["orders"], list)
-                and isinstance(acct["fills"], list) and isinstance(acct["settings"], dict))
-    except (AttributeError, KeyError, TypeError, ValueError):
-        return False
+class SaveError(OSError):
+    """The account file could not be written; the change was undone."""
+
+
+def _real(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _check_account(acct) -> list[str]:
+    """Check a loaded account all the way down and repair what is safe to.
+
+    Raises ValueError when the money or the orders can't be trusted (the
+    file is then treated as damaged).  Settings, the watchlist, the chart
+    and the demo prices are reset when bad instead; the returned notes say
+    which."""
+    notes = []
+    if not isinstance(acct, dict) or acct.get("schema") != SCHEMA or acct.get("prices") not in ("live", "demo"):
+        raise ValueError("not an account file")
+    for key in ("cash", "starting_cash"):
+        if not _real(acct.get(key)):
+            raise ValueError(key)
+    if acct["starting_cash"] <= 0 or acct["cash"] < -0.01:
+        raise ValueError("cash")
+    for key in ("realized", "fees"):
+        acct.setdefault(key, 0.0)
+        if not _real(acct[key]):
+            raise ValueError(key)
+    if not isinstance(acct.get("created"), str):
+        acct["created"] = ""
+    positions = acct.get("positions")
+    if not isinstance(positions, dict):
+        raise ValueError("positions")
+    for t, pos in positions.items():
+        if not (isinstance(t, str) and TICKER_RE.match(t) and isinstance(pos, dict)
+                and _real(pos.get("shares")) and pos["shares"] > 0 and _real(pos.get("cost")) and pos["cost"] >= 0):
+            raise ValueError(f"position {t!r}")
+    orders = acct.get("orders")
+    if not isinstance(orders, list):
+        raise ValueError("orders")
+    ids = set()
+    for o in orders:
+        try:
+            ok = (isinstance(o, dict) and isinstance(o["id"], int) and not isinstance(o["id"], bool)
+                  and o["id"] not in ids and isinstance(o["ticker"], str) and TICKER_RE.match(o["ticker"])
+                  and o["side"] in SIDES and o["type"] in ORDER_TYPES and o["tif"] in TIFS
+                  and o["status"] in ORDER_STATUSES and _real(o["qty"]) and o["qty"] > 0
+                  and (o["type"] != "limit" or (_real(o["limit_price"]) and o["limit_price"] > 0))
+                  and (o["type"] != "stop" or (_real(o["stop_price"]) and o["stop_price"] > 0))
+                  and date.fromisoformat(o["session"]) is not None)
+        except (KeyError, TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise ValueError(f"order {o.get('id') if isinstance(o, dict) else o!r}")
+        ids.add(o["id"])
+        o.setdefault("note", "")
+        if not _real(o.get("quote_at_entry")):
+            o["quote_at_entry"] = None
+    fills = acct.get("fills")
+    if not isinstance(fills, list) or not all(isinstance(f, dict) for f in fills):
+        raise ValueError("fills")
+    # A next order number at or below an existing one would repeat an id.
+    if not (isinstance(acct.get("next_id"), int) and not isinstance(acct.get("next_id"), bool)):
+        acct["next_id"] = 1
+    acct["next_id"] = max([acct["next_id"]] + [i + 1 for i in ids])
+
+    settings = acct.get("settings") if isinstance(acct.get("settings"), dict) else {}
+    clean = dict(DEFAULT_SETTINGS)
+    for key, lo, hi in (("commission", 0, MAX_COMMISSION), ("slippage_bps", 0, MAX_SLIPPAGE_BPS)):
+        if key in settings:
+            try:
+                clean[key] = _num(settings[key], key, lo, hi, allow_zero=True)
+            except ValueError:
+                notes.append(f"The {key} setting in account.json was not valid; it was reset to {clean[key]:g}.")
+    for key in ("fractional", "practice_fills"):
+        if key in settings:
+            v = _strict_bool(settings[key])
+            if v is None:
+                notes.append(f"The {key} setting in account.json was not valid; it was turned off.")
+            else:
+                clean[key] = v
+    acct["settings"] = clean
+    wl = acct.get("watchlist")
+    good = [t for t in wl if isinstance(t, str) and TICKER_RE.match(t)] if isinstance(wl, list) else []
+    acct["watchlist"] = list(dict.fromkeys(good))[:MAX_WATCH]
+    eq = acct.get("equity")
+    acct["equity"] = [p for p in eq if isinstance(p, dict) and isinstance(p.get("t"), str) and _real(p.get("equity"))] \
+        if isinstance(eq, list) else []
+    if not isinstance(acct.get("demo_state"), dict):
+        acct["demo_state"] = {}
+    return notes
 
 
 class Book:
@@ -270,21 +369,13 @@ class Book:
             return acct
         try:
             acct = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            acct = None
-        if not _valid_account(acct):
+            self.notes.extend(_check_account(acct))
+        except (OSError, ValueError, RecursionError) as exc:
             kept = self._backup("corrupt")
-            self.notes.append(f"account.json could not be read; it was kept as {kept.name} and a new "
-                              f"${DEFAULT_CASH:,.0f} account was started.")
+            self.notes.append(f"account.json could not be used ({str(exc)[:60]}); it was kept as {kept.name} "
+                              f"and a new ${DEFAULT_CASH:,.0f} account was started.")
             acct = new_account(self.clock())
             self._write(acct)
-            return acct
-        settings = dict(DEFAULT_SETTINGS)
-        settings.update({k: v for k, v in acct["settings"].items() if k in DEFAULT_SETTINGS})
-        acct["settings"] = settings
-        for key, default in (("realized", 0.0), ("fees", 0.0), ("watchlist", []), ("equity", []),
-                             ("next_id", 1), ("demo_state", {})):
-            acct.setdefault(key, default)
         return acct
 
     def _write(self, acct: dict | None = None) -> None:
@@ -292,6 +383,25 @@ class Book:
         tmp = self.path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(acct, indent=1, allow_nan=False), encoding="utf-8")
         os.replace(tmp, self.path)
+
+    @contextmanager
+    def _changing(self):
+        """Hold the lock for a change to the account and save it afterwards.
+        If it can't be saved (disk full, folder read-only, file locked), the
+        change is undone in memory too, and SaveError says so."""
+        with self.lock:
+            before = copy.deepcopy(self.acct)
+            try:
+                yield
+                self._write()
+            except (OSError, ValueError) as exc:
+                self.acct = before
+                if isinstance(exc, SaveError):
+                    raise
+                raise SaveError(f"Could not save the account ({exc}); nothing was changed") from None
+            except BaseException:
+                self.acct = before
+                raise
 
     def _backup(self, label: str) -> Path:
         stamp = self.clock().astimezone(NY).strftime("%Y%m%d-%H%M%S")
@@ -402,7 +512,11 @@ class Book:
             return {"ok": False, "error": str(exc)}
         except OSError as exc:
             return {"ok": False, "error": f"No price for {ticker}: {exc}. Try again, or use demo prices."}
-        with self.lock:
+        if otype == "stop" and ((side == "buy" and stop <= q["price"]) or (side == "sell" and stop >= q["price"])):
+            where = "above" if side == "buy" else "below"
+            return {"ok": False, "error": f"A {side} stop must be {where} the current price "
+                                          f"(${q['price']:,.2f}); use a market or limit order instead"}
+        with self._changing():
             now = self.clock()
             price = q["price"]
             if side == "sell":
@@ -413,7 +527,7 @@ class Book:
                                                   "(no short selling; shares in open sell orders are counted)"}
             else:
                 est_px = limit if otype == "limit" else stop if otype == "stop" else price
-                need = qty * est_px * (1 + self._slip()) + self._fee()
+                need = qty * round(est_px * (1 + self._slip()), 4) + self._fee()  # as a fill is priced
                 power = self.acct["cash"] - self._reserved()
                 if need > power + 1e-9:
                     return {"ok": False, "error": f"Not enough buying power: this needs about ${need:,.2f}, "
@@ -430,25 +544,22 @@ class Book:
                                  if otype == "market" else "Market closed: checked again once it opens")
             self._trim()
             self._record_equity(now, force=True)
-            self._write()
-            return {"ok": True, "order": dict(order)}
+        return {"ok": True, "order": dict(order)}
 
     def cancel(self, order_id) -> dict:
-        with self.lock:
+        with self._changing():
             for o in self.acct["orders"]:
                 if o["id"] == order_id and not isinstance(order_id, bool):
                     if o["status"] != "open":
                         return {"ok": False, "error": f"Order {order_id} is already {o['status']}"}
                     o["status"], o["note"] = "cancelled", "Cancelled by you"
                     o["closed_at"] = _now_iso(self.clock())
-                    self._write()
                     return {"ok": True, "order": dict(o)}
         return {"ok": False, "error": "No such order"}
 
     def _try_fill(self, o: dict, q: dict, now: datetime) -> None:
         """Fill, expire or leave ``o`` (an open order) against quote ``q``."""
-        if o["tif"] == "day" and now >= session_end(date.fromisoformat(o["session"])) \
-                and self.acct["prices"] != "demo" and not self.acct["settings"]["practice_fills"]:
+        if _expired(o, now):
             o["status"], o["note"], o["closed_at"] = "expired", "Day order: the session ended", _now_iso(now)
             return
         if not self._can_fill_now(now):
@@ -460,10 +571,12 @@ class Book:
         if o["type"] == "market":
             fill = p * (1 + s) if buy else p * (1 - s)
         elif o["type"] == "limit":
+            # Slippage stands for the spread: a buy limit fills once the price
+            # plus slippage is at or under the limit, so it isn't a way round it.
             lim = o["limit_price"]
-            if (buy and p > lim) or (not buy and p < lim):
+            fill = p * (1 + s) if buy else p * (1 - s)
+            if (buy and round(fill, 4) > lim) or (not buy and round(fill, 4) < lim):
                 return
-            fill = min(p * (1 + s), lim) if buy else max(p * (1 - s), lim)
         else:
             stop = o["stop_price"]
             if (buy and p < stop) or (not buy and p > stop):
@@ -526,7 +639,7 @@ class Book:
             except (ValueError, OSError) as exc:
                 with self.lock:  # quote() records most errors; a bad symbol fails before it can
                     self.quote_errors.setdefault(t, str(exc))
-        with self.lock:
+        with self._changing():
             now = self.clock()
             changed = 0
             for o in self.acct["orders"]:
@@ -534,16 +647,12 @@ class Book:
                     before = o["status"]
                     self._try_fill(o, got[o["ticker"]], now)
                     changed += o["status"] != before
-                elif o["status"] == "open" and o["tif"] == "day" and self.acct["prices"] != "demo" \
-                        and not self.acct["settings"]["practice_fills"] \
-                        and now >= session_end(date.fromisoformat(o["session"])):
+                elif o["status"] == "open" and _expired(o, now):
                     o["status"], o["note"], o["closed_at"] = "expired", "Day order: the session ended", _now_iso(now)
                     changed += 1
-            recorded = self._record_equity(now)
-            if changed or recorded or self.acct["prices"] == "demo":
-                self._trim()
-                self._write()
-            return {"ok": True, "quotes": len(got), "changed": changed}
+            self._record_equity(now)
+            self._trim()
+        return {"ok": True, "quotes": len(got), "changed": changed}
 
     def _trim(self) -> None:
         orders = self.acct["orders"]
@@ -627,23 +736,27 @@ class Book:
             return {"ok": False, "error": str(exc)}
         with self.lock:
             kept = self._backup("bak")
-            watch = list(self.acct.get("watchlist") or DEFAULT_WATCH)
-            settings = dict(self.acct["settings"])
-            self.acct = new_account(self.clock(), round(cash, 2), prices)
-            self.acct["watchlist"], self.acct["settings"] = watch, settings
+            try:
+                with self._changing():
+                    watch = list(self.acct.get("watchlist") or DEFAULT_WATCH)
+                    settings = dict(self.acct["settings"])
+                    self.acct = new_account(self.clock(), round(cash, 2), prices)
+                    self.acct["watchlist"], self.acct["settings"] = watch, settings
+            except SaveError:
+                os.replace(kept, self.path)  # put the old account back where it was
+                raise
             self.quotes.clear()
             self.quote_errors.clear()
             self.notes.clear()
-            self._write()
             return {"ok": True, "kept": kept.name}
 
     def update_settings(self, form: dict) -> dict:
         new = {}
         try:
             if "commission" in form:
-                new["commission"] = _num(form["commission"], "Commission", 0, 100, allow_zero=True)
+                new["commission"] = _num(form["commission"], "Commission", 0, MAX_COMMISSION, allow_zero=True)
             if "slippage_bps" in form:
-                new["slippage_bps"] = _num(form["slippage_bps"], "Slippage", 0, 500, allow_zero=True)
+                new["slippage_bps"] = _num(form["slippage_bps"], "Slippage", 0, MAX_SLIPPAGE_BPS, allow_zero=True)
             for key in ("fractional", "practice_fills"):
                 if key in form:
                     v = _strict_bool(form[key])
@@ -652,12 +765,14 @@ class Book:
                     new[key] = v
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
-        with self.lock:
-            if new.get("fractional") is False and any(
-                    p["shares"] != int(p["shares"]) for p in self.acct["positions"].values()):
-                return {"ok": False, "error": "You hold fractional shares; sell them before turning this off"}
+        with self._changing():
+            if new.get("fractional") is False:
+                if any(p["shares"] != int(p["shares"]) for p in self.acct["positions"].values()):
+                    return {"ok": False, "error": "You hold fractional shares; sell them before turning this off"}
+                if any(o["status"] == "open" and o["qty"] != int(o["qty"]) for o in self.acct["orders"]):
+                    return {"ok": False, "error": "You have open orders for fractional shares; "
+                                                  "cancel them before turning this off"}
             self.acct["settings"].update(new)
-            self._write()
             return {"ok": True, "settings": dict(self.acct["settings"])}
 
     def watch(self, ticker, add) -> dict:
@@ -668,16 +783,20 @@ class Book:
         add = _strict_bool(add)
         if add is None:
             return {"ok": False, "error": "add must be true or false"}
-        with self.lock:
+        with self._changing():
             wl = self.acct["watchlist"]
             if add and ticker not in wl:
-                if len(wl) >= 50:
-                    return {"ok": False, "error": "The watchlist holds 50 symbols"}
+                if len(wl) >= MAX_WATCH:
+                    return {"ok": False, "error": f"The watchlist holds {MAX_WATCH} symbols"}
                 wl.append(ticker)
             elif not add and ticker in wl:
                 wl.remove(ticker)
-            self._write()
             return {"ok": True, "watchlist": list(wl)}
+
+
+def _expired(o: dict, now: datetime) -> bool:
+    """A Day order whose session has closed (on any prices, practice fills or not)."""
+    return o["tif"] == "day" and now >= session_end(date.fromisoformat(o["session"]))
 
 
 def _from_this_session(q: dict, now: datetime) -> bool:
@@ -812,7 +931,7 @@ class PaperServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = os.name != "nt"  # POSIX: restart at once; Windows: a second copy must fail
 
-    def __init__(self, address: tuple[str, int], book: Book) -> None:
+    def __init__(self, address: tuple[str, int], book: Book | None) -> None:
         super().__init__(address, _PaperHandler)
         self.book = book
 
@@ -821,8 +940,32 @@ class _PaperHandler(_Handler):
     """Only 127.0.0.1/localhost Host headers, JSON POSTs from this page only
     (see ``_Handler``)."""
     server: PaperServer
+    timeout = 60  # seconds; a client that stops sending is dropped
 
     def do_GET(self) -> None:  # noqa: N802
+        self._guarded(self._get)
+
+    def do_POST(self) -> None:  # noqa: N802
+        self._guarded(self._post)
+
+    def _guarded(self, handle) -> None:
+        """Answer with a JSON error, never an empty reply, if handling fails."""
+        try:
+            handle()
+        except SaveError as exc:
+            self._try_json({"ok": False, "error": str(exc)}, 500)
+        except Exception as exc:
+            traceback.print_exc()
+            self._try_json({"ok": False, "error": f"Something went wrong ({type(exc).__name__}); "
+                                                  "the black window shows the details"}, 500)
+
+    def _try_json(self, obj, status: int) -> None:
+        try:
+            self._json(obj, status)
+        except OSError:  # the browser has gone; nothing to tell it
+            pass
+
+    def _get(self) -> None:
         if not self._allowed(post=False):
             return
         url = urlparse(self.path)
@@ -849,7 +992,7 @@ class _PaperHandler(_Handler):
         else:
             self._json({"error": "not found"}, 404)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def _post(self) -> None:
         if not self._allowed(post=True):
             return
         path = urlparse(self.path).path
@@ -887,14 +1030,19 @@ def _refresher(book: Book, stop: threading.Event) -> None:
 
 def serve(port: int = DEFAULT_PORT, open_browser: bool = True, home: str | Path | None = None,
           block: bool = True, background: bool = True) -> PaperServer:
-    book = Book(home)
-    try:
-        server = PaperServer(("127.0.0.1", port), book)
+    try:  # take the port before touching the account, so a second copy changes nothing
+        server = PaperServer(("127.0.0.1", port), None)
     except OSError:
         url = f"http://127.0.0.1:{port}/"
-        print(f"Port {port} is in use: Paper Trading is probably already open. Opening {url}")
+        print(f"Port {port} is in use: Paper Trading is probably already open."
+              + (f" Opening {url}" if open_browser else ""))
         if open_browser:
             webbrowser.open(url)
+        raise
+    try:
+        book = server.book = Book(home)
+    except BaseException:
+        server.server_close()
         raise
     threading.Thread(target=server.serve_forever, name="paper-http", daemon=True).start()
     stop = threading.Event()
