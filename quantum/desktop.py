@@ -366,6 +366,17 @@ class Controller:
 # --------------------------------------------------------------------------
 
 
+def _finite(obj):
+    """``obj`` with NaN and infinities as None: browsers reject them in JSON."""
+    if isinstance(obj, float):
+        return obj if obj == obj and obj not in (float("inf"), float("-inf")) else None
+    if isinstance(obj, dict):
+        return {k: _finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_finite(v) for v in obj]
+    return obj
+
+
 class DashboardServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -390,7 +401,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, obj, status: int = 200) -> None:
-        self._send(status, json.dumps(obj).encode("utf-8"), "application/json")
+        self._send(status, json.dumps(_finite(obj), allow_nan=False).encode("utf-8"), "application/json")
 
     def _origins(self) -> tuple[set[str], set[str]]:
         port = self.server.server_address[1]
@@ -525,8 +536,8 @@ header h1 { font-size:18px; margin:0; font-weight:600; }
 .badge.run  { border-color:var(--good); }
 .badge.halted { border-color:var(--critical); color:var(--text-primary); }
 .spacer { flex:1; }
-main { display:grid; grid-template-columns: 320px 1fr; gap:16px; padding:16px; max-width:1500px; margin:0 auto; }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; padding:16px; } }
+main { display:grid; grid-template-columns: 320px minmax(0, 1fr); gap:16px; padding:16px; max-width:1500px; margin:0 auto; }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); padding:16px; } }
 .card { background:var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
 .card h2 { font-size:13px; font-weight:600; color:var(--text-secondary); margin:0 0 10px; text-transform:uppercase; letter-spacing:.06em; }
 label { display:block; font-size:12px; color:var(--text-secondary); margin:8px 0 3px; }
@@ -558,8 +569,9 @@ td.num, th.num { text-align:right; font-variant-numeric: tabular-nums; }
 pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space:pre-wrap;
   color:var(--text-secondary); max-height:220px; overflow:auto; }
 .stack { display:grid; gap:16px; }
-.two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-@media (max-width: 1100px) { .two { grid-template-columns:1fr; } }
+.two { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:16px; }
+@media (max-width: 1100px) { .two { grid-template-columns:minmax(0, 1fr); } }
+.tablewrap { overflow-x:auto; }  /* a wide table scrolls inside its card, not the page */
 .error { color:var(--critical); font-weight:600; margin-top:8px; min-height:1.2em; }
 .note { color:var(--text-muted); font-size:12px; margin-top:8px; }
 .halt { border:1px solid var(--critical); border-radius:8px; padding:10px 12px; margin-bottom:12px; display:none; }
@@ -668,14 +680,14 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
     <div class="two">
       <div class="card">
         <h2>Positions</h2>
-        <table><thead><tr><th>Ticker</th><th class="num">Shares</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Gain/loss</th><th class="num">Weight</th><th style="width:20%"></th></tr></thead>
-        <tbody id="positions"></tbody></table>
+        <div class="tablewrap"><table><thead><tr><th>Ticker</th><th class="num">Shares</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Gain/loss</th><th class="num">Weight</th><th style="width:20%"></th></tr></thead>
+        <tbody id="positions"></tbody></table></div>
         <div class="note" id="cash"></div>
       </div>
       <div class="card">
         <h2>Recent fills</h2>
-        <table><thead><tr><th>Date</th><th>Ticker</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Fee</th><th class="num">Realized</th></tr></thead>
-        <tbody id="fills"></tbody></table>
+        <div class="tablewrap"><table><thead><tr><th>Date</th><th>Ticker</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Fee</th><th class="num">Realized</th></tr></thead>
+        <tbody id="fills"></tbody></table></div>
       </div>
     </div>
     <div class="two">

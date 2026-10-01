@@ -599,8 +599,11 @@ pre.short { max-height:220px; }
     let peak = -Infinity, maxdd = 0;
     curve.forEach(v => { peak = Math.max(peak, v); if (peak > 0) maxdd = Math.max(maxdd, 1 - v / peak); });
     const pk = Math.max(fin(s.peak_equity) ? s.peak_equity : 0, peak);
-    return {start, equity: s.equity, change: s.equity - start, ret: start ? s.equity / start - 1 : null,
-      ddNow: pk > 0 ? -(1 - s.equity / pk) : null, maxdd: -maxdd, peak: pk};
+    // An unknown equity (null from the server, e.g. a NaN in the snapshot)
+    // must read as unknown, not as a total loss: null - start is -start in JS.
+    const eq = fin(s.equity) ? s.equity : null, ok = eq !== null && fin(start);
+    return {start, equity: eq, change: ok ? eq - start : null, ret: ok && start ? eq / start - 1 : null,
+      ddNow: eq !== null && pk > 0 ? -(1 - eq / pk) : null, maxdd: -maxdd, peak: pk};
   }
   function intradayStats() {
     const id = D.intraday || {}, st = id.status, hist = (id.history || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -636,10 +639,10 @@ pre.short { max-height:220px; }
     const c = h('div', {class: 'card'}, h('div', {class: 'cardhead'}, h('h2', {text: (fin(cfgCash) ? '$' + nf0.format(cfgCash) : '$50') + ' intraday bot'}), st ? h('span', {class: 'badge ' + (st.session_open ? 'good' : ''), text: st.session_open ? 'session open' : 'session closed'}) : null));
     if (!st) c.appendChild(h('p', {class: 'muted', text: 'No data yet: press Run the intraday bot.'}));
     else {
-      const chg = st.equity - st.start_cash;
+      const chg = fin(st.equity) && fin(st.start_cash) ? st.equity - st.start_cash : null;
       c.appendChild(h('div', {class: 'tiles'},
         h('div', {class: 'tile big'}, h('div', {class: 'label', text: 'Equity ' + (st.date || '')}), h('div', {class: 'value', text: money(st.equity)}), h('div', {class: 'sub', text: 'started the day with ' + money(st.start_cash)})),
-        tile('Change today', smoney(chg), spct(st.start_cash ? st.equity / st.start_cash - 1 : null), signCls(chg)),
+        tile('Change today', smoney(chg), spct(fin(st.equity) && fin(st.start_cash) && st.start_cash ? st.equity / st.start_cash - 1 : null), signCls(chg)),
         tile('Since first archived day', spct(id.cum), id.hist.length + ' day' + (id.hist.length === 1 ? '' : 's') + ' archived', signCls(id.cum)),
         tile('Drawdown', spct(id.ddNow), id.hist.length ? 'worst ' + spct(id.maxdd) : 'over archived days', id.ddNow < 0 ? 'neg' : ''),
         tile('Last bar', hhmm(st.last_bar) || '–', (st.trades || []).length + ' trades today')));
@@ -800,10 +803,10 @@ pre.short { max-height:220px; }
     $('idEmpty').hidden = !!st; $('idEmpty').textContent = 'No data yet: press Run the intraday bot (Jobs & logs, or Overview).';
     if (st) {
       fill($('idBadges'), h('span', {class: 'badge ' + (st.session_open ? 'good' : ''), text: st.session_open ? 'session open' : 'session closed'}), ' ', h('span', {class: 'badge', text: st.mode || ''}));
-      const chg = st.equity - st.start_cash;
+      const chg = fin(st.equity) && fin(st.start_cash) ? st.equity - st.start_cash : null;
       fill($('idTiles'),
         h('div', {class: 'tile big'}, h('div', {class: 'label', text: 'Equity'}), h('div', {class: 'value', text: money(st.equity)}), h('div', {class: 'sub', text: 'from ' + money(st.start_cash)})),
-        tile('Change today', smoney(chg), spct(st.start_cash ? st.equity / st.start_cash - 1 : null), signCls(chg)),
+        tile('Change today', smoney(chg), spct(fin(st.equity) && fin(st.start_cash) && st.start_cash ? st.equity / st.start_cash - 1 : null), signCls(chg)),
         tile('Cash settled', money(st.cash_settled), 'unsettled ' + money(st.cash_unsettled)),
         tile('Entries today', (st.entries_today ?? 0) + ' of ' + (st.max_trades_per_day ?? '–'), (st.trades || []).length + ' closed trades'),
         tile('Last bar', hhmm(st.last_bar) || '–', (st.bar_minutes || 5) + '-minute bars · ' + when(st.updated_at)));

@@ -679,22 +679,8 @@ class StationServer(ThreadingHTTPServer):
         self.station = station
 
 
-def _finite(obj):
-    """``obj`` with NaN and infinities as None: browsers reject them in JSON."""
-    if isinstance(obj, float):
-        return obj if obj == obj and obj not in (float("inf"), float("-inf")) else None
-    if isinstance(obj, dict):
-        return {k: _finite(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_finite(v) for v in obj]
-    return obj
-
-
 class _StationHandler(_Handler):
-    server: StationServer
-
-    def _json(self, obj, status: int = 200) -> None:
-        self._send(status, json.dumps(_finite(obj), allow_nan=False).encode("utf-8"), "application/json")
+    server: StationServer  # _json (inherited) sends no NaN or Infinity
 
     def do_GET(self) -> None:  # noqa: N802
         if not self._allowed(post=False):

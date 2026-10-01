@@ -220,3 +220,18 @@ class TestDesktopConfigForm(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDesktopJsonIsStrict(unittest.TestCase):
+    """The dashboard's JSON never carries NaN or Infinity, which browsers reject."""
+
+    def test_non_finite_numbers_become_null(self):
+        import json
+        from quantum.desktop import _finite
+        doc = {"a": float("nan"), "b": [1.5, float("inf"), {"c": float("-inf")}], "d": "NaN", "e": 2}
+        text = json.dumps(_finite(doc), allow_nan=False)
+
+        def strict(token):
+            raise ValueError(token)
+        self.assertEqual(json.loads(text, parse_constant=strict),
+                         {"a": None, "b": [1.5, None, {"c": None}], "d": "NaN", "e": 2})

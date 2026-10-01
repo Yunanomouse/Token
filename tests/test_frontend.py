@@ -735,12 +735,8 @@ class TestStationNonFinite(_StationCase):
         self.assertEqual(page.locator("body").inner_text().count("Infinity"), 0)
         self.assert_clean()
 
-    # BUG (quantum/local_page.html, botStats() and the intraday tiles): when a
-    # bot's equity is not a finite number (the server sends null), the page
-    # computes null - start = -start and shows "Change since start
-    # −$100,000.00 / −100.00%" and "Drawdown −100.00%" (intraday: "Change today
-    # −$50.00 / −100.00%"), which reads as a total loss instead of "unknown".
-    @unittest.expectedFailure
+    # An unknown equity (null from the server) reads as unknown, not as a total
+    # loss: null - start would be -start in the page's arithmetic.
     def test_unknown_equity_is_not_shown_as_a_total_loss(self):
         page = self.load()
         cards = page.locator("#ovCards > .card")
@@ -834,12 +830,8 @@ class TestDesktopPage(_DesktopCase):
                     page.context.close()
         self.assertEqual(self.external, [])
 
-    # BUG (quantum/desktop.py PAGE): at a 390px-wide window the page is 394px
-    # wide.  The tables in the right-hand column (Positions: 7 columns, the last
-    # one width:20%) are not in a scrolling wrapper, and their min-content width
-    # widens the single grid column of <main> to ~378px, past the 358px left
-    # between the 16px gutters.  Hiding every <table> brings it back to 390px.
-    @unittest.expectedFailure
+    # The positions and fills tables scroll inside their cards on a phone
+    # instead of widening the page.
     def test_no_horizontal_overflow_at_phone_width(self):
         for scheme in ("light", "dark"):
             page = self.load(scheme=scheme, width=PHONE)
