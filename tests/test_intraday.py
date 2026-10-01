@@ -592,6 +592,28 @@ class TestLiveFeed(unittest.TestCase):
         self.assertEqual(mod.session_close("2027-12-24"), "16:00")  # a holiday that year, not a half day
         self.assertEqual(mod.session_close(d), "16:00")
 
+    def test_session_open_scales_with_the_bar_length(self):
+        from datetime import datetime
+
+        mod = _live_module()
+        at = lambda d, hm: datetime.strptime(f"{d} {hm}", "%Y-%m-%d %H:%M").replace(tzinfo=mod.NY)
+        d, half = "2026-09-29", "2026-11-27"
+        self.assertEqual([mod.last_bar_start(960, m) for m in (5, 15, 30, 60)],
+                         ["15:55", "15:45", "15:30", "15:30"])
+        self.assertEqual(mod.last_bar_start(780, 60), "12:30")
+        # Replay: a complete day of longer bars ends before 15:55 and is still complete.
+        for minutes, last in ((15, "15:45"), (30, "15:30"), (60, "15:30")):
+            self.assertFalse(mod.session_is_open("replay", d, d, f"{d} {last}:00", None, minutes))
+            self.assertTrue(mod.session_is_open("replay", d, d, f"{d} 14:00:00", None, minutes))
+        self.assertFalse(mod.session_is_open("replay", half, half, f"{half} 12:30:00", None, 60))
+        # Live: mid-session the newest finished 60-minute bar can be most of an hour old.
+        self.assertTrue(mod.session_is_open("live", d, d, f"{d} 09:30:00", at(d, "11:20"), 60))
+        self.assertTrue(mod.session_is_open("live", d, d, f"{d} 10:30:00", at(d, "11:00"), 30))
+        # ... but bars that stopped two hours ago still mean the session is over.
+        self.assertFalse(mod.session_is_open("live", d, d, f"{d} 09:30:00", at(d, "12:45"), 60))
+        # 5-minute bars keep the 15-minute rule.
+        self.assertFalse(mod.session_is_open("live", d, d, f"{d} 13:40:00", at(d, "14:01"), 5))
+
     def test_replay_of_a_partial_newest_session_keeps_it_open(self):
         import json
         import subprocess

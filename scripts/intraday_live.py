@@ -68,25 +68,38 @@ def session_is_open(mode: str, date: str, newest: str, last_bar: str, now_ny: da
     """Whether ``date`` is to be treated as a session still trading.
 
     Live: it is today, the clock is before that day's close, and the newest
-    finished bar is recent (it ended less than ``STALE_MINUTES`` ago; a
+    finished bar is recent (it ended less than ``STALE_MINUTES`` ago, plus
+    the bar length beyond 5 minutes; a
     session whose bars have stopped coming is over, e.g. an early close not
     in ``EARLY_CLOSE``).
 
     Replay (``--bars-csv``): it is the newest session in the file and its
-    last bar starts before the last bar of a full day (five minutes before
-    the close, 15:55 on a normal day).  A file saved mid-session is then
+    last bar starts before the last bar of a full day for the bar length
+    (:func:`last_bar_start`: 15:55 for 5-minute bars on a normal day).  A file saved mid-session is then
     replayed as that session so far, with the position kept open, not
     force-closed on its last bar as if the day had ended; any earlier or
     complete session is replayed to its close."""
     close = session_close(date)
     h, m = map(int, close.split(":"))
-    last_full = f"{(h * 60 + m - 5) // 60:02d}:{(h * 60 + m - 5) % 60:02d}"
     if mode == "replay":
-        return date == newest and bool(last_bar) and last_bar[11:16] < last_full
+        return date == newest and bool(last_bar) and last_bar[11:16] < last_bar_start(h * 60 + m, minutes)
     if date != now_ny.strftime("%Y-%m-%d") or now_ny.strftime("%H:%M") >= close or not last_bar:
         return False
     ended = datetime.strptime(last_bar[:19], "%Y-%m-%d %H:%M:%S") + timedelta(minutes=minutes)
-    return now_ny.replace(tzinfo=None) - ended < timedelta(minutes=STALE_MINUTES)
+    # The newest finished bar can be up to one bar old before the next one
+    # finishes; allow that on top of the delay (5-minute bars: 15 minutes).
+    stale = STALE_MINUTES + max(0, minutes - 5)
+    return now_ny.replace(tzinfo=None) - ended < timedelta(minutes=stale)
+
+
+def last_bar_start(close_minute: int, minutes: int) -> str:
+    """HH:MM at which a full day's last ``minutes``-minute bar starts, with
+    bars from 09:30 and the session closing at ``close_minute`` (minutes after
+    midnight): 15:55 for 5m, 15:45 for 15m, 15:30 for 30m and 60m."""
+    open_minute = 9 * 60 + 30
+    n = -(-(close_minute - open_minute) // minutes)  # bars in the session, the last one possibly short
+    t = open_minute + (n - 1) * minutes
+    return f"{t // 60:02d}:{t % 60:02d}"
 
 
 def fetch_range(cfg: IntradayConfig, minutes: int) -> str:
