@@ -333,14 +333,16 @@ class Station:
             (self.home / "logs" / f"last_{run.job}.txt").write_text(run.output, encoding="utf-8")
         except OSError:
             pass
-        with self.lock:  # one step, so the scheduler never sees a failed job without its retry time
+        # Everything about the finished run is saved (retry time, run
+        # history, scheduler file, log line) before the job stops showing as
+        # running: whatever waits for it to finish, the scheduler included,
+        # then sees all of it, and nothing is still being written.
+        with self.lock:
             if run.ok:
                 self.sched["retry"].pop(run.job, None)
             else:
                 self.sched["retry"][run.job] = (self.clock() + RETRY_AFTER).isoformat(timespec="seconds")
-            self.running.pop(run.job, None)
-            self.history.appendleft(run)
-            kept = [dict(asdict(r), output=r.output[-4000:]) for r in list(self.history)[:60]]
+            kept = [dict(asdict(r), output=r.output[-4000:]) for r in [run] + list(self.history)[:59]]
         try:
             _write_json(self.runs_path, kept)
         except OSError:
@@ -348,6 +350,9 @@ class Station:
         self._save_sched()
         failed = [s["cmd"] for s in run.steps if s["code"] != 0]
         self.note(f"{run.job}: {'done' if run.ok else 'FAILED'}" + (f" ({'; '.join(failed)})" if failed else ""))
+        with self.lock:
+            self.history.appendleft(run)
+            self.running.pop(run.job, None)
 
     # -- the jobs ---------------------------------------------------------
     def _daily_bot(self, run: JobRun, name: str) -> bool:
