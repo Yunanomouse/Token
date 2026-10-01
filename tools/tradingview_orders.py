@@ -98,8 +98,7 @@ def check(doc: dict) -> None:
     for o in doc["orders"]:
         print(f"  {o['side'].upper():4} {o['shares']:g} x {o['ticker']}  limit ${o['limit']:.2f}")
     if doc["mode"] != "live":
-        sys.exit("The bot is in PAPER mode: these are for information only. Nothing to place.\n"
-                 "To go live, change \"mode\": \"paper\" to \"mode\": \"live\" in live/real/config.json.")
+        sys.exit("The bot is in PAPER mode: these orders are for information only. Nothing to place.")
     age = (date.today() - date.fromisoformat(doc["date"])).days
     if age > MAX_AGE_DAYS:
         sys.exit(f"These orders are {age} days old. A missed day is not traded late; nothing done.")
@@ -148,10 +147,10 @@ def main() -> None:
     check(doc)
     orders = doc["orders"]
     with sync_playwright() as p:
+        # A plainly automated browser: nothing here hides that it is driven
+        # by a script (no flags that mask automation from the site).
         browser = p.chromium.launch_persistent_context(
-            str(PROFILE), headless=False, no_viewport=True, chromium_sandbox=True,
-            ignore_default_args=["--enable-automation"],
-            args=["--disable-blink-features=AutomationControlled"])
+            str(PROFILE), headless=False, no_viewport=True, chromium_sandbox=True)
         page = browser.pages[0] if browser.pages else browser.new_page()
         for n, o in enumerate(orders, 1):
             side = o["side"].upper()
