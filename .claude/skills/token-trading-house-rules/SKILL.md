@@ -74,9 +74,15 @@ random entries out of sample. Reports must not flatter.
   reads as a split or dividend to the engine's re-basing), and today's bar
   is dropped until 16:30 New York so an intraday price is never stored as a
   close. Keep both properties in any change.
-- Never commit raw bar data from Yahoo or another vendor (their terms
-  forbid redistribution). Bot state, prices the bots need, and results are
-  fine.
+- The GitHub repository is public, and vendors' terms forbid
+  republishing their data. Never commit downloaded bar files (intraday
+  bars, research caches); keep them in `local_data/` or a scratch folder.
+  The workflow commits `live/*/prices.csv`; whether to keep that public is
+  an open decision for the owner (`live/README.md`). When it comes up, for
+  example when a keyed source such as FMP starts serving those files, say
+  that the vendors' free-plan terms forbid republishing and that a private
+  repository or an Actions cache avoids it, and let the owner decide. Bot state, snapshots and
+  results are fine to commit.
 - A run during market hours must not change the bots' state with partial
   data; if it ever does, roll the state back before the next run.
 
