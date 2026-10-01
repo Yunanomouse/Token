@@ -9,6 +9,17 @@ http://127.0.0.1:8777/ . Keep the black window open: the bots run only while
 it is open and the computer is awake. Paper trading only. Everything it
 saves is in the local_data folder. Full guide: docs/station.md
 
+PAPER TRADING - buy and sell by hand with pretend money (new)
+============================================================
+
+Windows: double-click  Paper Trading.bat   (other systems: python3 paper_trading/start.py)
+
+Look up a stock and place market, limit or stop orders yourself, with a
+balance you choose. The page opens at http://127.0.0.1:8778/ and can run
+alongside Quantum Station. Pretend money only: no broker is connected.
+Prices are real but delayed (Yahoo), or made-up demo prices. Your account is
+saved in paper_trading\paper_data. Full guide: paper_trading/README.md
+
 QUANTUM TRADING - paper-trading dashboard
 =========================================
 

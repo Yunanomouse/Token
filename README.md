@@ -48,6 +48,14 @@ The same program runs every command-line engine command, e.g.
 **desktop app** workflow on every push that changes the app;
 `python packaging/build.py` builds it locally for the machine you are on.
 
+## Paper Trading (buy and sell by hand)
+
+`Paper Trading.bat` (or `python3 paper_trading/start.py`) opens a page at
+http://127.0.0.1:8778/ for placing market, limit and stop orders yourself with
+pretend money, on delayed Yahoo prices or made-up demo prices. No broker is
+connected. It lives on its own in [`paper_trading/`](paper_trading/) and needs
+nothing from the rest of this project. Guide: **[paper_trading/README.md](paper_trading/README.md)**.
+
 ## What it does
 
 | Module | Application | Status today |

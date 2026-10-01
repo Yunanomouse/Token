@@ -44,4 +44,4 @@ jobs:
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
       - name: Browser tests
-        run: python -m pytest tests/test_frontend.py -q
+        run: python -m pytest tests/test_frontend.py tests/test_paper_frontend.py -q
