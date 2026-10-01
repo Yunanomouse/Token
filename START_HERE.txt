@@ -1,3 +1,14 @@
+QUANTUM STATION - every bot on this computer (new, recommended)
+==============================================================
+
+Windows: double-click  Quantum Station.bat   (other systems: python3 station.py)
+
+It runs the $100k and $40 daily bots after each close and the $50 intraday
+bot every 5 minutes during the session, with a dashboard in your browser at
+http://127.0.0.1:8777/ . Keep the black window open: the bots run only while
+it is open and the computer is awake. Paper trading only. Everything it
+saves is in the local_data folder. Full guide: docs/station.md
+
 QUANTUM TRADING - paper-trading dashboard
 =========================================
 
