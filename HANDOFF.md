@@ -60,10 +60,12 @@ the art) as of 2026-09-30 are in `docs/research_2026-09.md`; read its
 
 1. After each US close (17:07 New York time, weekdays; the schedule carries
    `timezone: America/New_York`) the `live bot` workflow fetches real
-   adjusted closes (FMP, Twelve Data, Stooq, Yahoo, keyed ones only if their
-   secret is set), runs the engine over new bars,
-   and commits `live/state.json`, `live/snapshot.json` and
-   `live/snapshot_prices.json`. Commits come from `quantum-trading-bot` and
+   adjusted closes (FMP, Twelve Data, Yahoo, Stooq; keyed ones only if their
+   secret is set; one source per run, never mixed; today's bar dropped until
+   16:30 New York), re-bases its stored history if the feed re-adjusted for
+   a split or dividend, runs the engine over new bars, and commits
+   `live/state.json`, `live/snapshot.json` and `live/snapshot_prices.json`.
+   Commits come from `quantum-trading-bot` and
    only touch `live/`; pull them before pushing.
 2. A routine on the owner's account, "Sync live bot to dashboard"
    (weekdays 22:15 UTC, fresh session), copies those two snapshot files into
@@ -113,5 +115,5 @@ script is pushed.
    failed.
 4. Run the **larger QOBLIB instances** (up to 400 stocks).
 
-Checks before any push: `python -m pytest tests -q` (213 tests pass as of
+Checks before any push: `python -m pytest tests -q` (241 tests pass as of
 this note), and `python web/build.py` after changing `web/` or the engine.

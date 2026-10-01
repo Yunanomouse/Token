@@ -11,6 +11,7 @@ result was seen.
 - **Account:** $50, long only, whole shares, one position at a time.
 - **Settlement:** sale money is not reusable until the next session (T+1).
 - **Costs and fills:** 0.1% per side. Fills happen at the next bar's open, and everything is closed by 15:55.
+  (Since 2026-09-30 the live config also charges half a one-cent tick per share, 1.5× costs on fills before 09:45, and skips stocks under $2; see `docs/web_research.md`. The results below were run before that and use the flat 0.1%.)
 
 ## Pass bar
 
@@ -32,6 +33,12 @@ A candidate had to meet all four rules:
 | KAMA on 15-minute bars | Kaufman's suggested minimum timeframe | +8.1% | 58 | 50% | +11.2% / −0.5% | −1.0% | +2.0% | 95% | no |
 
 No candidate passed, and the live configuration is unchanged.
+
+> **Note (2026-09-29):** the "Beats random" column was computed before a fix to the random
+> baseline. The old random runs made fewer trades than the strategy they were compared with
+> (about 91–95 against 122 on the 60-day cache), because an entry whose stock could not be
+> bought was dropped. They now keep pace (110–114). These percentiles were not re-run and may
+> shift; the other columns do not depend on the baseline.
 
 - **KAMA on 15-minute bars** came closest. It won half its trades and was the only candidate to survive a 0.25% cost. It lost only because the last month was down 1.0%.
 - **The opening-range breakout did not reproduce here.** Our setup differs from the paper's in four ways:

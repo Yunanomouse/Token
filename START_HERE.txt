@@ -1,3 +1,28 @@
+QUANTUM STATION - every bot on this computer (new, recommended)
+==============================================================
+
+Windows: double-click  Quantum Station.bat   (other systems: python3 station.py)
+
+It runs the $100k and $40 daily bots after each close and the $50 intraday
+bot every 5 minutes during the session, with a dashboard in your browser at
+http://127.0.0.1:8777/ . Keep the black window open: the bots run only while
+it is open and the computer is awake. Paper trading only. Everything it
+saves is in the local_data folder. Full guide: docs/station.md
+
+PAPER TRADING - buy and sell by hand with pretend money (new)
+============================================================
+
+Windows: install it with "Paper Trading Setup.exe" from
+  https://github.com/Yunanomouse/Token/releases/tag/paper-trading-latest
+then open Paper Trading from the Start menu or the desktop icon. It is a
+normal program with its own window; Python is included.
+(From these files instead: double-click Paper Trading.bat.)
+
+Look up a stock and place market, limit or stop orders yourself, with a
+balance you choose. It can run alongside Quantum Station. Pretend money
+only: no broker is connected. Prices are real but delayed (Yahoo), or
+made-up demo prices. Full guide: paper_trading/README.md
+
 QUANTUM TRADING - paper-trading dashboard
 =========================================
 

@@ -32,11 +32,20 @@ What it is, precisely
   maximum weight per name, maximum one-way turnover per rebalance, minimum
   history before the first trade, and a drawdown kill switch that liquidates
   and halts.  The kill switch is not advisory: once tripped the engine will
-  not trade again until the state file is edited by a person.
+  not trade again until a person clears it or, with ``rearm_after`` set,
+  until that many bars have passed in cash.
 
 * **State** (:class:`EngineState`) is written to JSON after every tick.  On
   start the engine reads it back and resumes from the last bar it saw, so a
   crash or a reboot costs nothing but the ticks in between.
+
+* **Adjustments** (:meth:`Engine.reconcile`): a feed of adjusted closes
+  rewrites its whole history when a stock splits or goes ex-dividend.  The
+  engine keeps its own copy of the history, so before it reads new bars it
+  compares the two, re-bases its copy to the feed's, and scales the paper
+  position by the same factor.  The book's value is unchanged and the next
+  bar is not mistaken for a crash (a 4:1 split would otherwise read as -75%
+  and trip the kill switch).
 
 What it is not
 --------------
@@ -65,7 +74,7 @@ import csv
 import json
 import math
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterator, Sequence
@@ -120,6 +129,13 @@ class PriceFeed:
     def bars(self) -> Iterator[Bar]:  # pragma: no cover - abstract
         raise NotImplementedError
 
+    def history(self) -> list[Bar]:
+        """Every bar the feed knows right now, including ones already
+        delivered.  The engine compares it with the history it stored to
+        catch a split or dividend adjustment (:meth:`Engine.reconcile`).  A
+        feed that cannot look back returns an empty list."""
+        return []
+
 
 def _read_csv_bars(path: Path, tickers: Sequence[str] | None, date_column: str | None) -> tuple[list[str], list[Bar]]:
     with path.open(newline="", encoding="utf-8") as fh:
@@ -158,6 +174,9 @@ class ReplayFeed(PriceFeed):
     def bars(self) -> Iterator[Bar]:
         yield from self._bars
 
+    def history(self) -> list[Bar]:
+        return list(self._bars)
+
 
 class FileFeed(PriceFeed):
     """Tail a CSV that another process appends to; one bar per new row.
@@ -179,6 +198,11 @@ class FileFeed(PriceFeed):
         self.tickers, _ = _read_csv_bars(self.path, tickers, date_column) if self.path.exists() else (list(tickers or []), [])
         if tickers:
             self.tickers = list(tickers)
+
+    def history(self) -> list[Bar]:
+        if not self.path.exists():
+            return []
+        return _read_csv_bars(self.path, self.tickers, self.date_column)[1]
 
     def bars(self) -> Iterator[Bar]:
         seen = self.after
@@ -215,6 +239,9 @@ class Fill:
     price: float
     fee: float
     date: str
+    note: str = ""
+    """Empty for a trade.  Set on the bookkeeping fills that record a split
+    or dividend adjustment, which are never orders to place."""
 
 
 class Broker:
@@ -228,6 +255,22 @@ class Broker:
 
     def submit(self, orders: Sequence[Order], bar: Bar) -> list[Fill]:  # pragma: no cover - abstract
         raise NotImplementedError
+
+    def adjust(self, ticker: str, factor: float, price: float, date: str) -> list[Fill]:
+        """The feed re-based ``ticker``'s history: every stored price was
+        divided by ``factor`` (a split, or a dividend folded into the
+        adjusted closes).  A paper venue scales the position by ``factor``
+        so the book's value at ``price`` is unchanged, and returns the fills
+        that record it.  A real venue's account already reflects the event,
+        so the default records nothing."""
+        return []
+
+    def accepts(self, bar: Bar) -> bool:
+        """Whether orders on ``bar`` would be sent.  A real venue refuses
+        a catch-up bar from an earlier day; the engine then leaves the
+        rebalance for the next bar the venue takes instead of counting a
+        rebalance that never happened."""
+        return True
 
     def snapshot(self) -> dict:
         return {"positions": self.positions(), "cash": self.cash()}
@@ -258,10 +301,16 @@ class PaperBroker(Broker):
         fills: list[Fill] = []
         # Sells first so their proceeds fund the buys.
         for order in sorted(orders, key=lambda o: o.quantity):
-            if abs(order.quantity) < 1e-12:
+            quantity = order.quantity
+            if quantity < 0:
+                # A cash account cannot go short: sell at most what is held.
+                quantity = -min(-quantity, max(self._positions.get(order.ticker, 0.0), 0.0))
+            if self.whole_shares:
+                quantity = math.copysign(math.floor(abs(quantity) + 1e-9), quantity)
+            if abs(quantity) < 1e-12:
                 continue
             price = bar.prices[order.ticker]
-            notional = order.quantity * price
+            notional = quantity * price
             fee = abs(notional) * self.fee_rate
             if notional + fee > self._cash + 1e-9:
                 # Scale the buy down to what cash allows rather than reject it.
@@ -270,14 +319,34 @@ class PaperBroker(Broker):
                     affordable = float(math.floor(affordable + 1e-9))
                 if affordable < 1e-9:
                     continue
-                order = Order(order.ticker, affordable, order.reason + "/scaled")
+                quantity = affordable
                 notional = affordable * price
                 fee = notional * self.fee_rate
             self._cash -= notional + fee
-            self._positions[order.ticker] = self._positions.get(order.ticker, 0.0) + order.quantity
-            fill = Fill(order.ticker, order.quantity, price, fee, bar.date)
+            self._positions[order.ticker] = self._positions.get(order.ticker, 0.0) + quantity
+            fill = Fill(order.ticker, float(quantity), price, fee, bar.date)
             fills.append(fill)
             self.fills.append(fill)
+        return fills
+
+    def adjust(self, ticker: str, factor: float, price: float, date: str) -> list[Fill]:
+        held = self._positions.get(ticker, 0.0)
+        if abs(held) < 1e-12 or abs(factor - 1.0) < 1e-12:
+            return []
+        scaled = held * factor
+        # Recorded at price zero: the shares appear, the cost basis does not
+        # move, so the ledger's average cost per share scales with the price.
+        fills = [Fill(ticker, scaled - held, 0.0, 0.0, date, f"adjustment x{factor:.6f}")]
+        if self.whole_shares:
+            whole = float(math.floor(scaled + 1e-9))
+            fraction = scaled - whole
+            if fraction > 1e-9:
+                # Cash in lieu of the fractional share, as a broker pays it.
+                self._cash += fraction * price
+                fills.append(Fill(ticker, -fraction, price, 0.0, date, "cash in lieu of a fractional share"))
+            scaled = whole
+        self._positions[ticker] = scaled
+        self.fills.extend(fills)
         return fills
 
 
@@ -307,6 +376,22 @@ def trade_ledger(fills: Sequence[dict], last_prices: dict[str, float] | None = N
         t, q, px, fee = f["ticker"], float(f["quantity"]), float(f["price"]), float(f["fee"])
         held = shares.get(t, 0.0)
         pnl = 0.0
+        if f.get("note") and px == 0.0:
+            # A split or dividend re-base: the share count changes, the cost
+            # does not, so the average cost per share moves with the price.
+            if held > 1e-12:
+                shares[t] = held + q
+                if shares[t] <= 1e-9 * max(held, 1.0):  # nothing left: the cost is lost
+                    pnl = -basis.get(t, 0.0)
+                    realized[t] = realized.get(t, 0.0) + pnl
+                    shares[t], basis[t] = 0.0, 0.0
+                    done = trip.pop(t)
+                    done["pnl"] += pnl
+                    done.update(exit_date=f["date"], exit_price=0.0,
+                                return_pct=done["pnl"] / done["cost"] if done["cost"] > 0 else 0.0)
+                    trips.append(done)
+            annotated.append({**f, "realized_pnl": pnl})
+            continue
         if q > 0:
             if held <= 1e-12:
                 trip[t] = {"ticker": t, "entry_date": f["date"], "cost": 0.0, "pnl": 0.0}
@@ -487,7 +572,10 @@ class EngineState:
     @classmethod
     def load(cls, path: str | Path) -> "EngineState":
         data = json.loads(Path(path).read_text(encoding="utf-8"))
-        return cls(**data)
+        # A field this version does not know (written by a newer one) is
+        # dropped; one it adds (missing from an older file) takes its default.
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 # --------------------------------------------------------------------------
@@ -576,10 +664,13 @@ class Engine:
         elif st.n_bars >= max(self.limits.min_history, self.config.window) and (
             st.last_rebalance_index < 0 or st.n_bars - st.last_rebalance_index >= self.config.rebalance_every
         ):
-            fills, targets, note = self._rebalance(bar)
-            st.last_rebalance_index = st.n_bars
-            st.target_weights = targets
-            event.update(action="rebalance", fills=fills, targets=targets, note=note)
+            if not self.broker.accepts(bar):
+                event.update(action="hold", note="rebalance due; the broker does not trade this bar")
+            else:
+                fills, targets, note = self._rebalance(bar)
+                st.last_rebalance_index = st.n_bars
+                st.target_weights = targets
+                event.update(action="rebalance", fills=fills, targets=targets, note=note)
         if rearmed:
             event["note"] = rearmed + (f"; {event['note']}" if event.get("note") else "")
 
@@ -679,10 +770,117 @@ class Engine:
         orders = [Order(t, -q, reason) for t, q in self.broker.positions().items()]
         return self.broker.submit(orders, bar)
 
+    # -- corporate actions -------------------------------------------------
+    def reconcile(self, bars: Sequence[Bar], threshold: float = 1e-4, agree: float = 5e-4) -> list[dict]:
+        """Re-base the stored history when the feed's copy of it has moved.
+
+        A feed of adjusted closes rewrites every past price when a stock
+        splits or goes ex-dividend; the engine's own copy does not follow,
+        so the next bar would look like a crash (a 4:1 split reads as -75%
+        and trips the kill switch) and a dividend like a loss.
+
+        What moved is read from the ratio old / new on every date both
+        copies hold, per ticker:
+
+        * **Only the newest shared bar moved** (a revised or late close, or
+          a bar first stored while the session was still open): its price
+          is replaced; nothing else changes.
+        * **The older dates moved together**, by one factor (agreeing within
+          ``agree``): a corporate action.  Every stored price is divided by
+          the factor and the broker scales the position by it (paper:
+          shares, so equity is unchanged; a real account already reflects
+          the event) -- when the factor is above 1 (a dividend or a split)
+          or at most 0.5 (a reverse split).  Between 0.5 and 1 no corporate
+          action fits (past prices cannot rise on a dividend), so it is a
+          change of data basis: the history is re-based and the shares
+          are left alone.
+        * **The older dates moved by different amounts**: also a change of
+          basis, handled the same way.
+
+        In every case the dates the feed still has take the feed's values.
+        Fills recording a share change carry a note, and the ledger's share
+        count is brought in line with the book whatever the venue did.
+        Returns one dict per ticker that changed.
+        """
+        st = self.state
+        if not st.dates or not bars:
+            return []
+        index = {d: i for i, d in enumerate(st.dates)}
+        shared = sorted((b for b in bars if b.date in index), key=lambda b: b.date)
+        if not shared:
+            return []
+        feed_dates = {b.date for b in bars}
+        gaps = [d for d in feed_dates if st.dates[0] < d < st.dates[-1] and d not in index]
+        if gaps:
+            self._log(f"history is missing {len(gaps)} bar(s) the feed has ({min(gaps)}..{max(gaps)});"
+                      " they are not back-filled")
+        latest = shared[-1]
+        changes: list[dict] = []
+        for j, ticker in enumerate(st.tickers):
+            pairs = [(float(st.prices[index[b.date]][j]), float(b.prices.get(ticker, 0.0))) for b in shared]
+            ratios = np.array([o / n for o, n in pairs if o > 0 and n > 0])
+            if ratios.size == 0 or np.all(np.abs(ratios - 1.0) <= threshold):
+                continue
+            prior = ratios[:-1]
+            if prior.size == 0 or np.all(np.abs(prior - 1.0) <= threshold):
+                if prior.size == 0 and abs(ratios[-1] - 1.0) >= 0.2:
+                    kind, factor = "split", float(ratios[-1])  # one shared date: only a large move is a split
+                else:
+                    kind, factor = "revision", 1.0
+            else:
+                factor = float(np.median(prior))
+                consistent = float(prior.max() / prior.min() - 1.0) <= agree
+                if consistent and (factor > 1.0 or factor <= 0.5):
+                    kind = "split" if abs(factor - 1.0) >= 0.1 else "dividend"
+                else:
+                    kind = "basis"
+            if factor != 1.0:
+                for r in st.prices:
+                    r[j] = r[j] / factor
+            fills: list[Fill] = []
+            held = self.broker.positions().get(ticker, 0.0)
+            if kind in ("split", "dividend"):
+                new = float(latest.prices.get(ticker, 0.0)) or float(st.prices[index[latest.date]][j])
+                fills = list(self.broker.adjust(ticker, factor, new, latest.date))
+                recorded = (sum(float(f["quantity"]) for f in st.fills if f["ticker"] == ticker)
+                            + sum(f.quantity for f in fills))
+                held = self.broker.positions().get(ticker, 0.0)
+                if abs(held - recorded) > 1e-9:
+                    fills.append(Fill(ticker, held - recorded, 0.0, 0.0, latest.date, f"adjustment x{factor:.6f}"))
+                st.fills.extend(asdict(f) for f in fills)
+            cash_in_lieu = sum(-f.quantity * f.price for f in fills if f.price > 0)
+            if kind == "revision":
+                line = f"{latest.date} revised {ticker}: the feed's {latest.date} close replaces the stored one"
+            elif kind == "basis":
+                line = (f"{latest.date} re-based {ticker}: the feed's history moved by different amounts or upward"
+                        f" (median x{1 / factor:.6f}); prices re-based, shares unchanged")
+            else:
+                line = (f"{latest.date} re-based {ticker}: {kind} adjustment in the feed, prices /{factor:.6f},"
+                        f" shares x{factor:.6f}" + (f", {cash_in_lieu:,.2f} cash in lieu" if cash_in_lieu else ""))
+            st.log.append(line)
+            self._log(line)
+            changes.append({"ticker": ticker, "date": latest.date, "factor": factor, "kind": kind,
+                            "shares": held, "cash_in_lieu": cash_in_lieu})
+        if changes:
+            # The feed's values are the authority for the dates it still has;
+            # older dates keep the scaled values.
+            for b in shared:
+                r = st.prices[index[b.date]]
+                for j, ticker in enumerate(st.tickers):
+                    v = b.prices.get(ticker)
+                    if v is not None and v > 0:
+                        r[j] = float(v)
+            st.log = st.log[-500:]
+            st.cash = self.broker.cash()
+            st.positions = self.broker.positions()
+        return changes
+
     # -- loop --------------------------------------------------------------
     def run(self, feed: PriceFeed, once: bool = False, state_path: str | Path | None = None) -> list[dict]:
         path = Path(state_path or self.config.state_path)
         events: list[dict] = []
+        if self.state.dates and self.reconcile(feed.history()):
+            self.state.save(path)
         for bar in feed.bars():
             missing = [t for t in self.state.tickers if t not in bar.prices]
             if missing:
@@ -751,7 +949,7 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
     status = {
         "schema": 1,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "mode": getattr(engine.broker, "mode", "paper"),
+        "mode": getattr(engine.broker, "mode", cfg.mode),
         "config": cfg.to_dict(),
         "last_date": st.dates[-1] if st.dates else None,
         "bars_seen": st.n_bars,
@@ -769,7 +967,8 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
         "fills": ledger["fills"][-60:],
         "pnl": {k: v for k, v in ledger.items() if k not in ("fills", "round_trips")}
                | {"round_trips": ledger["round_trips"][-60:]},
-        "n_fills": len(st.fills),
+        "n_fills": sum(1 for f in st.fills if not f.get("note")),  # trades; adjustments are bookkeeping
+        "adjusted": any(f.get("note") for f in st.fills),
         "fees": sum(f.get("fee", 0.0) for f in st.fills),
         "log": st.log[-60:],
         "evaluation": _evaluation(engine),
@@ -786,9 +985,20 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
     return status, prices
 
 
+def first_tradable_bar(config: EngineConfig) -> int:
+    """Index of the first bar :meth:`Engine.on_bar` may trade, counting from 0.
+
+    It trades once ``n_bars`` (which already counts the new bar) reaches
+    ``max(min_history, window)``.  ``trade_from``, when set, can only push
+    this later; the evaluation then starts at that date instead.
+    """
+    return max(config.limits.min_history, config.window) - 1
+
+
 def _evaluation(engine: "Engine") -> dict:
     from .evaluation import evaluate_bot
-    return evaluate_bot(engine.state, engine.config.trade_from)
+    return evaluate_bot(engine.state, engine.config.trade_from,
+                        first_bar=first_tradable_bar(engine.config))
 
 
 def todays_orders(engine: "Engine", limit_pad: float = 0.01) -> dict:
@@ -804,8 +1014,8 @@ def todays_orders(engine: "Engine", limit_pad: float = 0.01) -> dict:
     last = st.dates[-1] if st.dates else None
     orders = []
     for f in st.fills:
-        if f["date"] != last or abs(f["quantity"]) < 1e-12:
-            continue
+        if f["date"] != last or abs(f["quantity"]) < 1e-12 or f.get("note"):
+            continue  # a split or dividend adjustment is bookkeeping, not an order
         side = "buy" if f["quantity"] > 0 else "sell"
         limit = f["price"] * (1 + limit_pad if side == "buy" else 1 - limit_pad)
         orders.append({"ticker": f["ticker"], "side": side, "shares": abs(f["quantity"]),

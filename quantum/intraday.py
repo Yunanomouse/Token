@@ -52,8 +52,10 @@ What it is not
 --------------
 It is not a live trading tool, and it does not predict anything.  At $50 with
 whole shares the minimum trade is one share of whatever you can afford, and
-10 bps per side of slippage is often optimistic on the most volatile names.
-Read the baseline comparison before reading the return.
+a flat 10 bps per side of slippage is optimistic on cheap and volatile names:
+``tick_slippage`` adds half a one-cent tick per share and
+``open_slippage_mult`` charges more near the open (the live config uses
+both).  Read the baseline comparison before reading the return.
 
 Running it
 ----------
@@ -227,6 +229,17 @@ class IntradayConfig:
     whole_shares: bool = True
     slippage_bps: float = 10.0
     """Per side, always against you: buys fill higher, sells lower."""
+    tick_slippage: float = 0.0
+    """Dollars per share per side on top of ``slippage_bps``: half the
+    bid-ask spread at its narrowest.  US stocks trade in one-cent ticks, so
+    half a tick (0.005) is 0.5% per side at $1, 0.1% at $5 and 0.025% at
+    $20; a flat percentage misses how much more cheap stocks cost to trade
+    (docs/research/05_rules_costs.md)."""
+    open_slippage_mult: float = 1.0
+    """Slippage on fills in bars starting before ``open_slippage_until`` is
+    multiplied by this: spreads are widest right after the open.  (A signal
+    fills at the next bar's open, so no fill lands in the first bar.)"""
+    open_slippage_until: str = "09:45"
     commission: float = 0.0
     """Flat fee per order (each side)."""
     max_trades_per_day: int = 6
@@ -263,7 +276,9 @@ class IntradayConfig:
     rvol_days: int = 14
     min_rvol: float = 1.0
     min_price: float = 0.0
-    """Prior close at least this (the ORB paper uses $5)."""
+    """Prior close at least this, in either screen (the ORB paper uses $5).
+    Stocks under $1-2 carry the widest spreads, trading pauses and
+    delisting risk."""
     min_atr: float = 0.0
     """Daily ATR over ``rvol_days`` sessions at least this, in dollars."""
     min_avg_volume: float = 0.0
@@ -285,8 +300,10 @@ class IntradayConfig:
             raise ValueError("deploy_fraction must lie in (0, 1]")
         if self.max_positions < 1 or self.max_trades_per_day < 0 or self.top_n < 1:
             raise ValueError("max_positions and top_n must be >= 1, max_trades_per_day >= 0")
-        if self.slippage_bps < 0 or self.commission < 0:
-            raise ValueError("slippage_bps and commission must be non-negative")
+        if self.slippage_bps < 0 or self.commission < 0 or self.tick_slippage < 0:
+            raise ValueError("slippage_bps, tick_slippage and commission must be non-negative")
+        if self.open_slippage_mult < 1.0:
+            raise ValueError("open_slippage_mult must be at least 1")
         if self.stop_loss_pct is not None and not 0.0 < self.stop_loss_pct < 1.0:
             raise ValueError("stop_loss_pct must lie in (0, 1)")
         if self.entry_lookback < 1 or self.filter_n < 2 or self.screen_days < 1:
@@ -325,15 +342,25 @@ def daily_ranges(bars: dict[str, dict[str, np.ndarray]]) -> dict[str, dict[str, 
     return out
 
 
+def slip_fraction(config: "IntradayConfig", price: float, hm: str = "") -> float:
+    """Per-side slippage, as a fraction of ``price``, for a fill in the bar
+    starting at ``hm`` (``HH:MM``): ``slippage_bps`` plus ``tick_slippage``
+    dollars, times ``open_slippage_mult`` before ``open_slippage_until``."""
+    s = config.slippage_bps / 1e4 + (config.tick_slippage / price if price > 0 else 0.0)
+    return s * (config.open_slippage_mult if hm and hm < config.open_slippage_until else 1.0)
+
+
 def volatility_screen(ranges: dict[str, dict[str, tuple[float, float]]], date: str, budget: float,
                       top_n: int = 5, screen_days: int = 1, slippage_bps: float = 0.0,
-                      commission: float = 0.0, tradable: set[str] | None = None) -> list[str]:
+                      commission: float = 0.0, tradable: set[str] | None = None,
+                      tick_slippage: float = 0.0, min_price: float = 0.0) -> list[str]:
     """Tickers for ``date``, most volatile first, using prior sessions only.
 
     Each ticker is scored by its mean (high - low) / close range over its last
     ``screen_days`` sessions strictly before ``date``.  A ticker qualifies if
-    its last prior close (plus slippage and commission) fits one whole share
-    in ``budget``; the top ``top_n`` qualifiers are returned.  ``tradable``
+    its last prior close is at least ``min_price`` and (plus slippage and
+    commission) fits one whole share in ``budget``; the top ``top_n``
+    qualifiers are returned.  ``tradable``
     optionally restricts to tickers that have bars on ``date``.
     """
     scored = []
@@ -344,7 +371,9 @@ def volatility_screen(ranges: dict[str, dict[str, tuple[float, float]]], date: s
         if not prior:
             continue
         last_close = per[prior[-1]][1]
-        if last_close * (1 + slippage_bps / 1e4) + commission > budget:
+        if last_close < min_price:
+            continue
+        if last_close * (1 + slippage_bps / 1e4) + tick_slippage + commission > budget:
             continue
         scored.append((-float(np.mean([per[d][0] for d in prior])), t))
     scored.sort()
@@ -405,7 +434,7 @@ def rvol_screen(stats: dict[str, dict[str, dict]], date: str, budget: float, con
         if (s["rvol"] < c.min_rvol or s["prev_close"] < c.min_price or s["atr"] < c.min_atr
                 or s["avg_volume"] < c.min_avg_volume):
             continue
-        if s["prev_close"] * (1 + c.slippage_bps / 1e4) + c.commission > budget:
+        if s["prev_close"] * (1 + c.slippage_bps / 1e4) + c.tick_slippage + c.commission > budget:
             continue
         scored.append((-s["rvol"], t))
     scored.sort()
@@ -524,10 +553,20 @@ class _OrbPolicy:
 
 class _RandomPolicy:
     """Same count of entries per day and same holding-time distribution as a
-    given set of trades, at random times on random screened tickers."""
+    given set of trades, at random times on random screened tickers.
+
+    A queued entry is consumed only when it fills (:meth:`filled`).  When its
+    ticker cannot be bought (the fill failed: too little settled cash for a
+    whole share) or is not on offer while other screened tickers are (it is
+    held, or has no bar), the entry moves to a random ticker among those
+    offered on the previous bar that have not failed today, so it is delayed
+    rather than lost."""
 
     def __init__(self, trades, config, seed):
         self.rng = np.random.default_rng(seed)
+        # Reassignments draw from their own stream, so each day's plan does
+        # not depend on how the previous day's fills went.
+        self.rng_move = np.random.default_rng([seed, 1])
         self.per_day: dict[str, int] = {}
         for tr in trades:
             d = tr["entry_time"][:10]
@@ -535,22 +574,62 @@ class _RandomPolicy:
         self.holds = np.array([max(1, int(tr.get("bars_held", 1))) for tr in trades] or [1])
         self.no_entry_after = config.no_entry_after
         self.queue: list[tuple[str, str, int]] = []
+        self.failed: set[str] = set()
+        self.bar_time = ""
+        self.offered: list[str] = []
+        self.offered_prev: list[str] = []
 
     def start_day(self, date, screen, times, trades_today_cap):
         k = self.per_day.get(date, 0)
         ok = [t for t in times if t[11:16] < self.no_entry_after]
-        self.queue = []
+        self.queue, self.failed = [], set()
+        self.bar_time, self.offered, self.offered_prev = "", [], []
         if k and screen and ok:
-            when = sorted(self.rng.choice(len(ok), size=k, replace=len(ok) < k))
+            # Random times that do not overlap: entry j (signal bar, then
+            # ``hold`` bars held, exit at the next open) takes hold + 1 bars
+            # before the next can be signalled.  Holding times are redrawn
+            # until the day's plan fits before ``no_entry_after`` (as the
+            # strategy's own trades that day did), so entries are not queued
+            # behind long holds until the cutoff and dropped.
+            for _ in range(50):
+                hold = self.rng.choice(self.holds, size=k)
+                busy = np.r_[0, np.cumsum(hold[:-1] + 1)]
+                room = len(ok) - int(busy[-1])
+                if room > 0:
+                    break
             who = self.rng.integers(0, len(screen), size=k)
-            hold = self.rng.choice(self.holds, size=k)
+            if room > 0:
+                when = np.sort(self.rng.choice(room, size=k, replace=room < k)) + busy
+            else:  # the holds cannot fit: plain random times
+                when = np.sort(self.rng.choice(len(ok), size=k, replace=len(ok) < k))
             self.queue = [(ok[w], screen[j], int(h)) for w, j, h in zip(when, who, hold)]
 
+    def _new_bar(self, time):
+        self.bar_time, self.offered_prev, self.offered = time, self.offered, []
+        if not self.queue or self.queue[0][0] > time:
+            return
+        due, t, h = self.queue[0]
+        if t not in self.failed and (not self.offered_prev or t in self.offered_prev):
+            return
+        alt = [x for x in self.offered_prev if x not in self.failed]
+        if alt:
+            self.queue[0] = (due, alt[int(self.rng_move.integers(0, len(alt)))], h)
+
     def want_entry(self, ticker, i, time):
-        if self.queue and self.queue[0][0] <= time and self.queue[0][1] == ticker:
-            _, _, h = self.queue.pop(0)
-            return True, {"hold": h}
+        if time != self.bar_time:
+            self._new_bar(time)
+        self.offered.append(ticker)
+        if (self.queue and self.queue[0][0] <= time and self.queue[0][1] == ticker
+                and ticker not in self.failed):
+            return True, {"hold": self.queue[0][2]}
         return False, {}
+
+    def filled(self, ticker):
+        if self.queue and self.queue[0][1] == ticker:
+            self.queue.pop(0)
+
+    def fill_failed(self, ticker):
+        self.failed.add(ticker)
 
     def want_exit(self, ticker, i, pos):
         return i - pos["entry_idx"] >= pos["meta"]["hold"] - 1
@@ -558,7 +637,6 @@ class _RandomPolicy:
 
 def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) -> dict:
     cfg = config
-    slip = cfg.slippage_bps / 1e4
     ranges = daily_ranges(bars)
     stats = daily_stats(bars, cfg.rvol_days) if (cfg.screen == "rvol" or cfg.stop_atr_mult) else {}
     index = {t: {d: i for i, d in enumerate(b["datetime"])} for t, b in bars.items()}
@@ -572,6 +650,9 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
         for i, d in enumerate(b["datetime"]):
             ld[d[:10]] = i
         last_of_day[t] = ld
+
+    def slip_at(t, i, price):
+        return slip_fraction(cfg, price, str(bars[t]["datetime"][i])[11:16])
 
     settled, unsettled = float(cfg.cash), 0.0
     positions: dict[str, dict] = {}
@@ -587,7 +668,7 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
     def close_pos(t, i, price, reason):
         nonlocal settled, unsettled
         p = positions.pop(t)
-        fill = price * (1 - slip)
+        fill = price * (1 - slip_at(t, i, price))
         proceeds = p["shares"] * fill - cfg.commission
         if cfg.settled_cash_only:
             unsettled += proceeds
@@ -613,7 +694,8 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
             screen = rvol_screen(stats, date, cfg.deploy_fraction * eq0, cfg, tradable)
         else:
             screen = volatility_screen(ranges, date, cfg.deploy_fraction * eq0, cfg.top_n, cfg.screen_days,
-                                       cfg.slippage_bps, cfg.commission, tradable=tradable)
+                                       cfg.slippage_bps, cfg.commission, tradable=tradable,
+                                       tick_slippage=cfg.tick_slippage, min_price=cfg.min_price)
         policy.start_day(date, screen, times, cfg.max_trades_per_day)
         pending: dict[str, tuple[str, dict]] = {}
         entries = 0
@@ -638,12 +720,14 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
                 _, meta = pending.pop(t)
                 if hm >= cfg.flat_by or t in positions:
                     continue
-                fill = bars[t]["open"][i] * (1 + slip)
+                fill = bars[t]["open"][i] * (1 + slip_at(t, i, bars[t]["open"][i]))
                 spend = min(cfg.deploy_fraction * equity_now(), settled) - cfg.commission
                 shares = spend / fill if spend > 0 else 0.0
                 if cfg.whole_shares:
                     shares = float(math.floor(shares + 1e-12))
                 if shares <= 0 or (cfg.whole_shares and shares < 1):
+                    if hasattr(policy, "fill_failed"):
+                        policy.fill_failed(t)
                     continue
                 fill = float(fill)
                 cost = shares * fill + cfg.commission
@@ -654,6 +738,8 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
                     "entry_time": now, "last": float(bars[t]["close"][i]), "peak": None, "meta": meta,
                     "stop": _stop_price(cfg, stats, t, date, fill),
                 }
+                if hasattr(policy, "filled"):
+                    policy.filled(t)
             # 3. intrabar stop, forced close on the last bar, signals on the close.
             for t, i in live:
                 b = bars[t]
@@ -691,14 +777,21 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
 
     open_positions = []
     if open_session and dates:
+        # An open position is marked at what selling it at the last close
+        # would bring (slippage and commission off), both in its unrealized
+        # pnl and in the equity, so equity = cash + cost + unrealized.
+        def liquidation(p):
+            return p["shares"] * p["last"] * (1 - slip_fraction(cfg, p["last"])) - cfg.commission
+
         for t, p in positions.items():
             open_positions.append({
                 "ticker": t, "shares": p["shares"], "entry_time": p["entry_time"],
                 "entry_price": p["entry_price"], "last": p["last"],
-                "unrealized": float(p["shares"] * p["last"] * (1 - slip) - p["cost"]),
+                "unrealized": float(liquidation(p) - p["cost"]),
                 "exit_pending": pending.get(t, ("",))[0] == "sell",
             })
-        equity_curve.append({"date": dates[-1], "equity": float(equity_now())})
+        marked = settled + unsettled + sum(liquidation(p) for p in positions.values())
+        equity_curve.append({"date": dates[-1], "equity": float(marked)})
 
     summary = summarize(trades, equity_curve, cfg.cash)
     summary.update({
@@ -707,14 +800,19 @@ def _simulate(bars, config: IntradayConfig, policy, open_session: bool = False) 
         "time_invested_fraction": invested_steps / total_steps if total_steps else 0.0,
     })
     result = {"trades": trades, "equity": equity_curve, "summary": summary, "config": cfg.to_dict()}
-    if open_session:
-        result["open"] = {
-            "positions": open_positions,
-            "pending_buys": [t for t, v in pending.items() if v[0] == "buy"],
-            "cash_settled": float(settled), "cash_unsettled": float(unsettled),
-            "entries_today": entries if dates else 0,
-            "screen": list(screen) if dates else [],
-        }
+    # The newest session as it stands.  With open_session the position and
+    # the pending orders are live; on a finished session both are empty, the
+    # day's proceeds sit unsettled until the next one, and the screen and
+    # entry count are that day's.
+    live_now = bool(open_session and dates)
+    result["open"] = {
+        "session_open": live_now,
+        "positions": open_positions,
+        "pending_buys": [t for t, v in pending.items() if v[0] == "buy"] if live_now else [],
+        "cash_settled": float(settled), "cash_unsettled": float(unsettled),
+        "entries_today": entries if dates else 0,
+        "screen": list(screen) if dates else [],
+    }
     return result
 
 
@@ -775,7 +873,9 @@ def backtest(bars: dict[str, dict[str, np.ndarray]], config: IntradayConfig | No
     ``open_session=True`` treats the newest session as still trading: its
     last bar is not the close, so a position stays open and is reported,
     with the day's pending orders and cash, under ``result["open"]``.  This
-    is how a live paper run re-evaluates the day so far.
+    is how a live paper run re-evaluates the day so far.  ``result["open"]``
+    is always present; on a finished session it holds no positions or
+    pending orders, and its ``session_open`` flag is false.
     """
     config = config or IntradayConfig()
     policy = _OrbPolicy(bars, config) if config.strategy == "orb" else _KamaPolicy(bars, config)
@@ -790,7 +890,11 @@ def random_baseline(bars: dict[str, dict[str, np.ndarray]], config: IntradayConf
     are placed at uniformly random bar times (before ``no_entry_after``) on
     uniformly random screened tickers, each held for a number of bars drawn
     from ``trades``' own holding times (stops and the end-of-day close still
-    apply).  Entries that would overlap an open position wait for it to
-    close.  Returns the same structure as :func:`backtest`.
+    apply).  The times are drawn so the day's entries do not overlap, and an
+    entry is only used up once it fills: one whose ticker cannot be bought
+    (not enough settled cash for a whole share) or is not on offer moves to
+    another screened ticker, so the baseline makes as nearly as it can the
+    same number of entries as the strategy.  Deterministic for a given
+    ``seed``.  Returns the same structure as :func:`backtest`.
     """
     return _simulate(bars, config, _RandomPolicy(trades, config, seed))

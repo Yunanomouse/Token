@@ -76,7 +76,11 @@ jobs:
         run: |
           python -m quantum live --config live/real/config.json --feed live/real/prices.csv \
             --catch-up --poll 0 --orders live/real/orders.json
+      # Runs even when the engine step failed: the engine writes its state
+      # after every bar, so the bars it did process (and any orders a broker
+      # already took) are kept instead of being replayed on the next run.
       - name: Save the bot's state
+        if: ${{ !cancelled() }}
         run: |
           git config user.name "quantum-trading-bot"
           git config user.email "quantum-trading-bot@users.noreply.github.com"
@@ -88,6 +92,9 @@ jobs:
           git commit -m "live bot: state as of $(python -c 'import json;print(json.load(open("live/snapshot.json"))["last_date"])')"
           for i in 1 2 3 4; do
             git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            # A failed rebase leaves the checkout mid-rebase, and every later
+            # pull would fail on that alone; abort it before trying again.
+            git rebase --abort 2>/dev/null || true
             sleep $((i * 5))
           done
           echo "could not push the bot state" >&2

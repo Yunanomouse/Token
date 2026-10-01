@@ -9,18 +9,24 @@ description = "Quantum methods for portfolio optimisation, risk, pricing and arb
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-dependencies = ["numpy>=1.24"]
+# tzdata: Windows' Python ships no time-zone database, and New York time
+# decides when the bots run (quantum.local, scripts/fetch_prices.py).
+dependencies = ["numpy>=1.24", "tzdata; sys_platform == 'win32'"]
 
 [project.optional-dependencies]
 # Test-only: scipy and scikit-learn are independent references the suite
 # checks the numpy implementations against.  The package needs neither.
-test = ["pytest>=7", "scipy>=1.10", "scikit-learn>=1.3"]
+test = ["pytest>=7", "scipy>=1.10", "scikit-learn>=1.3", "TA-Lib>=0.8.1"]
 
 [project.scripts]
 quantum-trading = "quantum.cli:main"
+quantum-station = "quantum.local:main"
 
 [tool.setuptools.packages.find]
 include = ["quantum*"]
+
+[tool.setuptools.package-data]
+quantum = ["local_page.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
