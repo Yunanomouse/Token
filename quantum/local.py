@@ -84,6 +84,7 @@ DAILY_AFTER = timedelta(minutes=30)      # closes are final well within this
 INTRADAY_LAG = timedelta(seconds=40)     # let the bar that just ended be published
 INTRADAY_EVERY = timedelta(minutes=5)
 RETRY_AFTER = timedelta(minutes=20)      # a failed job is tried again after this
+RETRY_AFTER_INTRADAY = timedelta(minutes=5)  # ... except the intraday run: one slot, not three
 
 
 def is_trading_day(d: date) -> bool:
@@ -214,6 +215,67 @@ def _write_json(path: Path, obj) -> None:
     os.replace(tmp, path)
 
 
+def _strict_bool(value) -> bool | None:
+    """true/false, "true"/"false", 1/0 (as ``desktop.Controller._flag`` reads
+    them); None for anything else, so "no" or "maybe" is not read as true."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str) and value.strip().lower() in ("true", "false", "1", "0"):
+        return value.strip().lower() in ("true", "1")
+    return None
+
+
+def _clean_sched(raw) -> tuple[dict, list[str]]:
+    """scheduler.json's contents with every wrong-shaped field dropped, and
+    what was dropped.  ``retry`` keeps only {job: ISO time with a zone}."""
+    ignored = []
+    if not isinstance(raw, dict):
+        ignored.append("the whole file (not a JSON object)")
+        raw = {}
+    sched = dict(raw)
+    for key in ("daily_done", "archived", "intraday_slot"):
+        if key in sched and not isinstance(sched[key], str):
+            ignored.append(f"{key}={sched.pop(key)!r}")
+    paused = _strict_bool(sched.get("paused", False))
+    if paused is None:
+        ignored.append(f"paused={sched['paused']!r}")
+    sched["paused"] = bool(paused)
+    retry = sched.get("retry", {})
+    if not isinstance(retry, dict):
+        ignored.append(f"retry={retry!r}")
+        retry = {}
+    sched["retry"] = {}
+    for job, at in retry.items():
+        try:
+            ok = job in JOBS and datetime.fromisoformat(at).tzinfo is not None
+        except (TypeError, ValueError):
+            ok = False
+        if ok:
+            sched["retry"][job] = at
+        else:
+            ignored.append(f"retry[{job!r}]={at!r}")
+    return sched, ignored
+
+
+def _job_run(r) -> JobRun | None:
+    """A saved run from runs.json, or None if it is malformed."""
+    if not isinstance(r, dict):
+        return None
+    try:
+        run = JobRun(**r)
+    except TypeError:
+        return None
+    if not isinstance(run.job, str) or not isinstance(run.started, str):
+        return None
+    run.finished = run.finished if isinstance(run.finished, str) else ""
+    run.ok = run.ok if run.ok is None or isinstance(run.ok, bool) else None
+    run.steps = [s for s in run.steps if isinstance(s, dict)] if isinstance(run.steps, list) else []
+    run.output = "" if run.output is None else str(run.output)
+    return run
+
+
 # --------------------------------------------------------------------------
 # Jobs
 # --------------------------------------------------------------------------
@@ -252,9 +314,8 @@ class Station:
         self.clock = clock or (lambda: datetime.now(NY))
         self.created = seed(self.home, copy_state=copy_state)
         self.sched_path = self.home / "scheduler.json"
-        self.sched = _read_json(self.sched_path, {}) or {}
-        self.sched.setdefault("paused", False)
-        self.sched.setdefault("retry", {})
+        raw = _read_json(self.sched_path, {}) if self.sched_path.exists() else {}
+        self.sched, ignored = _clean_sched(raw)
         self.lock = threading.Lock()
         self.running: dict[str, JobRun] = {}
         self.history: deque[JobRun] = deque(maxlen=60)
@@ -263,13 +324,17 @@ class Station:
         self._thread: threading.Thread | None = None
         self.scheduler_active = False
         self.runs_path = self.home / "logs" / "runs.json"
-        for r in reversed(_read_json(self.runs_path, []) or []):  # the last runs, from before a restart
-            try:
-                self.history.appendleft(JobRun(**r))
-            except TypeError:
-                pass
+        runs = _read_json(self.runs_path, []) or []
+        runs = [_job_run(r) for r in (runs if isinstance(runs, list) else [])]
+        for r in reversed(runs):  # the last runs, from before a restart
+            if r is not None:
+                self.history.appendleft(r)
         for p in self.created:
             self.note(f"created {p}")
+        if ignored:
+            self.note(f"scheduler.json: ignored {', '.join(ignored)}")
+        if None in runs:
+            self.note(f"runs.json: ignored {runs.count(None)} malformed run(s)")
 
     # -- messages ---------------------------------------------------------
     def note(self, line: str) -> None:
@@ -341,7 +406,8 @@ class Station:
             if run.ok:
                 self.sched["retry"].pop(run.job, None)
             else:
-                self.sched["retry"][run.job] = (self.clock() + RETRY_AFTER).isoformat(timespec="seconds")
+                wait = RETRY_AFTER_INTRADAY if run.job == "intraday" else RETRY_AFTER
+                self.sched["retry"][run.job] = (self.clock() + wait).isoformat(timespec="seconds")
             kept = [dict(asdict(r), output=r.output[-4000:]) for r in [run] + list(self.history)[:59]]
         try:
             _write_json(self.runs_path, kept)
@@ -369,10 +435,24 @@ class Station:
     def _job_daily(self, run: JobRun) -> bool:
         target = last_completed_session(self.clock()).isoformat()
         ok = all([self._daily_bot(run, name) for name in DAILY_BOTS])
-        if ok:
-            with self.lock:
-                self.sched["daily_done"] = target
-        return ok
+        if not ok:
+            return False
+        # Done only when both books really reached the target: a source that
+        # has no close for it yet (or a fetch that still dropped it) is retried.
+        behind = []
+        for name in DAILY_BOTS:
+            state = _read_json(self.home / name / "state.json")
+            dates = state.get("dates") if isinstance(state, dict) else None
+            newest = dates[-1] if isinstance(dates, list) and dates and isinstance(dates[-1], str) else None
+            if newest is None or newest < target:
+                behind.append(f"{name} at {newest or 'no state'}")
+        if behind:
+            run.output += (f"not done: {target} is not in every bot's state yet ({'; '.join(behind)}); "
+                           f"trying again in {int(RETRY_AFTER.total_seconds() // 60)} minutes\n")
+            return False
+        with self.lock:
+            self.sched["daily_done"] = target
+        return True
 
     def _intraday(self, run: JobRun) -> bool:
         d = self.home / "intraday"
@@ -389,9 +469,17 @@ class Station:
         return ok
 
     def _job_intraday_close(self, run: JobRun) -> bool:
-        today = self.clock().astimezone(NY).date().isoformat()
+        now = self.clock().astimezone(NY)
+        today = now.date().isoformat()
         if not self._intraday(run):
             return False
+        # Archive (and mark the day archived) only once the session is over,
+        # as the scheduler does; an earlier manual run is just a replay.
+        if not (is_trading_day(now.date())
+                and now >= _at(now.date(), session_close(now.date())) + INTRADAY_EVERY + INTRADAY_LAG):
+            run.output += (f"{today}: no finished session to archive yet (the archive runs after the close "
+                           f"on a trading day); replayed only, not archived\n")
+            return True
         d = self.home / "intraday"
         status = _read_json(d / "status.json")
         if status and status.get("date") == today:
@@ -677,7 +765,11 @@ def _indicator_test(bars_path: str, out_path: str, files: list[str]) -> int:
 
 class StationServer(ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = False  # a second station on the same port must fail, not share it
+    # SO_REUSEADDR lets a restarted station take the port back at once instead
+    # of failing for about a minute (TIME_WAIT); on POSIX it still refuses a
+    # second listener.  On Windows it would let two servers share the port, so
+    # it stays off there: a second station on the same port must fail.
+    allow_reuse_address = os.name != "nt"
 
     def __init__(self, address: tuple[str, int], station: Station) -> None:
         super().__init__(address, _StationHandler)
@@ -720,19 +812,17 @@ class _StationHandler(_Handler):
             return
         path = urlparse(self.path).path
         st = self.server.station
-        length = int(self.headers.get("Content-Length") or 0)
-        try:
-            body = json.loads(self.rfile.read(length) or b"{}")
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            self._json({"ok": False, "error": "bad JSON"}, 400)
-            return
-        if not isinstance(body, dict):
-            self._json({"ok": False, "error": "expected a JSON object"}, 400)
+        body = self._read_json_body()
+        if body is None:
             return
         if path == "/api/run":
             self._json(st.start(str(body.get("job", ""))))
         elif path == "/api/pause":
-            self._json(st.set_paused(bool(body.get("paused", True))))
+            paused = _strict_bool(body.get("paused", True))
+            if paused is None:
+                self._json({"ok": False, "error": "paused must be true or false"})
+            else:
+                self._json(st.set_paused(paused))
         elif path == "/api/reset":
             self._json(st.reset(str(body.get("bot", ""))))
         elif path == "/api/open-folder":

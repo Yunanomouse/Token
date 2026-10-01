@@ -72,8 +72,8 @@ random entries out of sample. Reports must not flatter.
 - Daily prices come from `scripts/fetch_prices.py`: one source per run for
   every ticker (vendors adjust history differently, and a basis change
   reads as a split or dividend to the engine's re-basing), and today's bar
-  is dropped until 16:30 New York so an intraday price is never stored as a
-  close. Keep both properties in any change.
+  is dropped until 30 minutes after the close (16:30 New York, 13:30 on the
+  half days in `EARLY_CLOSE`) so an intraday price is never stored as a close. Keep both properties in any change.
 - The GitHub repository is public, and vendors' terms forbid
   republishing their data. Never commit downloaded bar files (intraday
   bars, research caches); keep them in `local_data/` or a scratch folder.
@@ -98,7 +98,7 @@ random entries out of sample. Reports must not flatter.
 - GitHub bot: `.github/workflows/live-bot.yml`. A push touching
   `scripts/fetch_prices.py`, `live/config.json`, `live/real/config.json` or
   the workflow file starts a real paper run on that branch: push those only
-  after the market's 16:30 New York cutoff or when the cutoff logic is in
+  after the day's cutoff (16:30 New York; 13:30 on a half day) or when the cutoff logic is in
   place, and expect a bot commit you must pull before pushing again.
 - The web page is generated: after editing `web/template.html` or
   `web/engine.js`, run `python3 web/build.py` and commit the output.

@@ -22,7 +22,7 @@ from unittest import mock
 
 import numpy as np
 
-from quantum import local
+from quantum import desktop, local
 from quantum.local import (
     NY, RETRY_AFTER, ROOT, JobRun, Station, StationServer, _backtest_intraday, _indicator_test,
     due_jobs, intraday_slot, is_trading_day, last_completed_session, paper_env, session_close,
@@ -202,6 +202,7 @@ class _StationCase(unittest.TestCase):
         self.calls = []
         self.fail_on = None   # substring of a command that should fail
         self.on_cmd = None    # extra side effect (args) -> None
+        self.state_date = "2026-10-01"  # newest date a mocked daily engine run leaves in state.json
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -211,6 +212,9 @@ class _StationCase(unittest.TestCase):
         code = 1 if self.fail_on and any(self.fail_on in a for a in args) else 0
         if self.on_cmd:
             self.on_cmd(args)
+        if not code and self.state_date and args[:3] == ["-m", "quantum", "live"] and "--catch-up" in args:
+            cfg = Path(args[args.index("--config") + 1])
+            (cfg.parent / "state.json").write_text(json.dumps({"dates": ["2026-01-02", self.state_date]}))
         run.steps.append({"cmd": " ".join(args), "code": code, "seconds": 0.0})
         run.output += f"$ {' '.join(args)}\n[exit {code}]\n"
         return code
@@ -388,6 +392,55 @@ class TestJobs(_StationCase):
             self.assertEqual(self.st.sched["intraday_slot"], "2026-10-01#6")
             self.assertEqual(self.st.tick(), [])
 
+    # B2: daily_done only moves when both bots' state really reached the target.
+    def test_daily_not_done_when_state_lacks_the_target(self):
+        self.st.sched["daily_done"] = "2026-09-29"
+        self.state_date = "2026-09-30"   # the source had no 10-01 close yet
+        with self.mocked():
+            res = self.st.start("daily", wait=True)
+        self.assertFalse(res["ok"])
+        self.assertEqual(self.st.sched["daily_done"], "2026-09-29")
+        self.assertEqual(self.st.sched["retry"]["daily"], (self.now + RETRY_AFTER).isoformat(timespec="seconds"))
+        self.assertIn("2026-10-01", res["job"]["output"])
+        self.assertIn("not done", res["job"]["output"])
+
+    def test_daily_on_a_half_day_needs_that_days_close(self):
+        self.now = ny(2026, 11, 27, 13, 30)
+        self.st.sched["daily_done"] = "2026-11-25"
+        self.state_date = "2026-11-25"   # the fetch still dropped the half day's bar
+        with self.mocked():
+            self.assertFalse(self.st.start("daily", wait=True)["ok"])
+        self.assertEqual(self.st.sched["daily_done"], "2026-11-25")
+        self.state_date = "2026-11-27"
+        with self.mocked():
+            self.assertTrue(self.st.start("daily", wait=True)["ok"])
+        self.assertEqual(self.st.sched["daily_done"], "2026-11-27")
+
+    def test_daily_not_done_when_one_state_is_missing(self):
+        self.st.sched["daily_done"] = "2026-09-29"
+        self.on_cmd = lambda args: (self.home / "small" / "state.json").unlink(missing_ok=True) \
+            if args[:3] == ["-m", "quantum", "live"] and "--orders" in args else None
+        self.state_date = None
+        with self.mocked():
+            res = self.st.start("daily", wait=True)
+        self.assertFalse(res["ok"])
+        self.assertEqual(self.st.sched["daily_done"], "2026-09-29")
+
+    # W1: one intraday failure must not skip three 5-minute slots.
+    def test_failed_intraday_retries_after_five_minutes(self):
+        self.now = ny(2026, 10, 1, 10, 0, 40)
+        self.st.sched["daily_done"] = "2026-09-30"
+        self.fail_on = "intraday_live.py"
+        with self.mocked():
+            self.assertFalse(self.st.start("intraday", wait=True)["ok"])
+            self.fail_on = "fetch_prices.py"
+            self.assertFalse(self.st.start("daily", wait=True)["ok"])
+        self.assertEqual(local.RETRY_AFTER_INTRADAY, timedelta(minutes=5))
+        self.assertEqual(self.st.sched["retry"]["intraday"],
+                         (self.now + timedelta(minutes=5)).isoformat(timespec="seconds"))
+        self.assertEqual(self.st.sched["retry"]["daily"], (self.now + RETRY_AFTER).isoformat(timespec="seconds"))
+        self.assertIn("intraday", due_jobs(self.now + timedelta(minutes=5), self.st.sched))
+
     def test_reset(self):
         d = self.home / "main"
         (d / "snapshot.json").write_text("{}")
@@ -453,6 +506,45 @@ class TestIntradayClose(_StationCase):
             self.assertFalse(self.st.start("intraday_close", wait=True)["ok"])
         self.assertNotIn("archived", self.st.sched)
         self.assertIn("intraday_close", self.st.sched["retry"])
+
+    # B1: a manual run before the session is over replays but does not archive.
+    def test_manual_run_during_the_session_does_not_archive(self):
+        self.on_cmd = self._write_status
+        for now in (ny(2026, 10, 1, 11, 0), ny(2026, 10, 1, 16, 5, 39), ny(2026, 10, 1, 8, 0)):
+            self.now = now
+            with self.mocked():
+                res = self.st.start("intraday_close", wait=True)
+            self.assertTrue(res["ok"], now)
+            self.assertIn("not archived", res["job"]["output"])
+            self.assertFalse((self.idir / "history" / "2026-10-01.json").exists(), now)
+            self.assertFalse((self.idir / "history" / "summary.json").exists(), now)
+            self.assertNotIn("archived", self.st.sched, now)
+        self.assertTrue(any(a.endswith("intraday_live.py") for c in self.calls for a in c))
+        # The real after-close run still archives the day.
+        self.now = ny(2026, 10, 1, 16, 5, 40)
+        self.assertIn("intraday_close", due_jobs(self.now, self.st.sched))
+        with self.mocked():
+            self.assertTrue(self.st.start("intraday_close", wait=True)["ok"])
+        self.assertTrue((self.idir / "history" / "2026-10-01.json").exists())
+        self.assertEqual(self.st.sched["archived"], "2026-10-01")
+
+    def test_no_status_during_the_session_marks_nothing(self):
+        self.status["date"] = "2026-09-30"
+        self.on_cmd = self._write_status
+        self.now = ny(2026, 10, 1, 12, 0)
+        with self.mocked():
+            self.assertTrue(self.st.start("intraday_close", wait=True)["ok"])
+        self.assertNotIn("archived", self.st.sched)
+
+    def test_non_trading_day_marks_nothing(self):
+        self.status["date"] = "2026-10-03"
+        self.on_cmd = self._write_status
+        self.now = ny(2026, 10, 3, 18, 0)   # Saturday
+        with self.mocked():
+            res = self.st.start("intraday_close", wait=True)
+        self.assertTrue(res["ok"])
+        self.assertNotIn("archived", self.st.sched)
+        self.assertFalse((self.idir / "history" / "2026-10-03.json").exists())
 
     # An equity of 0.0 is a real value (a day that lost everything), not a missing one.
     def test_zero_equity_is_a_total_loss(self):
@@ -729,6 +821,71 @@ class TestStationHTTP(unittest.TestCase):
         status, _ = self._request("POST", "/api/pause", [1, 2])
         self.assertEqual(status, 400)
 
+    # B5: the body is read only with a sane Content-Length, and parsed safely.
+    def _raw_post(self, length, body=b"", path="/api/pause"):
+        import socket
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as sock:
+            head = (f"POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
+                    "Content-Type: application/json\r\n")
+            if length is not None:
+                head += f"Content-Length: {length}\r\n"
+            sock.sendall(head.encode() + b"\r\n" + body)
+            data = b""
+            try:
+                while True:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+            except socket.timeout:
+                pass
+        return int(data.split(b" ", 2)[1]) if data else None
+
+    def test_bad_content_length(self):
+        for length in ("abc", "2.5", "-1", "", None, "1e3"):
+            self.assertEqual(self._raw_post(length, b"{}"), 400, length)
+        for length in (str(50 * 1024 * 1024), str(10 ** 12), str(desktop.MAX_BODY + 1)):
+            self.assertEqual(self._raw_post(length, b"{}"), 413, length)
+        self.assertFalse(self.st.sched["paused"])
+        body = b'{"paused": true}'
+        self.assertEqual(self._raw_post(str(len(body)), body), 200)
+        self.assertTrue(self.st.sched["paused"])
+
+    def test_deeply_nested_json_is_bad_json(self):
+        body = b"[" * 100000 + b"]" * 100000
+        self.assertEqual(self._raw_post(str(len(body)), body), 400)
+        status, _ = self._request("POST", "/api/run", b'{"job": "\xff"}')
+        self.assertEqual(status, 400)
+
+    # W2: booleans are parsed strictly.
+    def test_pause_parses_booleans_strictly(self):
+        self.assertFalse(self.post("/api/pause", {"paused": "false"})["paused"])
+        self.assertFalse(self.st.sched["paused"])
+        self.assertTrue(self.post("/api/pause", {"paused": "true"})["paused"])
+        self.assertFalse(self.post("/api/pause", {"paused": 0})["paused"])
+        self.assertTrue(self.post("/api/pause", {"paused": 1})["paused"])
+        self.assertFalse(self.post("/api/pause", {"paused": False})["paused"])
+        for bad in ("no", "maybe", 2, None, [], {}):
+            r = self.post("/api/pause", {"paused": bad})
+            self.assertFalse(r["ok"], bad)
+            self.assertFalse(self.st.sched["paused"], bad)
+
+    # B4: a restarted station can take the port back at once (POSIX).
+    @unittest.skipIf(os.name == "nt", "SO_REUSEADDR would let two servers share the port on Windows")
+    def test_restart_on_the_same_port_right_after_use(self):
+        status, _ = self._request("GET", "/api/overview")
+        self.assertEqual(status, 200)
+        self.srv.shutdown()
+        self.srv.server_close()
+        again = StationServer(("127.0.0.1", self.port), self.st)
+        try:
+            with self.assertRaises(OSError):   # still no second listener while one runs
+                StationServer(("127.0.0.1", self.port), self.st)
+        finally:
+            again.server_close()
+        self.srv = StationServer(("127.0.0.1", 0), self.st)  # a running server for tearDown to stop
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
     def test_second_server_on_same_port_fails(self):
         with self.assertRaises(OSError):
             StationServer(("127.0.0.1", self.port), self.st)
@@ -796,3 +953,81 @@ class TestStationFollowUps(unittest.TestCase):
             self.assertTrue(st.overview()["scheduler"]["active"])
         finally:
             st.stop()
+
+
+class TestStationTolerance(unittest.TestCase):
+    """B7: wrong-shaped (but valid) JSON in the station's own files is ignored, not fatal."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self._tmp.name) / "home"
+        (self.home / "logs").mkdir(parents=True)
+        self.now = ny(2026, 10, 3, 12, 0)   # Saturday: nothing is due, no job starts
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def station(self, sched=None, runs=None):
+        if sched is not None:
+            (self.home / "scheduler.json").write_text(json.dumps(sched))
+        if runs is not None:
+            (self.home / "logs" / "runs.json").write_text(json.dumps(runs))
+        return Station(home=self.home, clock=lambda: self.now, copy_state=False)
+
+    def check(self, st):
+        with mock.patch.object(Station, "start", return_value={"ok": True}) as start:
+            st.tick()   # must not raise; nothing really starts
+        for call in start.call_args_list:
+            self.assertIn(call.args[0], local.JOBS)
+        json.dumps(st.overview())
+        st.next_events()
+
+    def test_scheduler_file_not_an_object(self):
+        for bad in ([1], "x", 3, None):
+            st = self.station(bad)
+            self.assertEqual(st.sched["retry"], {})
+            self.assertFalse(st.sched["paused"])
+            self.check(st)
+        self.assertTrue(any("scheduler.json" in m and "ignored" in m for m in st.messages))
+
+    def test_bad_fields_are_cleaned(self):
+        st = self.station({"retry": [], "daily_done": None, "archived": 5, "intraday_slot": ["x"],
+                           "paused": "no"})
+        self.assertEqual(st.sched["retry"], {})
+        for k in ("daily_done", "archived", "intraday_slot"):
+            self.assertNotIn(k, st.sched)
+        self.assertFalse(st.sched["paused"])
+        self.assertTrue(any("scheduler.json" in m and "ignored" in m for m in st.messages))
+        self.check(st)
+
+    def test_bad_retry_entries_are_dropped(self):
+        good = ny(2026, 10, 3, 13, 0).isoformat()
+        st = self.station({"retry": {"intraday": "soon", "daily": 5, "intraday_close": "2026-10-03T12:00:00",
+                                     "fetch_bars": good}, "daily_done": "2026-10-02", "paused": "true"})
+        self.assertEqual(st.sched["retry"], {"fetch_bars": good})
+        self.assertTrue(st.sched["paused"])
+        st.sched["paused"] = False
+        self.check(st)
+        self.now = ny(2026, 10, 5, 11, 0, 40)  # Monday, mid-session: the due rules read the retry map
+        with mock.patch.object(Station, "start", return_value={"ok": True}):
+            self.assertEqual(st.tick(), ["intraday"])
+
+    def test_good_file_round_trips(self):
+        sched = {"paused": True, "retry": {"daily": ny(2026, 10, 3, 13, 0).isoformat()},
+                 "daily_done": "2026-10-02", "archived": "2026-10-02", "intraday_slot": "2026-10-02#78"}
+        st = self.station(sched)
+        self.assertEqual(st.sched, sched)
+        self.assertFalse(any("ignored" in m for m in st.messages))
+
+    def test_malformed_runs_are_skipped(self):
+        good = {"job": "fetch_bars", "started": "2026-10-02T10:00:00", "finished": "2026-10-02T10:01:00",
+                "ok": True, "steps": [], "output": "fine"}
+        runs = [dict(good, output=None), 7, None, {"job": "x"}, {"nope": 1}, dict(good, steps=None),
+                dict(good, started=5), good]
+        st = self.station(runs=runs)
+        hist = st.overview()["history"]
+        self.assertEqual([h["output"] for h in hist], ["", "fine", "fine"])
+        self.assertEqual(hist[1]["steps"], [])
+        self.check(st)
+        st2 = self.station(runs={"job": "x"})
+        self.assertEqual(st2.overview()["history"], [])

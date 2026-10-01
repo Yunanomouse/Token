@@ -6,9 +6,13 @@ whatever is set on the computer.
 
 | Bot | When it runs | What it does |
 |---|---|---|
-| $100k daily bot | Once each trading day, after 4:30 pm New York time | Fetches the day's closes and runs the engine over every new day |
+| $100k daily bot | Once each trading day, after 4:30 pm New York time (1:30 pm on the 1 pm half days) | Fetches the day's closes and runs the engine over every new day |
 | $40 whole-share bot | Same | Same, and writes the day's orders for you to place by hand if you choose |
 | $50 intraday bot (5-minute KAMA) | Every 5 minutes while the market is open | Replays today so far from fresh bars. After the close, archives the day's result |
+
+The half days (1 pm closes) are 2026-11-27, 2026-12-24 and 2027-11-26. A daily run counts as
+done only when both daily bots' books have reached that day's close. If a price source
+doesn't have the close yet, the run says so in its log and is tried again 20 minutes later.
 
 ## Starting it (Windows)
 
@@ -53,7 +57,9 @@ The station then opens each time you sign in. To stop that, delete the shortcut.
   - *Test the indicators:* scores every file in `indicators/` and in the station's own
     `indicators/` folder on the last 20 complete sessions. This is unofficial. The
     registered duel uses fixed dates and `scripts/indicator_duel.py`.
-- **Jobs and logs:** every run, its result and its full output.
+- **Jobs and logs:** every run, its result and its full output. Pressing *Run now* on
+  *Archive the intraday day* before the session is over only replays the day so far. The
+  archive is written after the close, and that run happens on its own as usual.
 - **Pause** stops the timer without closing anything. **Run now** buttons start any job at
   once. **Reset** starts a daily bot's paper book over. The old files are kept with a
   `.bak` date stamp, not deleted.
@@ -78,7 +84,7 @@ price are in `local_data/intraday/config.json`.
 
 The daily bots use `scripts/fetch_prices.py`. It tries free keyed sources first if their keys
 are set (Financial Modeling Prep, Twelve Data), then Yahoo, then Stooq. Today's bar is never
-stored before 4:30 pm New York. To use keys, set them as Windows user environment variables
+stored before 4:30 pm New York (1:30 pm on a half day). To use keys, set them as Windows user environment variables
 (`FMP_API_KEY`, `TWELVEDATA_API_KEY`, `STOOQ_API_KEY`) in *Settings > System > About >
 Advanced system settings > Environment Variables*, then restart the station. Never paste a key
 into a chat or a file in this repository.
@@ -111,7 +117,7 @@ Jobs: `daily`, `intraday`, `intraday_close`, `fetch_bars`, `backtest_main`, `bac
 - **"Port 8777 is in use"**: the station is probably already open in another window. Use
   that one, or start with `--port 8800`.
 - **A job failed**: open *Jobs and logs* and click it to read the full output. A failed job
-  is retried automatically after 20 minutes. Yahoo sometimes refuses or rate-limits for a
+  is retried automatically after 20 minutes (the 5-minute intraday run after 5 minutes). Yahoo sometimes refuses or rate-limits for a
   while.
 - **The market calendar warning**: holidays are listed for 2026 and 2027. Outside those
   years every weekday counts as a trading day. On a holiday the bots simply find no new bar.

@@ -201,6 +201,72 @@ class TestDesktopHardening(unittest.TestCase):
         self.assertFalse(r["ok"])
         self.assertIn("nothing new", r["error"])
 
+    # -- request bodies (B5) ---------------------------------------------------
+    def _raw_post(self, length, body=b"", path="/api/stop"):
+        import socket
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as sock:
+            head = (f"POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
+                    "Content-Type: application/json\r\n")
+            if length is not None:
+                head += f"Content-Length: {length}\r\n"
+            sock.sendall(head.encode() + b"\r\n" + body)
+            data = b""
+            try:
+                while True:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+            except socket.timeout:
+                pass
+        return int(data.split(b" ", 2)[1]) if data else None
+
+    def test_bad_content_length_is_refused(self):
+        for length in ("abc", "2.5", "-1", "", None, "+2"):
+            self.assertEqual(self._raw_post(length, b"{}"), 400, length)
+        for length in (str(50 * 1024 * 1024), str(10 ** 12), "1048577"):
+            self.assertEqual(self._raw_post(length, b"{}"), 413, length)
+        self.assertEqual(self._raw_post("2", b"{}"), 200)
+
+    def test_deeply_nested_json_is_bad_json(self):
+        body = b"[" * 100000 + b"]" * 100000
+        self.assertEqual(self._raw_post(str(len(body)), body), 400)
+        body = b'{"a":' * 50000 + b"1" + b"}" * 50000
+        self.assertEqual(self._raw_post(str(len(body)), body), 400)
+
+    # -- start form validation (B6) --------------------------------------------
+    def test_non_numeric_speed_or_poll_is_refused(self):
+        for kw in ({"bars_per_second": "fast"}, {"mode": "feed", "poll_seconds": "x"},
+                   {"bars_per_second": -1}, {"mode": "feed", "poll_seconds": "nan"}):
+            r = self.post("/api/start", self._form(**kw))
+            self.assertFalse(r["ok"], kw)
+        self.assertFalse(self.srv.controller.running)
+        self.assertTrue(self.post("/api/start", self._form(bars_per_second="0"))["ok"])
+        self._wait_idle()
+
+    def test_fresh_false_as_a_string_keeps_the_state(self):
+        self.assertTrue(self.post("/api/start", self._form())["ok"])
+        self._wait_idle()
+        r = self.post("/api/start", self._form(fresh="false"))
+        self.assertFalse(r["ok"])
+        self.assertIn("nothing new", r["error"])
+        self.assertTrue(self.post("/api/start", self._form(fresh="true"))["ok"])
+        self._wait_idle()
+
+    def test_unknown_solver_or_strategy_is_refused_up_front(self):
+        r = self.post("/api/start", self._form(strategy="cardinality", solver="bogus", cardinality=1))
+        self.assertFalse(r["ok"])
+        self.assertIn("solver", r["error"])
+        r = self.post("/api/start", self._form(strategy="bogus"))
+        self.assertFalse(r["ok"])
+        self.assertIn("strategy", r["error"])
+        self.assertFalse(self.srv.controller.running)
+        for solver in ("simulated_annealing", "simulated_bifurcation", "subspace_qaoa", "exhaustive", "sa"):
+            self.assertIsNone(Controller._check_strategy(
+                Controller.config_from_form({"tickers": "AAA,BBB", "cardinality": 1, "strategy": "cardinality",
+                                            "solver": solver})),
+                solver)
+
 
 class TestDesktopConfigForm(unittest.TestCase):
     def test_optional_engine_rules_round_trip(self):

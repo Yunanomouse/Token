@@ -31,6 +31,7 @@ directory; the state file is a bare ``*.json`` name in it.
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 import time
@@ -55,6 +56,11 @@ from .live import (
 __all__ = ["Controller", "DashboardServer", "serve", "DEFAULT_PORT"]
 
 DEFAULT_PORT = 8765
+MAX_BODY = 1_048_576  # bytes; a POST body larger than this is refused unread
+STRATEGIES = ("cardinality", "markowitz", "equal_weight")  # what quantum.live.build_strategy builds
+# Solvers that quantum.backtest.cardinality_strategy / solve_portfolio take by name,
+# besides the registry in quantum.solvers (checked with get_solver).
+EXTRA_SOLVERS = ("exhaustive", "subspace_qaoa", "xy_qaoa", "grover", "grover_search")
 DEFAULT_TICKERS = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
 
 
@@ -154,6 +160,20 @@ class Controller:
         return bool(value)
 
     @staticmethod
+    def _check_strategy(config: EngineConfig) -> str | None:
+        """Why ``config``'s strategy or solver would fail at the first rebalance, or None."""
+        if config.strategy not in STRATEGIES:
+            return f"unknown strategy {config.strategy!r}; use one of {', '.join(STRATEGIES)}"
+        if config.strategy == "cardinality" and config.solver not in EXTRA_SOLVERS:
+            from .solvers import available_solvers, get_solver
+            try:
+                get_solver(config.solver)
+            except ValueError:
+                return (f"unknown solver {config.solver!r}; use one of "
+                        f"{', '.join(sorted(available_solvers() + list(EXTRA_SOLVERS)))}")
+        return None
+
+    @staticmethod
     def config_from_form(form: dict) -> EngineConfig:
         tickers = form.get("tickers", DEFAULT_TICKERS)
         if isinstance(tickers, str):
@@ -199,6 +219,16 @@ class Controller:
             config = self.config_from_form(form)
         except (ValueError, TypeError) as exc:
             return {"ok": False, "error": f"bad config: {exc}"}
+        problem = self._check_strategy(config)
+        if problem:
+            return {"ok": False, "error": problem}
+        try:
+            speed = float(form.get("bars_per_second") or 0)
+            poll = float(form.get("poll_seconds", 5.0))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "replay speed and poll seconds must be numbers"}
+        if not (math.isfinite(speed) and speed >= 0 and math.isfinite(poll) and poll >= 0):
+            return {"ok": False, "error": "replay speed and poll seconds must be zero or more"}
         mode = str(form.get("mode", "replay"))
         csv_name = str(form.get("csv", "data/prices/us_equities_1989_2018.csv"))
         csv_path = self._inside(csv_name)
@@ -210,7 +240,7 @@ class Controller:
         if state_path is None:
             return {"ok": False, "error": f"state file must be a plain *.json name in {self.workdir}: "
                                           f"{config.state_path}"}
-        fresh = bool(form.get("fresh", False))
+        fresh = self._flag(form.get("fresh", False))
         try:
             state = EngineState.load(state_path) if state_path.exists() and not fresh else None
             if state is not None and state.tickers != config.tickers:
@@ -232,13 +262,11 @@ class Controller:
             new = sum(1 for b in inner.bars() if last is None or b.date > last)
             if not new:
                 return {"ok": False, "error": f"nothing new to replay after {last}; tick 'start fresh' to rerun"}
-            speed = form.get("bars_per_second")
-            feed = _Stoppable(inner, self.stop_event, float(speed) if speed not in (None, "", 0, "0") else None,
-                              skip_until=last)
+            feed = _Stoppable(inner, self.stop_event, speed or None, skip_until=last)
             self.source = f"replay {csv_path.name} ({new} bars)"
         elif mode == "feed":
             last = engine.state.dates[-1] if engine.state.dates else None
-            inner = FileFeed(csv_path, config.tickers, poll_seconds=float(form.get("poll_seconds", 5.0)), after=last)
+            inner = FileFeed(csv_path, config.tickers, poll_seconds=poll, after=last)
             feed = _Stoppable(inner, self.stop_event, None)
             self.source = f"tailing {csv_path.name}"
         else:
@@ -425,6 +453,28 @@ class _Handler(BaseHTTPRequestHandler):
                 return False
         return True
 
+    def _read_json_body(self) -> dict | None:
+        """The POST body as a JSON object, or None after answering 400 or 413.
+
+        Content-Length must be a plain non-negative integer of at most
+        ``MAX_BODY``; a bigger body is refused before anything is read."""
+        length = (self.headers.get("Content-Length") or "").strip()
+        if not (length.isascii() and length.isdigit()):
+            self._json({"ok": False, "error": "a valid Content-Length is required"}, 400)
+            return None
+        if int(length) > MAX_BODY:
+            self._json({"ok": False, "error": f"request body over {MAX_BODY} bytes"}, 413)
+            return None
+        try:
+            body = json.loads(self.rfile.read(int(length)) or b"{}")
+        except (ValueError, RecursionError):  # bad JSON or UTF-8, or nested too deeply
+            self._json({"ok": False, "error": "bad JSON"}, 400)
+            return None
+        if not isinstance(body, dict):
+            self._json({"ok": False, "error": "expected a JSON object"}, 400)
+            return None
+        return body
+
     def do_GET(self) -> None:  # noqa: N802
         if not self._allowed(post=False):
             return
@@ -446,14 +496,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         ctl = self.server.controller
-        length = int(self.headers.get("Content-Length") or 0)
-        try:
-            body = json.loads(self.rfile.read(length) or b"{}")
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            self._json({"ok": False, "error": "bad JSON"}, 400)
-            return
-        if not isinstance(body, dict):
-            self._json({"ok": False, "error": "expected a JSON object"}, 400)
+        body = self._read_json_body()
+        if body is None:
             return
         if path == "/api/start":
             self._json(ctl.start(body))

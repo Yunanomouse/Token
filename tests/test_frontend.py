@@ -299,6 +299,11 @@ class _StationCase(_PageCase):
         shown = " ".join(Path(a).name if os.path.isabs(a) else a for a in args)
         run.steps.append({"cmd": shown, "code": 0, "seconds": 0.0})
         run.output += f"$ {shown}\nfake step output\n[exit 0]\n\n"
+        if list(args[:3]) == ["-m", "quantum", "live"] and "--config" in args:
+            # A real engine run leaves the bot's state at the session it reached;
+            # the daily job only counts as done when every bot got there.
+            state = Path(args[args.index("--config") + 1]).parent / "state.json"
+            state.write_text(json.dumps({"dates": [STATION_NOW.date().isoformat()]}), encoding="utf-8")
         return 0
 
     def stop_server(self):

@@ -28,8 +28,9 @@ does.  Every run rewrites the whole file from the source; the engine re-bases
 its stored history from it and only acts on dates newer than its state, so a
 rewrite is safe and self-healing.
 
-Today's bar is dropped until 16:30 New York time, whatever the source, so a
-run during market hours never stores an intraday price as a close.
+Today's bar is dropped until 30 minutes after the close New York time (16:30,
+or 13:30 on the 13:00 half days), whatever the source, so a run during market
+hours never stores an intraday price as a close.
 """
 from __future__ import annotations
 
@@ -46,7 +47,10 @@ from datetime import date, datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 NY = ZoneInfo("America/New_York")
-SESSION_FINAL = dtime(16, 30)
+# 13:00 closes; keep in step with EARLY_CLOSE in quantum/local.py and in
+# scripts/intraday_live.py.
+EARLY_CLOSE = {"2026-11-27", "2026-12-24", "2027-11-26"}
+FINAL_AFTER = timedelta(minutes=30)  # closes are final well within this after the close
 UA ={"User-Agent": "Mozilla/5.0 (quantum-trading paper bot)"}
 # Yahoo rate-limits (HTTP 429) by User-Agent string, and which strings it
 # refuses changes over time; on a 429 the same request is retried as these.
@@ -182,12 +186,14 @@ def unfinished_session(now: datetime | None = None) -> str | None:
 
     Yahoo's daily series includes today's bar from the open, priced at the
     latest trade.  A bot that stored it would take an intraday price for the
-    close.  The regular session ends at 16:00 (13:00 on half days); closes
-    are final well within the next half hour, so today's bar is kept only
-    from 16:30 New York time.
+    close.  The regular session ends at 16:00 (13:00 on the ``EARLY_CLOSE``
+    half days); closes are final well within the next half hour, so today's
+    bar is kept only from 16:30 New York time (13:30 on a half day).
     """
     ny = (now or datetime.now(timezone.utc)).astimezone(NY)
-    return ny.strftime("%Y-%m-%d") if ny.time() < SESSION_FINAL else None
+    day = ny.strftime("%Y-%m-%d")
+    close = datetime.combine(ny.date(), dtime(13, 0) if day in EARLY_CLOSE else dtime(16, 0), tzinfo=NY)
+    return day if ny < close + FINAL_AFTER else None
 
 
 # Sources that could not be reached at all this run.  A host that resets or

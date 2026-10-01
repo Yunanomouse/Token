@@ -141,6 +141,17 @@ class TestUnfinishedSession(unittest.TestCase):
         self.assertIsNone(self.at("2026-12-01T21:30:00"))               # 16:30 EST
         self.assertEqual(self.at("2026-12-01T21:29:00"), "2026-12-01")  # 16:29 EST
 
+    def test_half_days_are_final_from_half_past_one(self):
+        # 2026-11-27 and 2026-12-24 close at 13:00 (EST, UTC-5): final from 13:30.
+        self.assertEqual(self.at("2026-11-27T18:29:00"), "2026-11-27")  # 13:29
+        self.assertIsNone(self.at("2026-11-27T18:30:00"))               # 13:30, the station's run
+        self.assertIsNone(self.at("2026-12-24T18:30:00"))
+        self.assertIsNone(self.at("2027-11-26T19:00:00"))
+        self.assertEqual(self.at("2026-12-24T17:00:00"), "2026-12-24")  # 12:00, still trading
+        # A normal day is still dropped at that hour.
+        self.assertEqual(self.at("2026-11-30T18:30:00"), "2026-11-30")
+        self.assertEqual(self.mod.EARLY_CLOSE, {"2026-11-27", "2026-12-24", "2027-11-26"})
+
     def test_after_midnight_utc_is_still_the_new_york_day(self):
         # 00:30 UTC on the 30th is 20:30 on the 29th in New York: the 29th is final.
         self.assertIsNone(self.at("2026-09-30T00:30:00"))
