@@ -320,6 +320,12 @@ class Station:
             run.output += f"error: {exc!r}\n"
             run.ok = False
         run.finished = self.clock().isoformat(timespec="seconds")
+        # The log is on disk before the job stops showing as running, so a
+        # reader that waits for it to finish always finds the whole output.
+        try:
+            (self.home / "logs" / f"last_{run.job}.txt").write_text(run.output, encoding="utf-8")
+        except OSError:
+            pass
         with self.lock:
             self.running.pop(run.job, None)
             self.history.appendleft(run)
@@ -330,10 +336,6 @@ class Station:
         self._save_sched()
         failed = [s["cmd"] for s in run.steps if s["code"] != 0]
         self.note(f"{run.job}: {'done' if run.ok else 'FAILED'}" + (f" ({'; '.join(failed)})" if failed else ""))
-        try:
-            (self.home / "logs" / f"last_{run.job}.txt").write_text(run.output, encoding="utf-8")
-        except OSError:
-            pass
 
     # -- the jobs ---------------------------------------------------------
     def _daily_bot(self, run: JobRun, name: str) -> bool:
