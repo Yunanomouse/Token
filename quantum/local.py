@@ -379,8 +379,9 @@ class Station:
             _write_json(d / "history" / f"{today}.json", status)
             summary = [s for s in (_read_json(d / "history" / "summary.json", []) or []) if s.get("date") != today]
             start = float(status.get("start_cash") or 0) or 1.0
-            summary.append({"date": today, "start_cash": status.get("start_cash"), "equity": status.get("equity"),
-                            "return": float(status.get("equity") or start) / start - 1.0,
+            equity = status.get("equity")
+            summary.append({"date": today, "start_cash": status.get("start_cash"), "equity": equity,
+                            "return": (float(equity) if equity is not None else start) / start - 1.0,
                             "trades": len(status.get("trades") or [])})
             _write_json(d / "history" / "summary.json", sorted(summary, key=lambda s: s["date"]))
             run.output += f"archived {today}: equity {status.get('equity')}\n"
@@ -514,7 +515,7 @@ class Station:
         for _ in range(10):
             if is_trading_day(d):
                 first = _at(d, OPEN) + INTRADAY_EVERY + INTRADAY_LAG
-                end = _at(d, session_close(d))
+                end = _at(d, session_close(d)) + INTRADAY_EVERY + INTRADAY_LAG  # the last bar's run
                 if now < end:
                     nxt = first if now < first else now + INTRADAY_EVERY - (now - first) % INTRADAY_EVERY
                     out["intraday"] = nxt.isoformat(timespec="minutes")
@@ -612,7 +613,7 @@ def _backtest_intraday(bars_path: str, config_path: str, out_path: str, runs: in
               "n_trades": s["n_trades"], "win_rate": s.get("win_rate"), "max_drawdown": s.get("max_drawdown_daily"),
               "random_runs": len(rand), "beats_random": beat,
               "random_median": float(np.median(rand)) if rand else None,
-              "equity_curve": res["equity_curve"], "trades": res["trades"][-200:],
+              "equity_curve": res["equity"], "trades": res["trades"][-200:],
               "note": "In-sample: the live settings were chosen on recent data. A result here is a check "
                       "of the machinery and the costs, not evidence of an edge."}
     _write_json(Path(out_path), report)
