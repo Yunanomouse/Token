@@ -261,6 +261,13 @@ class Station:
         self.messages: deque[str] = deque(maxlen=200)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self.scheduler_active = False
+        self.runs_path = self.home / "logs" / "runs.json"
+        for r in reversed(_read_json(self.runs_path, []) or []):  # the last runs, from before a restart
+            try:
+                self.history.appendleft(JobRun(**r))
+            except TypeError:
+                pass
         for p in self.created:
             self.note(f"created {p}")
 
@@ -326,13 +333,18 @@ class Station:
             (self.home / "logs" / f"last_{run.job}.txt").write_text(run.output, encoding="utf-8")
         except OSError:
             pass
-        with self.lock:
-            self.running.pop(run.job, None)
-            self.history.appendleft(run)
+        with self.lock:  # one step, so the scheduler never sees a failed job without its retry time
             if run.ok:
                 self.sched["retry"].pop(run.job, None)
             else:
                 self.sched["retry"][run.job] = (self.clock() + RETRY_AFTER).isoformat(timespec="seconds")
+            self.running.pop(run.job, None)
+            self.history.appendleft(run)
+            kept = [dict(asdict(r), output=r.output[-4000:]) for r in list(self.history)[:60]]
+        try:
+            _write_json(self.runs_path, kept)
+        except OSError:
+            pass
         self._save_sched()
         failed = [s["cmd"] for s in run.steps if s["code"] != 0]
         self.note(f"{run.job}: {'done' if run.ok else 'FAILED'}" + (f" ({'; '.join(failed)})" if failed else ""))
@@ -469,6 +481,7 @@ class Station:
                 self._stop.wait(every)
         self._thread = threading.Thread(target=loop, name="scheduler", daemon=True)
         self._thread.start()
+        self.scheduler_active = True
 
     def stop(self) -> None:
         self._stop.set()
@@ -560,7 +573,7 @@ class Station:
                 "calendar_known": now.year in KNOWN_YEARS,
                 "last_completed_session": last_completed_session(now).isoformat(),
             },
-            "scheduler": sched,
+            "scheduler": dict(sched, active=self.scheduler_active),
             "next": self.next_events(),
             "jobs": {k: {"title": v[0], "scheduled": v[1], "about": v[2]} for k, v in JOBS.items()},
             "running": running,
@@ -666,8 +679,22 @@ class StationServer(ThreadingHTTPServer):
         self.station = station
 
 
+def _finite(obj):
+    """``obj`` with NaN and infinities as None: browsers reject them in JSON."""
+    if isinstance(obj, float):
+        return obj if obj == obj and obj not in (float("inf"), float("-inf")) else None
+    if isinstance(obj, dict):
+        return {k: _finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_finite(v) for v in obj]
+    return obj
+
+
 class _StationHandler(_Handler):
     server: StationServer
+
+    def _json(self, obj, status: int = 200) -> None:
+        self._send(status, json.dumps(_finite(obj), allow_nan=False).encode("utf-8"), "application/json")
 
     def do_GET(self) -> None:  # noqa: N802
         if not self._allowed(post=False):

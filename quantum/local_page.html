@@ -142,6 +142,9 @@ pre.short { max-height:220px; }
   .tile .value { font-size:18px; }
   .big .value { font-size:22px; }
   .chart { height:200px; }
+  .top { position:static; }
+  .banner { position:sticky; top:0; z-index:5; }
+  .hpath { max-width:60vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 }
 </style>
 </head>
@@ -165,6 +168,11 @@ pre.short { max-height:220px; }
     <div class="hgroup" aria-label="Next scheduled runs">
       <span class="k">Next</span>
       <span id="nextText">–</span>
+    </div>
+    <div class="hgroup" aria-label="Data folder">
+      <span class="k">Folder</span>
+      <span class="path hpath" id="homePathHdr">–</span>
+      <button id="btnFolderHdr" class="small" type="button">Open folder</button>
     </div>
     <span class="spacer"></span>
     <div class="hgroup" aria-label="New York time">
@@ -544,10 +552,10 @@ pre.short { max-height:220px; }
   // ---- header ----------------------------------------------------------
   function renderHeader() {
     const s = D.scheduler || {}, m = D.market || {};
-    const paused = !!s.paused;
-    $('schedBadge').textContent = paused ? 'PAUSED' : 'RUNNING';
-    $('schedBadge').className = 'badge ' + (paused ? 'warn' : 'good');
-    const bp = $('btnPause'); bp.disabled = false;
+    const paused = !!s.paused, off = s.active === false;
+    $('schedBadge').textContent = off ? 'OFF (buttons only)' : paused ? 'PAUSED' : 'RUNNING';
+    $('schedBadge').className = 'badge ' + (off || paused ? 'warn' : 'good');
+    const bp = $('btnPause'); bp.disabled = off;
     bp.textContent = paused ? 'Resume' : 'Pause';
     bp.setAttribute('aria-pressed', paused ? 'true' : 'false');
     bp.setAttribute('aria-label', paused ? 'Resume the scheduler' : 'Pause the scheduler');
@@ -562,6 +570,7 @@ pre.short { max-height:220px; }
       fill(cw, h('b', {text: 'Holiday calendar unknown for this year. '}), 'Every weekday is treated as a trading day; a holiday just finds no new bar. Update the holiday list in quantum/local.py.');
     } else cw.hidden = true;
     $('homePath').textContent = D.home || '–';
+    $('homePathHdr').textContent = D.home || '–'; $('homePathHdr').title = D.home || '';
     $('lastSession').textContent = m.last_completed_session || '–';
     $('dailyDone').textContent = s.daily_done || 'not yet';
     $('archived').textContent = s.archived || 'not yet';
@@ -575,10 +584,12 @@ pre.short { max-height:220px; }
     if (!r.ok) toast('Could not change the scheduler: ' + (r.error || 'error'), true); else toast(paused ? 'Scheduler paused: no job starts on its own.' : 'Scheduler resumed.');
     refresh();
   });
-  $('btnFolder').addEventListener('click', async () => {
+  async function openFolder() {
     const r = await post('/api/open-folder', {});
     toast(r.ok ? 'Opened the folder in the file manager.' : 'Could not open the folder: ' + (r.error || 'error'), !r.ok);
-  });
+  }
+  $('btnFolder').addEventListener('click', openFolder);
+  $('btnFolderHdr').addEventListener('click', openFolder);
 
   // ---- bot numbers ---------------------------------------------------------
   function botStats(s) {

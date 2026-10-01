@@ -736,3 +736,63 @@ class TestStationHTTP(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestStationFollowUps(unittest.TestCase):
+    """Valid JSON whatever the numbers, history that survives a restart, and
+    an honest scheduler status."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self._tmp.name) / "home"
+        self.now = ny(2026, 10, 1, 17, 0)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def station(self):
+        return Station(home=self.home, clock=lambda: self.now, copy_state=False)
+
+    def test_overview_json_has_no_nan_or_infinity(self):
+        st = self.station()
+        (self.home / "main" / "snapshot.json").write_text(
+            '{"equity": 1.0, "evaluation": {"p": NaN}, "pnl": {"profit_factor": Infinity}}', encoding="utf-8")
+        srv = StationServer(("127.0.0.1", 0), st)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
+            conn.request("GET", "/api/overview", headers={"Host": f"127.0.0.1:{srv.server_address[1]}"})
+            raw = conn.getresponse().read().decode()
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+        def strict(token):
+            raise ValueError(f"non-standard JSON number {token}")
+        doc = json.loads(raw, parse_constant=strict)  # what a browser accepts
+        snap = doc["bots"]["main"]["snapshot"]
+        self.assertIsNone(snap["evaluation"]["p"])
+        self.assertIsNone(snap["pnl"]["profit_factor"])
+        self.assertEqual(snap["equity"], 1.0)
+
+    def test_job_history_survives_a_restart(self):
+        def fake(_self, run, args, timeout=900.0):
+            run.steps.append({"cmd": "x", "code": 0, "seconds": 0})
+            run.output += "done\n"
+            return 0
+        with mock.patch.object(Station, "_cmd", autospec=True, side_effect=fake):
+            self.assertTrue(self.station().start("fetch_bars", wait=True)["ok"])
+        again = self.station()
+        runs = again.overview()["history"]
+        self.assertEqual([(r["job"], r["ok"]) for r in runs], [("fetch_bars", True)])
+        self.assertIn("done", runs[0]["output"])
+
+    def test_scheduler_status_says_whether_it_runs(self):
+        st = self.station()
+        self.assertFalse(st.overview()["scheduler"]["active"])
+        st.set_paused(True)  # a daily run is due at this clock; no real job may start
+        st.run_forever(every=3600)
+        try:
+            self.assertTrue(st.overview()["scheduler"]["active"])
+        finally:
+            st.stop()
