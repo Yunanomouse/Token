@@ -985,9 +985,20 @@ def snapshot(engine: "Engine", max_points: int = 1500, price_days: int = 600) ->
     return status, prices
 
 
+def first_tradable_bar(config: EngineConfig) -> int:
+    """Index of the first bar :meth:`Engine.on_bar` may trade, counting from 0.
+
+    It trades once ``n_bars`` (which already counts the new bar) reaches
+    ``max(min_history, window)``.  ``trade_from``, when set, can only push
+    this later; the evaluation then starts at that date instead.
+    """
+    return max(config.limits.min_history, config.window) - 1
+
+
 def _evaluation(engine: "Engine") -> dict:
     from .evaluation import evaluate_bot
-    return evaluate_bot(engine.state, engine.config.trade_from)
+    return evaluate_bot(engine.state, engine.config.trade_from,
+                        first_bar=first_tradable_bar(engine.config))
 
 
 def todays_orders(engine: "Engine", limit_pad: float = 0.01) -> dict:

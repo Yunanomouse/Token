@@ -1668,6 +1668,72 @@ class TestCLI(unittest.TestCase):
                 self.assertEqual(main(argv), 0, f"{argv[0]} failed")
 
 
+class TestLiveCLIMessages(unittest.TestCase):
+    """``quantum live`` explains bad input in one line instead of a traceback."""
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.csv = self.tmp / "p.csv"
+        rng = np.random.default_rng(0)
+        px = 50 * np.cumprod(1 + rng.normal(0, 0.01, (30, 4)), axis=0)
+        self.csv.write_text("date,A,B,C,D\n" + "".join(
+            f"2020-01-{i + 1:02d}," + ",".join(f"{v:.4f}" for v in row) + "\n" for i, row in enumerate(px)))
+        self.state = self.tmp / "s.json"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _live(self, *extra, tickers="A,B,C,D", replay=None):
+        import contextlib, io
+        from quantum.cli import main
+        argv = ["live", "--replay", str(replay or self.csv), "--tickers", tickers, "--window", "5",
+                "--state", str(self.state), *extra]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = main(argv)
+        return code, out.getvalue()
+
+    def test_cardinality_above_ticker_count(self):
+        code, text = self._live(tickers="A,B")
+        self.assertEqual(code, 2)
+        self.assertIn("cardinality", text)
+
+    def test_unknown_solver(self):
+        code, text = self._live("--solver", "bogus")
+        self.assertEqual(code, 2)
+        self.assertIn("unknown solver 'bogus'", text)
+
+    def test_missing_replay_file(self):
+        code, text = self._live(replay=self.tmp / "nope.csv")
+        self.assertEqual(code, 2)
+        self.assertIn("nope.csv", text)
+        self.assertIn("not found", text)
+
+    def test_corrupt_state_is_reported_and_left_alone(self):
+        self.state.write_text("{bad", encoding="utf-8")
+        code, text = self._live()
+        self.assertEqual(code, 2)
+        self.assertIn(str(self.state), text)
+        self.assertIn("left untouched", text)
+        self.assertEqual(self.state.read_text(encoding="utf-8"), "{bad")
+
+    def test_tickers_missing_from_the_file(self):
+        code, text = self._live(tickers="A,ZZZZ,B,YYYY")
+        self.assertEqual(code, 2)
+        self.assertIn("ZZZZ, YYYY", text)
+        self.assertFalse(self.state.exists())
+
+    def test_resume_says_how_many_bars_are_new(self):
+        code, text = self._live("--fresh")
+        self.assertEqual(code, 0)
+        self.assertIn("replaying 30 bars", text)
+        code, text = self._live()
+        self.assertEqual(code, 0)
+        self.assertIn("0 new, 30 already in the state", text)
+
+
 class TestAgainstReferenceLibraries(unittest.TestCase):
     """Independent implementations, installed with ``pip install -e ".[test]"``.
 
@@ -3233,6 +3299,70 @@ class TestEvaluation(unittest.TestCase):
         from quantum.live import Engine, EngineConfig, snapshot
         engine = Engine(EngineConfig(tickers=["A", "B"], strategy="equal_weight", window=3))
         self.assertIn("verdict", snapshot(engine)[0]["evaluation"])
+
+    @staticmethod
+    def _warmup_runup(n_warm=10, n_flat=30):
+        """Prices that double during the warm-up, then go nowhere."""
+        import datetime as dt
+        d0 = dt.date(2020, 1, 1)
+        dates = [(d0 + dt.timedelta(days=i)).isoformat() for i in range(n_warm + n_flat)]
+        rows = [[10.0 * 2 ** (i / (n_warm - 1))] * 2 for i in range(n_warm)]
+        rows += [[20.0 * (1 + 0.001 * (i % 2)), 20.0 * (1 - 0.001 * (i % 2))] for i in range(n_flat)]
+        return dates, rows
+
+    def test_evaluation_skips_the_warmup_when_trade_from_is_unset(self):
+        # Backtests and CLI replays have no trade_from: the bot sits in cash
+        # until min_history/window bars are in, and equal weight must not be
+        # credited with the run-up the bot could not trade.
+        from quantum.live import Bar, Engine, EngineConfig, RiskLimits, snapshot
+        dates, rows = self._warmup_runup()
+        for window, min_history in ((10, 10), (5, 10), (12, 5)):
+            engine = Engine(EngineConfig(tickers=["A", "B"], strategy="equal_weight", window=window,
+                                         limits=RiskLimits(min_history=min_history)))
+            events = [engine.on_bar(Bar(d, dict(zip("AB", r)))) for d, r in zip(dates, rows)]
+            first = next(i for i, e in enumerate(events) if e["action"] == "rebalance")
+            self.assertEqual(first, max(window, min_history) - 1)
+            ev = snapshot(engine)[0]["evaluation"]
+            self.assertEqual(ev["from"], dates[first])
+            self.assertEqual(ev["days"], len(dates) - 1 - first)
+            self.assertLess(abs(ev["equal_weight_return"]), 0.01)  # not the +100% warm-up
+
+    def test_evaluation_with_trade_from_is_unchanged(self):
+        from quantum.evaluation import evaluate_bot
+        from quantum.live import Bar, Engine, EngineConfig, RiskLimits, snapshot
+        dates, rows = self._warmup_runup()
+        engine = Engine(EngineConfig(tickers=["A", "B"], strategy="equal_weight", window=3,
+                                     limits=RiskLimits(min_history=3), trade_from=dates[5]))
+        for d, r in zip(dates, rows):
+            engine.on_bar(Bar(d, dict(zip("AB", r))))
+        ev = snapshot(engine)[0]["evaluation"]
+        self.assertEqual(ev["from"], dates[5])
+        self.assertEqual(ev["days"], len(dates) - 1 - 5)
+        old = evaluate_bot(engine.state, dates[5])
+        self.assertEqual(ev["equal_weight_return"], old["equal_weight_return"])
+        self.assertEqual(ev["bot_return"], old["bot_return"])
+
+    def test_cli_replay_scores_from_the_first_tradable_day(self):
+        import contextlib, io, json, re, tempfile
+        from quantum.cli import main
+        dates, rows = self._warmup_runup()
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "p.csv"
+            csv_path.write_text("date,A,B\n" + "".join(f"{d},{a},{b}\n" for d, (a, b) in zip(dates, rows)))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = main(["live", "--replay", str(csv_path), "--tickers", "A,B", "--strategy", "equal_weight",
+                             "--window", "10", "--state", str(Path(tmp) / "s.json"), "--fresh",
+                             "--snapshot", str(Path(tmp) / "snap.json")])
+            self.assertEqual(code, 0)
+            text = out.getvalue()
+            ev = json.loads((Path(tmp) / "snap.json").read_text())["evaluation"]
+        self.assertEqual(ev["from"], dates[9])
+        self.assertIn(f"from {dates[9]}", text)
+        m = re.search(r"equal weight ([+-][\d.]+)%", text)
+        self.assertIsNotNone(m, text)
+        self.assertAlmostEqual(float(m.group(1)) / 100, ev["equal_weight_return"], places=4)
+        self.assertLess(abs(ev["equal_weight_return"]), 0.01)
 
 
 class TestQuasiMonteCarlo(unittest.TestCase):

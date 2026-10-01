@@ -79,10 +79,20 @@ def main() -> int:
     path = str(Path(args.bars or (args.fresh if args.fetch else args.cache)).expanduser())
     if not Path(path).exists():
         ap.error(f"no bars at {path}; pass --bars or --fetch")
+    # Load every file before scoring any: a field with one entry missing is
+    # not the duel, so a bad file stops the run with one line per file.
+    loaded, errors = [], []
+    for f in args.indicators:
+        try:
+            loaded.append((f, load_indicator(f)))
+        except Exception as e:  # the file is someone's code: any error is a bad entry
+            msg = str(e) if isinstance(e, ValueError) else f"{type(e).__name__}: {e}"
+            errors.append(msg if msg.startswith(str(Path(f))) else f"{f}: {msg}")
+    if errors:
+        ap.error("cannot load indicator file(s), nothing scored:\n  " + "\n  ".join(errors))
     bars = load_bars(path)
     reports = []
-    for f in args.indicators:
-        ind = load_indicator(f)
+    for f, ind in loaded:
         kw = {} if args.random_runs is None else {"random_runs": args.random_runs}
         try:
             rep = evaluate(bars, ind, forward=args.forward, **kw)

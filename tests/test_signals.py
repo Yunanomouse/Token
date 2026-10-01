@@ -435,6 +435,24 @@ class TestDuelScript(unittest.TestCase):
             self.assertIn("Ahead on", r.stdout)
             self.assertNotIn(": cheat", r.stdout.split("Ahead on")[1].splitlines()[0])
 
+    def test_cli_reports_bad_indicator_files_without_a_traceback(self):
+        bars = _universe(40, 2, seed=2)
+        with tempfile.TemporaryDirectory() as d:
+            src, broken, nofields = Path(d) / "bars.csv", Path(d) / "broken.py", Path(d) / "nofields.py"
+            _write_csv(bars, src)
+            broken.write_text("def signals(b) return 1\n")
+            nofields.write_text("NAME = 'x'\n")
+            out = Path(d) / "r.json"
+            r = self._run(bars, "--bars", src, "--random-runs", "0", "--out", out,
+                          ROOT / "indicators" / "claude.py", broken, nofields, Path(d) / "missing.py")
+            self.assertEqual(r.returncode, 2, r.stdout[-2000:])
+            self.assertNotIn("Traceback", r.stderr)
+            for name in ("broken.py", "nofields.py", "missing.py"):
+                self.assertIn(name, r.stderr)
+            self.assertIn("missing TIMEFRAME", r.stderr)
+            self.assertNotIn("PASSED:", r.stdout)  # nothing is scored on a partial field
+            self.assertFalse(out.exists())
+
     def test_cli_forward_incomplete_declares_nobody_ahead(self):
         bars = _universe(40, 2, seed=2)
         with tempfile.TemporaryDirectory() as d:
