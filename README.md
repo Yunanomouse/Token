@@ -16,6 +16,8 @@ Machine-readable dataset of Canada's tax system for the **2026 tax year**: perso
 | `examples/trader_scenario_comparison.py` | Compares sole-proprietor / max-RRSP / CCPC outcomes for full-time trading income |
 | `docs/trader_taxation.md` | How Canada taxes active ("scalp") trading and the legitimate levers to reduce it |
 | `docs/incorporation_checklist.md` | Step-by-step checklist for moving personal trading into a corporate brokerage account |
+| `docs/openbb_setup.md` | Installing OpenBB locally and which free, no-key data providers to use |
+| `examples/openbb_quickstart.py` | Downloads a year of daily prices for Canadian, US, and crypto symbols to CSV |
 
 ## Quick start
 
