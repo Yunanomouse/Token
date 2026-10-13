@@ -13,3 +13,4 @@ One fact per line, with the date recorded and the skill that recorded it. Facts 
 - 2026-10-13 · mvp-scope · Correction to the OpenBB fact above: tested 2026-10-13, the quickstart fails under the current `pip install openbb` (5.0.0), which no longer bundles the equity router or the yfinance provider. It works with `pip install openbb-core openbb-equity openbb-yfinance` (2.0.x).
 - 2026-10-13 · founder · Token is licensed MIT, with Terms of Service/Use, Privacy, Cookie and Code of Conduct pages in the repo.
 - 2026-10-13 · founder · Session replay must be turned off for all users of Token, including any future website or hosted planner.
+- 2026-10-13 · founder · The founder is Matthew Marinier, based in Calgary, Alberta, Canada. Token's license and terms are in that name, governed by Alberta law.

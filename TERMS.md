@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-13
 
-These terms cover your use of Token: the code, data, documents, spreadsheets and examples in this repository (together, "Token"). They serve as both the Terms of Service and the Terms of Use. By downloading, running or relying on Token, you agree to them. If you don't agree, don't use Token.
+Token is provided by Matthew Marinier of Calgary, Alberta, Canada ("the author"). These terms cover your use of Token: the code, data, documents, spreadsheets and examples in this repository (together, "Token"). They serve as both the Terms of Service and the Terms of Use. By downloading, running or relying on Token, you agree to them. If you don't agree, don't use Token.
 
 ## 1. The license comes first
 
@@ -53,7 +53,7 @@ These terms may change. The date at the top shows the latest version. The reposi
 
 ## 10. Governing law
 
-These terms are governed by the laws of [Province] and the federal laws of Canada that apply there.
+These terms are governed by the laws of the Province of Alberta and the federal laws of Canada that apply there. Any dispute will be heard in the courts of Alberta, unless the consumer protection law where you live gives you the right to bring it there.
 
 ## 11. Contact
 

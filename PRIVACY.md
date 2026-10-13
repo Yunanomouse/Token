@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-13
 
-Token is a set of files and scripts you run on your own computer. This policy explains what happens to your information when you use it. In short: **the author collects nothing.**
+Token is provided by Matthew Marinier of Calgary, Alberta, Canada, who is responsible for this policy. Token is a set of files and scripts you run on your own computer. This policy explains what happens to your information when you use it. In short: **the author collects nothing.**
 
 ## 1. What Token collects
 
@@ -43,7 +43,7 @@ Token itself sets no cookies. See the [Cookie Policy](COOKIES.md).
 
 ## 6. Future services
 
-There is no website sign-up, email list or hosted service today. If one launches, this policy will be updated before it collects anything. The update will say what is collected, why, where it is stored, how long it is kept, and how to have it deleted. It will follow Canada's Personal Information Protection and Electronic Documents Act (PIPEDA), any provincial privacy law that applies, and Canada's Anti-Spam Legislation (CASL) for email.
+There is no website sign-up, email list or hosted service today. If one launches, this policy will be updated before it collects anything. The update will say what is collected, why, where it is stored, how long it is kept, and how to have it deleted. It will follow Alberta's Personal Information Protection Act (PIPA), Canada's Personal Information Protection and Electronic Documents Act (PIPEDA) where it applies, Quebec's Law 25 for Quebec residents, and Canada's Anti-Spam Legislation (CASL) for email.
 
 ## 7. Children
 
