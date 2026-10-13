@@ -8,6 +8,18 @@ ROOT = Path(__file__).resolve().parent.parent
 JSON_DIR = ROOT / "data" / "json"
 CSV_DIR = ROOT / "data" / "csv"
 
+# Spreadsheet apps evaluate a CSV cell starting with = + - @ tab or CR as a
+# formula. Every row value comes from data/json/, so write_csv() passes each
+# one through safe_text(), which prefixes a single quote (OWASP CSV-injection
+# guidance). Numbers, including negatives, are left alone.
+FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def safe_text(v):
+    if isinstance(v, str) and v.startswith(FORMULA_TRIGGERS):
+        return "'" + v
+    return v
+
 
 def load(name):
     with open(JSON_DIR / name, encoding="utf-8") as f:
@@ -20,7 +32,7 @@ def write_csv(name, header, rows):
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(header)
-        w.writerows(rows)
+        w.writerows([safe_text(v) for v in row] for row in rows)
     print(f"wrote {path.relative_to(ROOT)} ({len(rows)} rows)")
 
 

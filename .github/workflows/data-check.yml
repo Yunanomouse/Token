@@ -1,0 +1,32 @@
+# Keeps formula-like text (= + - @ tab CR) out of data/json/, which feeds
+# the CSV exports and the Excel workbook.
+name: Data check
+
+on:
+  push:
+  pull_request:
+
+# Least privilege: these jobs only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Check data/json for formula-like text
+        # Output is not parsed as workflow commands (::stop-commands::).
+        run: |
+          token="$(python -c 'import secrets; print(secrets.token_hex(16))')"
+          echo "::stop-commands::${token}"
+          status=0
+          python scripts/check_data.py || status=$?
+          echo "::${token}::"
+          exit "$status"

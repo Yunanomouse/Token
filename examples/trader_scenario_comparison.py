@@ -18,6 +18,7 @@ costs, and Ontario/Quebec mid-2026 small-business rate changes.
 Not tax advice. See docs/trader_taxation.md.
 """
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -93,7 +94,12 @@ def self_employed_cpp(income, pay):
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
-    profit = float(sys.argv[1])
+    try:
+        profit = float(sys.argv[1])
+    except ValueError:
+        profit = float("nan")
+    if not (math.isfinite(profit) and profit > 0):
+        sys.exit(f"Invalid annual trading profit {sys.argv[1]!r}: must be a positive number.\n{__doc__}")
     province = sys.argv[2].upper()
 
     tax_data = load("personal_income_tax_2026.json")

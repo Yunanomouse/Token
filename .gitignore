@@ -1,2 +1,10 @@
 __pycache__/
 *.pyc
+examples/market_data/
+# Secrets and local credentials (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.openbb_platform/

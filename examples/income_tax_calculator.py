@@ -13,6 +13,7 @@ tax advice — it ignores most credits, deductions, and provincial low-income
 reductions.
 """
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -87,7 +88,12 @@ def payroll_deductions(income, province, pay):
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
-    income = float(sys.argv[1])
+    try:
+        income = float(sys.argv[1])
+    except ValueError:
+        income = float("nan")
+    if not (math.isfinite(income) and income > 0):
+        sys.exit(f"Invalid taxable income {sys.argv[1]!r}: must be a positive number.\n{__doc__}")
     province = sys.argv[2].upper()
 
     tax_data = load("personal_income_tax_2026.json")

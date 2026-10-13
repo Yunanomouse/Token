@@ -36,6 +36,18 @@ MONEY2 = "$#,##0.00;($#,##0.00);\"-\""
 PCT = "0.0%"
 WRAP = Alignment(wrap_text=True, vertical="top")
 
+# openpyxl stores any string starting with "=" as a formula, and spreadsheet
+# apps treat leading + - @ tab CR the same way. Text from data/json/ goes
+# through safe_text() so it always lands as literal text (OWASP CSV-injection
+# guidance: prefix a single quote). The formulas this script builds do not.
+FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def safe_text(v):
+    if isinstance(v, str) and v.startswith(FORMULA_TRIGGERS):
+        return "'" + v
+    return v
+
 wb = Workbook()
 
 # ---------------------------------------------------------------- Inputs ----
@@ -319,7 +331,7 @@ all_jur = [("CA", TAX["federal"])] + list(TAX["provinces"].items())
 for code, jur in all_jur:
     lower = 0
     for i, b in enumerate(jur["brackets"], 1):
-        wa.cell(r, 1, jur["name"]).font = F_B
+        wa.cell(r, 1, safe_text(jur["name"])).font = F_B
         wa.cell(r, 2, i).font = F_B
         wa.cell(r, 3, lower).number_format = MONEY
         wa.cell(r, 3).font = F_B
@@ -342,7 +354,7 @@ wa.cell(r, 2).font = F_B
 wa.cell(r, 3, f"Phases down to ${fed_bpa['min']:,} for income above $181,440").font = F_NOTE
 r += 1
 for code, jur in TAX["provinces"].items():
-    wa.cell(r, 1, jur["name"]).font = F_B
+    wa.cell(r, 1, safe_text(jur["name"])).font = F_B
     bpa = jur["basic_personal_amount"]
     c = wa.cell(r, 2, bpa if bpa is not None else "n/a")
     c.number_format = MONEY
@@ -357,15 +369,15 @@ header_row(wst, 4, ["Province/Territory", "System", "GST", "PST/QST", "HST", "To
            {"A": 28, "B": 12, "C": 10, "D": 10, "E": 10, "F": 10})
 r = 5
 for code, j in SALES["jurisdictions"].items():
-    wst.cell(r, 1, j["name"]).font = F_B
-    wst.cell(r, 2, j["system"]).font = F_B
+    wst.cell(r, 1, safe_text(j["name"])).font = F_B
+    wst.cell(r, 2, safe_text(j["system"])).font = F_B
     for col, key in ((3, "gst"), (4, "pst"), (5, "hst"), (6, "total_rate")):
         v = j.get(key)
-        c = wst.cell(r, col, v if v is not None else "-")
+        c = wst.cell(r, col, safe_text(v) if v is not None else "-")
         c.number_format = "0.00%"
         c.font = F_B
     if "note" in j:
-        wst.cell(r, 7, j["note"]).font = F_NOTE
+        wst.cell(r, 7, safe_text(j["note"])).font = F_NOTE
     r += 1
 
 # --- payroll programs
@@ -378,15 +390,15 @@ wp.column_dimensions["C"].width = 70
 r = 4
 for prog_key in ("cpp", "cpp2", "qpp", "ei", "qpip"):
     prog = PAY[prog_key]
-    wp.cell(r, 1, prog["name"]).font = F_H
+    wp.cell(r, 1, safe_text(prog["name"])).font = F_H
     wp.cell(r, 1).fill = FILL_SUB
     wp.cell(r, 2).fill = FILL_SUB
     r += 1
     for k, v in prog.items():
         if k in ("name", "note", "quebec") or isinstance(v, dict):
             continue
-        wp.cell(r, 1, k.replace("_", " ")).font = F_B
-        c = wp.cell(r, 2, v)
+        wp.cell(r, 1, safe_text(k.replace("_", " "))).font = F_B
+        c = wp.cell(r, 2, safe_text(v))
         c.font = F_B
         c.number_format = "0.000%" if ("rate" in k or "multiplier" in k) and v < 1 else MONEY2
         r += 1
@@ -394,13 +406,13 @@ for prog_key in ("cpp", "cpp2", "qpp", "ei", "qpip"):
         for k, v in prog["quebec"].items():
             if k == "note":
                 continue
-            wp.cell(r, 1, f"Quebec {k.replace('_', ' ')}").font = F_B
-            c = wp.cell(r, 2, v)
+            wp.cell(r, 1, safe_text(f"Quebec {k.replace('_', ' ')}")).font = F_B
+            c = wp.cell(r, 2, safe_text(v))
             c.font = F_B
             c.number_format = "0.000%" if "rate" in k else MONEY2
             r += 1
     if "note" in prog:
-        wp.cell(r, 1, prog["note"]).font = F_NOTE
+        wp.cell(r, 1, safe_text(prog["note"])).font = F_NOTE
         wp.cell(r, 1).alignment = WRAP
         r += 1
     r += 1
@@ -421,14 +433,14 @@ for col in range(2, 5):
     wco.cell(r, col).font = F_B
 r += 1
 for code, j in CORP["provincial"].items():
-    wco.cell(r, 1, j["name"]).font = F_B
+    wco.cell(r, 1, safe_text(j["name"])).font = F_B
     wco.cell(r, 2, j["general_rate"]).number_format = "0.0%"
     wco.cell(r, 3, j["small_business_rate"]).number_format = "0.0%"
     wco.cell(r, 4, j["small_business_limit"]).number_format = MONEY
     for col in range(2, 5):
         wco.cell(r, col).font = F_B
     if "note" in j:
-        wco.cell(r, 5, j["note"]).font = F_NOTE
+        wco.cell(r, 5, safe_text(j["note"])).font = F_NOTE
         wco.cell(r, 5).alignment = WRAP
     r += 1
 
@@ -461,7 +473,7 @@ for label, val, fmt, note_txt in lim_rows:
     c.font = F_B
     c.number_format = fmt
     if note_txt:
-        wl.cell(r, 3, note_txt).font = F_NOTE
+        wl.cell(r, 3, safe_text(note_txt)).font = F_NOTE
         wl.cell(r, 3).alignment = WRAP
     r += 1
 r += 1

@@ -16,6 +16,9 @@ Machine-readable dataset of Canada's tax system for the **2026 tax year**: perso
 | `examples/trader_scenario_comparison.py` | Compares sole-proprietor / max-RRSP / CCPC outcomes for full-time trading income |
 | `docs/trader_taxation.md` | How Canada taxes active ("scalp") trading and the legitimate levers to reduce it |
 | `docs/incorporation_checklist.md` | Step-by-step checklist for moving personal trading into a corporate brokerage account |
+| `docs/openbb_setup.md`, `examples/openbb_quickstart.py` | Optional: free price history via OpenBB (pinned 2.x packages) saved to CSV |
+| `docs/secrets.md`, `.env.example` | How to keep API keys in Bitwarden Secrets Manager and inject them with `bws run` |
+| `founder/` | Product strategy for Token from the claude-skills-founder skills, including the OpenBB re-evaluation |
 
 ## Quick start
 
@@ -61,3 +64,14 @@ Fields that could only be computed (not independently confirmed) are flagged in 
 ## Disclaimer
 
 This dataset is for information and software-development purposes only and is **not tax advice**. Tax law changes through the year via federal and provincial budgets. Verify against CRA / Revenu Québec / provincial finance departments before relying on any figure for filing or payroll.
+
+## License and policies
+
+- [MIT License](LICENSE)
+- [Terms of Service and Terms of Use](TERMS.md)
+- [Privacy Policy](PRIVACY.md): Token runs locally and collects nothing
+- [Cookie Policy and managing cookies](COOKIES.md)
+- [Community guidelines and Code of Conduct](CODE_OF_CONDUCT.md)
+- [Compliance checklist](COMPLIANCE.md): legal steps for running Token as a business from Alberta
+
+The author is not a registered adviser, CPA or lawyer. Nothing here is a recommendation to buy or sell any security.
