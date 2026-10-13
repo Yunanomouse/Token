@@ -10,6 +10,11 @@
 > ([announcement](https://openbb.co/blog/openbb-belongs-to-everyone)). The
 > packages below still install and work, but future maintenance is unclear,
 > so the versions are pinned.
+>
+> **Personal use only. Not advice.** The free price data comes from Yahoo
+> Finance and may only be used for your own personal, non-commercial purposes.
+> Don't share, publish or sell it. Nothing here is financial, investment or tax
+> advice. Read [Legal and data terms](#legal-and-data-terms) before you start.
 
 OpenBB is a free, open-source financial data platform. It can pull stock
 prices, options, economic data, and more — right from Python. This guide gets
@@ -107,15 +112,63 @@ want those.
 - **`'App' object has no attribute 'equity'`** — you installed the plain
   `openbb` bundle. Run the install line from step 2.
 - **"No module named openbb"** — you may have multiple Pythons installed.
-  Use the same command for installing and running (`python -m pip install
-  openbb`, then `python`).
+  Use the same Python for installing and running: put `python -m` in front
+  of the install line from step 2, then run with `python`.
 - **Empty results / download errors** — usually a network hiccup or an
   invalid ticker; try again or double-check the symbol on
   https://finance.yahoo.com. The Yahoo provider is unofficial and can be
   rate-limited or break without notice.
 
-## License note
+## Legal and data terms
 
-`openbb-core` and `openbb-equity` are Apache-2.0. The `openbb-yfinance`
-provider is AGPL-3.0, which is fine for personal use but matters if you ever
-host or sell a modified version of a tool that bundles it.
+Checked 2026-10-13. This is general information, not legal advice.
+
+### What you may do with the data
+
+The prices come from Yahoo Finance through `yfinance`, an unofficial library
+that is not affiliated with, endorsed by or vetted by Yahoo. Yahoo's
+[Terms of Service](https://legal.yahoo.com/ca/en/yahoo/terms/otos/index.html)
+(provided in Canada by Yahoo Finance ULC) forbid commercial use, automated
+collection without permission, and redistribution. In practice:
+
+- **OK:** fetching a few tickers for your own personal, non-commercial
+  research on your own computer.
+- **Not OK without Yahoo's written permission:** sharing, publishing or
+  selling the CSVs; committing them to a public repository; using them in a
+  paid product; or running a website or service that fetches Yahoo data for
+  other people.
+- Yahoo rate-limits automated requests and can block your IP. The script
+  fetches only a few tickers, pauses between them, and saves a `SOURCE.txt`
+  next to the CSVs recording the source, retrieval time and these terms.
+- For anything beyond personal use, use a licensed data provider (OpenBB
+  supports several keyed providers).
+
+`examples/market_data/` is gitignored so the downloaded data is never
+committed to this repository.
+
+### Not advice
+
+Prices may be delayed, adjusted, incomplete or wrong. Nothing in this guide,
+the script, or its output is financial, investment, tax or legal advice, or a
+recommendation to buy or sell anything. Token's [Terms](../TERMS.md) apply.
+
+### Package licenses
+
+| Package | License |
+|---|---|
+| `openbb-core`, `openbb-equity`, `openbb-cli` | Apache-2.0 |
+| `openbb-yfinance` | AGPL-3.0-only |
+| `yfinance` (pulled in by `openbb-yfinance`) | Apache-2.0 |
+
+This repository is MIT licensed. Telling you to `pip install` the packages
+above is fine under their licenses, because this repository doesn't include
+or modify them. If you ever **bundle** `openbb-yfinance` (a Docker image, an
+executable, a vendored copy) or **host a modified version** as a network
+service, the AGPL requires you to offer its source code, and Yahoo's terms
+would forbid the hosting anyway.
+
+### Trademarks
+
+OpenBB, Yahoo and the names of exchanges and brokers are trademarks of their
+owners. Token and its author are not affiliated with or endorsed by OpenBB,
+OpenBQ, Yahoo or any exchange.
