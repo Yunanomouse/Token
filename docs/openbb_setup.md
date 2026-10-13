@@ -9,7 +9,7 @@
 > OpenBQ, now stewards the code
 > ([announcement](https://openbb.co/blog/openbb-belongs-to-everyone)). The
 > packages below still install and work, but future maintenance is unclear,
-> so the versions are pinned.
+> so the versions are limited to the 2.x series.
 >
 > **Personal use only. Not advice.** The free price data comes from Yahoo
 > Finance and may only be used for your own personal, non-commercial purposes.
