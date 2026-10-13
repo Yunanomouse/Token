@@ -34,8 +34,11 @@ PATTERNS = {
     "Generic session replay": r"session[_\- ]?replay",
 }
 
-SKIP_DIRS = {".git", "__pycache__", "node_modules", "market_data"}
-SKIP_SUFFIXES = {".md", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf", ".csv"}
+SKIP_DIRS = {".git", "__pycache__", "node_modules"}
+# Downloaded market data (gitignored); anchored so a market_data dir elsewhere is still scanned.
+SKIP_PATHS = {"examples/market_data"}
+# SVG is not skipped: it can carry <script>.
+SKIP_SUFFIXES = {".md", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".csv"}
 SELF = Path(__file__).resolve()
 # The workflow that runs this check names the policy in its title.
 SKIP_FILES = {".github/workflows/no-session-replay.yml"}
@@ -48,13 +51,17 @@ def scan(root: Path) -> list[str]:
         if not path.is_file() or path.resolve() == SELF:
             continue
         rel = path.relative_to(root)
-        if SKIP_DIRS.intersection(rel.parts) or rel.as_posix() in SKIP_FILES:
+        posix = rel.as_posix()
+        if SKIP_DIRS.intersection(rel.parts) or posix in SKIP_FILES:
+            continue
+        if any(posix == d or posix.startswith(d + "/") for d in SKIP_PATHS):
             continue
         if path.suffix.lower() in SKIP_SUFFIXES:
             continue
         try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+            # Non-UTF-8 files are still scanned; undecodable bytes become U+FFFD.
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
             continue
         for lineno, line in enumerate(text.splitlines(), 1):
             for name, rx in compiled.items():

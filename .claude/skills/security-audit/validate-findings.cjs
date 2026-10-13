@@ -595,7 +595,8 @@ function validateDocument(findings, schema) {
 }
 
 function loadSchema(schemaPath) {
-  const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+  // Local change vs upstream: read the schema through the bounded no-follow reader too.
+  const schema = JSON.parse(readFileWithinLimit(schemaPath));
   const errors = collectSchemaErrors(schema);
   if (errors.length > 0) throw new Error(`unsupported or invalid report schema:\n${errors.join("\n")}`);
   return schema;
