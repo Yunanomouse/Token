@@ -17,6 +17,7 @@ Machine-readable dataset of Canada's tax system for the **2026 tax year**: perso
 | `docs/trader_taxation.md` | How Canada taxes active ("scalp") trading and the legitimate levers to reduce it |
 | `docs/incorporation_checklist.md` | Step-by-step checklist for moving personal trading into a corporate brokerage account |
 | `docs/openbb_setup.md`, `examples/openbb_quickstart.py` | Optional: free price history via OpenBB (pinned 2.x packages) saved to CSV |
+| `docs/secrets.md`, `.env.example` | How to keep API keys in Bitwarden Secrets Manager and inject them with `bws run` |
 | `founder/` | Product strategy for Token from the claude-skills-founder skills, including the OpenBB re-evaluation |
 
 ## Quick start

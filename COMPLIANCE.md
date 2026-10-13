@@ -16,6 +16,7 @@ The legal steps for running Token as an online business from Calgary, grouped by
 - [x] **Open-source licenses respected.**
   - Token only tells users to install the AGPL `openbb-yfinance` package; it doesn't bundle it.
   - The guide lists the licenses and the conditions that would trigger AGPL duties.
+- [x] **API keys kept out of the repo.** Keys live in Bitwarden Secrets Manager and are injected at run time ([docs/secrets.md](docs/secrets.md)). Secret files are gitignored.
 - [x] **No tracking.** No analytics, cookies or session replay. Enforced by CI (`scripts/check_no_session_replay.py`).
 - [ ] **Check the name "Token"** in the [Canadian Trademarks Database](https://ised-isde.canada.ca/cipo/trademark-search/srch) before spending on branding. It is a common word, and software and finance classes are crowded.
 - [ ] **Accurate, sourced claims** in the README, the `founder/` docs and any post.
