@@ -53,7 +53,7 @@ Features that make this possible:
 ```
 Step 1: User arrives at the GitHub README from a Reddit post showing the Alberta $150K table
 Step 2: User clones the repo and runs pip install -r requirements.txt (stdlib + openpyxl only)
-Step 3: User runs: python token.py import activity.xlsx --province AB
+Step 3: User runs: python token_cli.py import activity.xlsx --province AB
 Step 4: User sees realized 2026 profit, any warnings, and the three-scenario table in dollars
 Step 5: User stars the repo or fills a 4-question form ("would you want a CPA to review this?")
 ```
