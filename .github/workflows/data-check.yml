@@ -1,0 +1,24 @@
+# Keeps formula-like text (= + - @ tab CR) out of data/json/, which feeds
+# the CSV exports and the Excel workbook.
+name: Data check
+
+on:
+  push:
+  pull_request:
+
+# Least privilege: these jobs only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/check_data.py
