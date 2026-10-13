@@ -1,0 +1,35 @@
+# Weekly check that the optional OpenBB guide still works with the pinned
+# packages. yfinance is unofficial and OpenBB's stewardship changed in 2026,
+# so this can break without any change in this repo.
+name: OpenBB quickstart check
+
+on:
+  schedule:
+    - cron: "17 13 * * 1"  # Mondays 13:17 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "examples/openbb_quickstart.py"
+      - "docs/openbb_setup.md"
+      - ".github/workflows/openbb-check.yml"
+
+jobs:
+  quickstart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned OpenBB packages (same line as docs/openbb_setup.md)
+        run: pip install "openbb-core>=2,<3" "openbb-equity>=2,<3" "openbb-yfinance>=2,<3"
+      - name: Run quickstart
+        run: python examples/openbb_quickstart.py
+      - name: Every ticker produced a CSV with rows
+        run: |
+          for f in AAPL SHOP_TO BTC_USD; do
+            rows=$(($(wc -l < "examples/market_data/$f.csv") - 1))
+            echo "$f: $rows rows"
+            test "$rows" -gt 100
+          done
