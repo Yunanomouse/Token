@@ -37,24 +37,79 @@ Token is provided "as is" and "as available", without warranty of any kind, as s
 
 ## 6. Limitation of liability
 
-To the fullest extent the law allows, the authors and contributors are not liable for any loss or damage arising from your use of Token or reliance on its output. This includes taxes, interest, penalties, reassessments, trading losses, lost profits and lost data. Some jurisdictions don't allow certain exclusions. In those places, the exclusions apply as far as the law allows.
+These limits apply to the fullest extent the law allows.
+
+- **Free use.** Token is free. The author and contributors are not liable for any direct, indirect, incidental, special, consequential or punitive loss or damage arising from your use of Token, your reliance on its output, or your inability to use it. This includes taxes, interest, penalties, reassessments, instalment shortfalls, trading losses, lost profits, lost opportunities and lost data.
+- **Paid services.** If you ever pay for a Token service (section 8), the author's total liability for all claims relating to that service is limited to the amount you paid for it in the 12 months before the claim arose.
+- **What is not limited.** Nothing in these terms limits liability that cannot be limited by law, such as liability for fraud or for deliberate wrongdoing, or any right you have under the Alberta Consumer Protection Act or another consumer protection law that cannot be waived. Where a law doesn't allow a limit, it applies only as far as that law allows.
+- **Your responsibility.** You agree to cover any claim made against the author by someone else because you used Token unlawfully, broke these terms, or redistributed third-party data (such as Yahoo Finance prices) in breach of that provider's terms.
 
 ## 7. Contributions
 
 Contributions you submit (pull requests, issues, suggested data corrections) are licensed under the MIT License, the same as the rest of Token. Taking part in the project is also covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## 8. Future paid or hosted services
+## 8. Paid services and payment terms
 
-There is no paid or hosted Token service today. If one launches, for example a hosted planner or an email list, it will have its own terms and privacy details published before it accepts sign-ups or payments.
+There is no paid or hosted Token service today, and no one is charged anything. This section sets the terms that will apply if one launches, such as a hosted planner subscription. Each paid service will also show its own details before you buy.
 
-## 9. Changes
+**Before you buy, the order page will show:**
 
-These terms may change. The date at the top shows the latest version. The repository's git history keeps every earlier version. If you keep using Token after a change, you accept the new terms.
+- the author's legal name, business address, email and phone number;
+- a description of what you are buying;
+- the full price in Canadian dollars, including every mandatory fee, with GST, HST or QST shown separately;
+- how often you will be charged and when;
+- the cancellation and refund policy below.
 
-## 10. Governing law
+You will be able to review and correct your order, and accept or decline it, before paying. A copy of your agreement and receipt will be emailed to you within 15 days of purchase.
+
+**Billing.**
+
+- Subscriptions are billed in advance, monthly or yearly as chosen at checkout, through a third-party payment processor. The author does not see or store your full card number.
+- Sales tax is charged at the rate for your province once the author is registered for GST/HST (and QST, if required).
+- Any trial or introductory price, and the price it changes to, will be stated at checkout.
+
+**Renewals and price changes.**
+
+- Subscriptions renew automatically until you cancel.
+- For yearly plans, you will get a reminder email at least 14 days before each renewal, with the renewal price.
+- Price increases are announced by email at least 30 days before they take effect, and you can cancel before then without paying the new price.
+
+**Cancelling and refunds.**
+
+- You can cancel at any time from your account or by email, and cancelling stops the next renewal.
+- You may cancel any new purchase within 14 days for a full refund, no reason needed.
+- If you cancel after 14 days, you keep access until the end of the period you paid for. Unused time is not refunded unless the law requires it or a refund is offered under "Changes to a service" below.
+- You keep any cancellation rights the Alberta Consumer Protection Act gives you, including the right to cancel if the required information was not disclosed or a copy of the agreement was not provided.
+- Refunds are made to the original payment method within 15 days of cancelling.
+
+**Failed payments and chargebacks.**
+
+- If a payment fails, you'll be told by email and given at least 7 days to update your payment details before the service is paused.
+- Please contact the author before disputing a charge with your card issuer, so it can be fixed directly.
+
+**Referral fees.** If a paid service introduces you to a CPA or other professional and the author is paid for that introduction, that will be clearly disclosed to you before you agree to the introduction, along with the amount.
+
+## 9. Change orders and changes to a service
+
+**Change orders for custom work or partner agreements.** Some arrangements, such as custom setup work or an agreement with a CPA partner, are defined by a written order or agreement. To change one:
+
+- A change to scope, deliverables, price or timeline must be agreed in a written change order, by email or signed document.
+- The change order must describe the change and its effect on price and timeline, and must be accepted by both parties before work on the change begins.
+- Work done before a change order is accepted is billed at the original terms. Until a change order is accepted, the original order stays in force.
+- Either party may decline a proposed change. If a change can't be agreed, the original order continues, or either party may end it under its own termination terms, paying only for work already done.
+
+**Changes to a paid service.** If the author makes a change that materially reduces what a paid service does, you will be told by email at least 30 days in advance. You may then cancel and get a pro-rated refund for the unused part of your paid period.
+
+**Plan changes you make.** If you upgrade, the price difference is charged pro-rated for the rest of your current period. If you downgrade, the change takes effect at your next renewal.
+
+## 10. Changes to these terms
+
+These terms may change. The date at the top shows the latest version. If you have a paid service, material changes to these terms will be emailed to you at least 30 days before they apply. The repository's git history keeps every earlier version. If you keep using Token after a change, you accept the new terms.
+
+## 11. Governing law
 
 These terms are governed by the laws of the Province of Alberta and the federal laws of Canada that apply there. Any dispute will be heard in the courts of Alberta, unless the consumer protection law where you live gives you the right to bring it there.
 
-## 11. Contact
+## 12. Contact
 
 Questions about these terms: open an issue at https://github.com/Yunanomouse/Token/issues.
