@@ -50,6 +50,17 @@ pip install "openbb-core>=2,<3" "openbb-equity>=2,<3" "openbb-yfinance>=2,<3"
 If `pip` isn't recognized on Windows, start the line with `py -m pip install`
 instead. On Mac, use `pip3 install`.
 
+> **Want the exact versions this repo has tested?** On Python 3.12, from the
+> repo folder, run this instead. It installs pinned versions and checks every
+> download against a recorded hash:
+>
+> ```
+> pip install --require-hashes -r requirements/openbb-2.x.lock.txt
+> ```
+>
+> It needs Python 3.12 (it's verified on Linux); on other Python versions, or
+> if it fails on your computer, use the line above.
+
 > **Don't use plain `pip install openbb`.** Since version 5.0 (2026) that
 > bundle no longer includes stock prices or the free Yahoo Finance provider,
 > and the example below fails with `'App' object has no attribute 'equity'`.

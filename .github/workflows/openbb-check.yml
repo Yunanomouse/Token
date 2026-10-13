@@ -1,7 +1,10 @@
-# Weekly check that the optional OpenBB guide still works with the 2.x
-# packages it installs (latest compatible versions, a deliberate canary).
-# yfinance is unofficial and OpenBB's stewardship changed in 2026, so this
-# can break without any change in this repo.
+# Checks that the optional OpenBB guide still works with its 2.x packages.
+# - pull_request / workflow_dispatch: installs the exact, hash-verified
+#   versions in requirements/openbb-2.x.lock.txt.
+# - Weekly schedule: a deliberate canary that installs the latest compatible
+#   ">=2,<3" versions (same line as docs/openbb_setup.md), so upstream
+#   breakage is caught. yfinance is unofficial and OpenBB's stewardship
+#   changed in 2026, so this can break without any change in this repo.
 name: OpenBB quickstart check
 
 on:
@@ -12,6 +15,7 @@ on:
     paths:
       - "examples/openbb_quickstart.py"
       - "docs/openbb_setup.md"
+      - "requirements/openbb-2.x.lock.txt"
       - ".github/workflows/openbb-check.yml"
 
 # Least privilege: these jobs only read the repository.
@@ -23,16 +27,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-      - name: Install OpenBB 2.x packages (same line as docs/openbb_setup.md)
+      - name: Install locked OpenBB 2.x packages (hash-verified)
+        if: github.event_name != 'schedule'
+        run: pip install --require-hashes -r requirements/openbb-2.x.lock.txt
+      - name: Install latest compatible OpenBB 2.x packages (weekly canary)
+        if: github.event_name == 'schedule'
         run: pip install "openbb-core>=2,<3" "openbb-equity>=2,<3" "openbb-yfinance>=2,<3"
       - name: Run quickstart
-        run: python examples/openbb_quickstart.py
+        # Output is not parsed as workflow commands (::stop-commands::).
+        run: |
+          token="$(python -c 'import secrets; print(secrets.token_hex(16))')"
+          echo "::stop-commands::${token}"
+          status=0
+          python examples/openbb_quickstart.py || status=$?
+          echo "::${token}::"
+          exit "$status"
       - name: Every ticker produced a CSV with rows
         run: |
           for f in AAPL SHOP_TO BTC_USD; do
