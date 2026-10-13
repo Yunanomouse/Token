@@ -33,7 +33,7 @@ Why cut:
 - `openbb-yfinance` is AGPL-3.0-only, while `openbb-core` and `openbb-equity` are Apache-2.0 (tested 2026-10-13). Fine locally, a problem if Token is ever hosted and paid.
 - Its steward is in transition. OpenBB said on 2026-08-25 it could not find product-market fit; stewardship moved to the non-profit OpenBQ on 2026-10-01 and Workspace to FINOS ([OpenBB blog](https://openbb.co/blog/openbb-belongs-to-everyone)). Package maintenance plans: Not found.
 
-The minimal OpenBB work in the MVP (0.5 day):
+The minimal OpenBB work in the MVP (0.5 day): Done 2026-10-13: items 1 to 3 shipped (pinned to `>=2,<3`), retested with all 3 tickers fetched.
 1. Change the install line in `docs/openbb_setup.md` and the script docstring to `pip install openbb-core openbb-equity openbb-yfinance`, pinned to the 2.0.x versions that fetched AAPL (251 rows), SHOP.TO (250) and BTC-USD (365) (tested 2026-10-13).
 2. Make `examples/openbb_quickstart.py` exit non-zero and skip "Done" when every ticker fails.
 3. Label the guide "optional extra, not required for tax features" and keep OpenBB out of the core requirements, so the AGPL provider is never a dependency of the calculator.
