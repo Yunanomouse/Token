@@ -85,7 +85,7 @@ Example fund with a linkable recent Canadian fintech deal: **Conexus Venture Cap
 | Product demo | Working | Must have | Calculator works; import missing |
 | Customer references | 2 to 3 ready | Nice to have | [Beta user quote about the verified import] |
 | Cap table | Clean | Must have | [Incorporation status and share structure] |
-| LICENSE file in the repo | Chosen | Must have | Missing (`founder/pricing-strategy.md`) |
+| LICENSE file in the repo | Chosen | Must have | Done 2026-10-13: MIT |
 | IRAP advisor call notes | Done | Should have | [Not started] |
 
 ## 5. Timeline

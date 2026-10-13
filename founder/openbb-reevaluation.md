@@ -42,7 +42,7 @@ Keep OpenBB as an optional extra for price history, repaired and pinned. Drop it
 
 ## Still to do (needs the founder)
 
-1. **Add a LICENSE file.** The repo has none, so it is not legally open source yet. Pricing, landing page and go-to-market all depend on this. Note the split: whatever license Token picks, the optional OpenBB yfinance provider stays AGPL.
+1. ~~**Add a LICENSE file.**~~ Done 2026-10-13: MIT, plus Terms, Privacy, Cookie and Code of Conduct pages. The repo has none, so it is not legally open source yet. Pricing, landing page and go-to-market all depend on this. Note the split: whatever license Token picks, the optional OpenBB yfinance provider stays AGPL.
 2. **Add the `openbb` GitHub topic** to the repo (Settings, About). Zero cost; it is the only OpenBB channel go-to-market recommends.
 3. **Watch the weekly check.** GitHub turns off scheduled workflows in public repos after 60 days without activity. If it fails twice in a row, mark the guide "currently broken" in the README.
 4. **Ask interview questions Q7 to Q10 and Q16** (see [user-interviews](user-interviews.md)). If 3 or more of 8 coders used outside prices to finish their tax, OpenBB earns a role in the import, valuing open positions at December 31. If 1 or fewer did, leave it as is.

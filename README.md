@@ -63,3 +63,11 @@ Fields that could only be computed (not independently confirmed) are flagged in 
 ## Disclaimer
 
 This dataset is for information and software-development purposes only and is **not tax advice**. Tax law changes through the year via federal and provincial budgets. Verify against CRA / Revenu Québec / provincial finance departments before relying on any figure for filing or payroll.
+
+## License and policies
+
+- [MIT License](LICENSE)
+- [Terms of Service and Terms of Use](TERMS.md)
+- [Privacy Policy](PRIVACY.md): Token runs locally and collects nothing
+- [Cookie Policy and managing cookies](COOKIES.md)
+- [Community guidelines and Code of Conduct](CODE_OF_CONDUCT.md)

@@ -5,7 +5,7 @@
 Assumption: the page sells the free local tool that `founder/mvp-scope.md` defines (Questrade and IBKR import, two warnings, three-scenario table). Market data is cut from the MVP and does not appear. The year-to-date tracker is planned for week 3, so it is not promised here.
 Assumption: the paid Planner (browser upload) is not built yet. The page shows its price as a waitlist with a refundable deposit, matching experiment 1 in `founder/validate-idea.md`.
 Assumption: the dollar figures come from the repo's own Alberta worked example ($150,000 profit), as quoted in `founder/product-brief.md`.
-Assumption: the page says "public on GitHub", not "open source". The repo has no LICENSE file yet (`founder/pricing-strategy.md`). Add one before using the words "open source".
+Update 2026-10-13: the repo now has an MIT LICENSE, so the page can say "open source". Original assumption: the page says "public on GitHub", not "open source". The repo had no LICENSE file yet (`founder/pricing-strategy.md`). Add one before using the words "open source".
 
 ## 1. Hero
 
