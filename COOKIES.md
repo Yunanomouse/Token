@@ -27,7 +27,7 @@ Blocking all cookies can stop some sites, including GitHub sign-in, from working
 
 ## If Token ever has a website
 
-If a landing page, waitlist or hosted planner launches, it will start with no non-essential cookies. If analytics or marketing cookies are added later, the site will ask for your consent first and include a "Manage cookies" link, and this page will list each cookie, its purpose and how long it lasts.
+If a landing page, waitlist or hosted planner launches, it will start with no non-essential cookies, and session replay stays off for every visitor ([Privacy Policy, section 2](PRIVACY.md#2-session-replay-is-off-for-everyone)). If analytics or marketing cookies are added later, the site will ask for your consent first and include a "Manage cookies" link, and this page will list each cookie, its purpose and how long it lasts.
 
 ## Contact
 

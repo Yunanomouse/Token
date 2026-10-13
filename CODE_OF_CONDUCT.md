@@ -38,6 +38,7 @@ The maintainer may edit or remove comments, close issues, or block people who br
 - Open an issue before a large change.
 - Keep pull requests focused.
 - For tax data changes, include the source link and the date you checked it.
+- Don't add analytics, tracking or session replay code. The `No session replay` CI check blocks it ([Privacy Policy](PRIVACY.md)).
 - Contributions are licensed under the [MIT License](LICENSE), and use of the project is covered by the [Terms](TERMS.md).
 
 ## Attribution

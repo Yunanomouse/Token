@@ -19,7 +19,7 @@ Token produces estimates for information and software development only.
 
 ## 3. How Token works
 
-- Token runs on your own computer. It does not send your files, trades or results to the author. See the [Privacy Policy](PRIVACY.md).
+- Token runs on your own computer. It does not send your files, trades or results to the author, and it never records your session (session replay is off for every user). See the [Privacy Policy](PRIVACY.md).
 - The optional OpenBB guide and script download market prices from third-party providers (by default Yahoo Finance through the `openbb-yfinance` package). Those providers have their own terms, data limits and licenses. For example, the `openbb-yfinance` provider is licensed AGPL-3.0, and Yahoo Finance data is generally for personal use. You are responsible for following them.
 - Market data from free providers can be delayed, missing or wrong. Don't use it as the sole basis for a trade or a tax figure.
 
