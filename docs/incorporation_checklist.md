@@ -5,6 +5,11 @@ Sequence for moving from a personal cash trading account to a corporate account.
 Companion to `docs/trader_taxation.md` (why/whether to do this) and `examples/trader_scenario_comparison.py` (the numbers).
 
 > **Not legal or tax advice.** Steps 0 and 4 in particular are worth professional help.
+> This is general information only. Have a lawyer review any incorporation
+> documents and a CPA confirm the tax treatment. Questrade is used as an example
+> because it offers corporate accounts; any CIRO-member broker that does works
+> the same way. Token has no affiliate, referral or paid relationship with
+> Questrade or any broker. The author is not a lawyer, CPA or registered adviser.
 
 ## Step 0 — Confirm it's worth it
 

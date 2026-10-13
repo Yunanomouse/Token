@@ -12,7 +12,8 @@ Token's code and files are released under the [MIT License](LICENSE). Nothing in
 
 Token produces estimates for information and software development only.
 
-- Nothing in Token is tax, legal, accounting, financial or investment advice. Using Token does not create a professional or client relationship with anyone.
+- Nothing in Token is tax, legal, accounting, financial or investment advice, or a recommendation to buy or sell any security. Using Token does not create a professional or client relationship with anyone.
+- The author is not a registered adviser or dealer, a CPA, or a lawyer, and does not claim to be one. Token does not provide trading signals, model portfolios, stock picks, or advice tailored to you. It does not prepare or file tax returns, or prepare legal documents, for anyone.
 - Tax rules change through the year. Token's 2026 figures were collected from secondary sources (see the [README](README.md#data-provenance)) and may be incomplete, out of date or wrong.
 - Whether your trading is business income or capital gains, whether you should incorporate, and how much RRSP room you have all depend on your own facts. Confirm them with a qualified professional, such as a Canadian CPA, and with the Canada Revenue Agency or Revenu Québec before you file, pay, trade or restructure.
 - You alone decide what to do with Token's output, and you are responsible for your filings, payments, instalments and trades.

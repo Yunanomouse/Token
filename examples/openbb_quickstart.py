@@ -24,8 +24,9 @@ from pathlib import Path
 
 from openbb import obb
 
-# Tickers to fetch. Yahoo symbols: US listings are plain ("AAPL"),
-# TSX listings end in .TO ("SHOP.TO"), crypto pairs like "BTC-USD".
+# Tickers to fetch. These show Yahoo's symbol formats only; they are not
+# recommendations or picks. US listings are plain ("AAPL"), TSX listings end
+# in .TO ("SHOP.TO"), crypto pairs look like "BTC-USD". Replace them with your own.
 # Keep the list short: Yahoo rate-limits automated requests.
 TICKERS = ["AAPL", "SHOP.TO", "BTC-USD"]
 
@@ -42,7 +43,7 @@ NOTICE = (
     "Data: Yahoo Finance via yfinance (unofficial, not affiliated with or\n"
     "endorsed by Yahoo or OpenBB). Personal, non-commercial use only. Don't\n"
     "share, publish or sell it. Prices may be delayed or wrong. Not financial,\n"
-    "investment or tax advice."
+    "investment or tax advice, and not a recommendation to buy or sell anything."
 )
 
 

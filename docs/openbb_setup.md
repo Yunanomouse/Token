@@ -150,7 +150,17 @@ committed to this repository.
 
 Prices may be delayed, adjusted, incomplete or wrong. Nothing in this guide,
 the script, or its output is financial, investment, tax or legal advice, or a
-recommendation to buy or sell anything. Token's [Terms](../TERMS.md) apply.
+recommendation to buy or sell anything. The tickers in the examples (AAPL,
+SHOP.TO, BTC-USD) only show Yahoo's symbol formats; they are not picks.
+Token's author is not a registered adviser, CPA or lawyer, and this guide
+does not provide signals, watchlists, model portfolios or performance claims.
+Token's [Terms](../TERMS.md) apply.
+
+### No affiliation or payment
+
+Token and its author have no affiliate, referral or paid relationship with
+OpenBB, OpenBQ, Yahoo, any exchange, or any broker, and receive nothing if you
+use them. If that ever changes, it will be disclosed here, next to the link.
 
 ### Package licenses
 

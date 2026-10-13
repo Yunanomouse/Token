@@ -71,3 +71,6 @@ This dataset is for information and software-development purposes only and is **
 - [Privacy Policy](PRIVACY.md): Token runs locally and collects nothing
 - [Cookie Policy and managing cookies](COOKIES.md)
 - [Community guidelines and Code of Conduct](CODE_OF_CONDUCT.md)
+- [Compliance checklist](COMPLIANCE.md): legal steps for running Token as a business from Alberta
+
+The author is not a registered adviser, CPA or lawyer. Nothing here is a recommendation to buy or sell any security.
