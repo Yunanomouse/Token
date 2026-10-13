@@ -1,5 +1,16 @@
 # Running OpenBB on Your Own Computer
 
+> **Optional extra.** Nothing else in this repo needs OpenBB; the tax data and
+> calculators run on plain Python. Use this if you want free price history
+> alongside them.
+>
+> **Status (checked 2026-10-13):** OpenBB the company announced on 2026-08-25
+> that it is open-sourcing its whole suite and stepping back; a non-profit,
+> OpenBQ, now stewards the code
+> ([announcement](https://openbb.co/blog/openbb-belongs-to-everyone)). The
+> packages below still install and work, but future maintenance is unclear,
+> so the versions are pinned.
+
 OpenBB is a free, open-source financial data platform. It can pull stock
 prices, options, economic data, and more — right from Python. This guide gets
 it running locally in about 10 minutes, no accounts or API keys required for
@@ -24,15 +35,19 @@ Open a terminal:
 - **Windows:** press the Windows key, type `cmd`, press Enter.
 - **Mac:** open the Terminal app.
 
-Then paste this and press Enter (it downloads a few hundred MB, so give it a
+Then paste this and press Enter (it downloads several hundred MB, so give it a
 few minutes):
 
 ```
-pip install openbb
+pip install "openbb-core>=2,<3" "openbb-equity>=2,<3" "openbb-yfinance>=2,<3"
 ```
 
-If `pip` isn't recognized on Windows, try `py -m pip install openbb`.
-On Mac, try `pip3 install openbb`.
+If `pip` isn't recognized on Windows, start the line with `py -m pip install`
+instead. On Mac, use `pip3 install`.
+
+> **Don't use plain `pip install openbb`.** Since version 5.0 (2026) that
+> bundle no longer includes stock prices or the free Yahoo Finance provider,
+> and the example below fails with `'App' object has no attribute 'equity'`.
 
 ## 3. Try it
 
@@ -67,14 +82,15 @@ Edit the `TICKERS` list at the top of the script to track your own symbols.
 
 ## 5. Optional: the interactive OpenBB terminal
 
-If you'd rather type commands in a menu-driven terminal instead of Python:
+If you'd rather type commands than write Python:
 
 ```
-pip install openbb-cli
-openbb
+pip install "openbb-cli>=2,<3"
+openbb equity.price.historical --symbol AAPL --provider yfinance
 ```
 
-That opens the OpenBB command line — try `/equity/price/historical --symbol AAPL`.
+That prints the prices as JSON. Run `openbb -i` for an interactive prompt
+with tab completion.
 
 ## Free data, no keys needed
 
@@ -88,9 +104,18 @@ want those.
 
 - **"pip is not recognized"** — Python wasn't added to PATH. Re-run the
   installer, choose "Modify", and enable "Add to PATH" (or use `py -m pip`).
+- **`'App' object has no attribute 'equity'`** — you installed the plain
+  `openbb` bundle. Run the install line from step 2.
 - **"No module named openbb"** — you may have multiple Pythons installed.
   Use the same command for installing and running (`python -m pip install
   openbb`, then `python`).
 - **Empty results / download errors** — usually a network hiccup or an
   invalid ticker; try again or double-check the symbol on
-  https://finance.yahoo.com.
+  https://finance.yahoo.com. The Yahoo provider is unofficial and can be
+  rate-limited or break without notice.
+
+## License note
+
+`openbb-core` and `openbb-equity` are Apache-2.0. The `openbb-yfinance`
+provider is AGPL-3.0, which is fine for personal use but matters if you ever
+host or sell a modified version of a tool that bundles it.

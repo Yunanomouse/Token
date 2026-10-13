@@ -10,3 +10,4 @@ One fact per line, with the date recorded and the skill that recorded it. Facts 
 - 2026-10-13 · product-brief · repo: The worked trader profiles in the tax guide use Alberta.
 - 2026-10-13 · product-brief · repo: Tax data was collected 2026-08-18 from tax-reference publishers and cross-verified; it is labeled "not tax advice".
 - 2026-10-13 · product-brief · repo: The OpenBB guide and script were added 2026-08-18 (PR #1).
+- 2026-10-13 · mvp-scope · Correction to the OpenBB fact above: tested 2026-10-13, the quickstart fails under the current `pip install openbb` (5.0.0), which no longer bundles the equity router or the yfinance provider. It works with `pip install openbb-core openbb-equity openbb-yfinance` (2.0.x).
