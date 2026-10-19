@@ -21,6 +21,24 @@ Every number recalculates the moment you change a price or an amount. Recipe car
 
 > Data is stored per browser and per device. Chrome and Safari on the same computer do not share it, and neither does your phone. Use **File & settings → Export backup** and **Load a backup** to move a workbook between them.
 
+## Windows desktop app
+
+`desktop/` wraps the same page in a Windows program (Electron) that never touches the internet:
+
+- The workbook is a real file, `Documents\Food Cost\workbook.json`, written on every change; a dated copy goes to `Documents\Food Cost\backups` once a day (60 kept).
+- All network requests are blocked; only the app's own files load.
+- The installer is per-user (no admin rights), adds desktop and Start menu shortcuts, and uninstalling leaves the workbook alone.
+
+Build the installer (on Linux or Windows, with Node, NSIS `makensis`, and the npm packages `electron-builder` and `resedit`):
+
+```bash
+python3 build.py                       # refresh index.html
+cd desktop
+node make-icons.js                     # only if icon.svg changed (needs Playwright)
+node build-win.js --seed my-backup.json  # optional: starting workbook for first run
+# -> dist/Food Cost Setup <version>.exe
+```
+
 ## Backups
 
 Open **File & settings**:

@@ -690,7 +690,8 @@
   var sv = lsGet("fc-view"); showView(sv && $("view-" + sv) ? sv : "menu");
   var db = LocalDB.open();
   if (!db) { S.canWrite = false; setStatus("No storage"); notice("This browser is blocking storage (private window or site data turned off), so nothing can be saved. Open the app in a normal window.", true); return; }
-  S.db = db; setStatus("Saved on this device");
+  S.db = db; setStatus(LocalDB.native ? "Saved to this computer" : "Saved on this device");
+  if (LocalDB.native) { var info = $("s-where"); if (info) info.textContent = "Everything saves automatically to a file on this computer, and a dated copy is kept every day in the backups folder (" + window.fcNative.dataDir() + "). Export a backup now and then to a USB stick or email as well, in case the computer itself fails."; }
   function onErr() { setStatus("Storage error. Reload the page."); }
   (function () {
     db.collection("ingredients").onSnapshot(function (snap) {

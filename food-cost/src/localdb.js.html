@@ -4,18 +4,20 @@
 var LocalDB = (function () {
   "use strict";
   var KEY = "foodcost-workbook-v1", COLLS = ["ingredients", "items"];
+  // in the Windows/desktop app the workbook is a real file on disk, written by the app itself
+  var NATIVE = window.fcNative || null;
   var state = null, listeners = {}, docListeners = {};
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
   function blank() { return { app: "food-cost", version: 1, ingredients: {}, items: {}, settings: { target: 32 } }; }
   function read() {
-    var raw = localStorage.getItem(KEY); if (!raw) return blank();
+    var raw = NATIVE ? NATIVE.load() : localStorage.getItem(KEY); if (!raw) return blank();
     var d = JSON.parse(raw), b = blank();
     COLLS.forEach(function (c) { b[c] = d[c] && typeof d[c] === "object" ? d[c] : {}; });
     b.settings = d.settings && typeof d.settings === "object" ? d.settings : b.settings;
     return b;
   }
   function persist() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); return Promise.resolve(); }
+    try { if (NATIVE) NATIVE.save(JSON.stringify(state)); else localStorage.setItem(KEY, JSON.stringify(state)); return Promise.resolve(); }
     catch (e) { return Promise.reject({ code: "quota", message: String(e) }); }
   }
   function snapColl(c) { return { docs: Object.keys(state[c]).sort().map(function (id) { return { id: id, exists: true, data: function () { return clone(state[c][id]); } }; }) }; }
@@ -54,8 +56,9 @@ var LocalDB = (function () {
   window.addEventListener("storage", function (e) { if (e.key === KEY && state) { try { state = read(); emitAll(); } catch (err) {} } });
   function valid(d) { return d && typeof d === "object" && (d.app === "food-cost" || d.ingredients || d.items) && (!d.ingredients || typeof d.ingredients === "object") && (!d.items || typeof d.items === "object"); }
   return {
+    native: !!NATIVE,
     open: function () {
-      try { var t = "__fc_test"; localStorage.setItem(t, "1"); localStorage.removeItem(t); state = read(); return db; }
+      try { if (!NATIVE) { var t = "__fc_test"; localStorage.setItem(t, "1"); localStorage.removeItem(t); } state = read(); return db; }
       catch (e) { return null; }
     },
     dump: function () { return Object.assign({ app: "food-cost", version: 1, exported: new Date().toISOString() }, clone({ ingredients: state.ingredients, items: state.items, settings: state.settings })); },
@@ -65,7 +68,7 @@ var LocalDB = (function () {
       var prev = state; state = blank();
       COLLS.forEach(function (c) { state[c] = clone(d[c] || {}); });
       state.settings = Object.assign({ target: 32 }, clone(d.settings || {}));
-      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { state = prev; throw new Error("This browser's storage is full."); }
+      try { if (NATIVE) NATIVE.save(JSON.stringify(state)); else localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { state = prev; throw new Error(NATIVE ? "Could not write the workbook file." : "This browser's storage is full."); }
       emitAll();
     }
   };
