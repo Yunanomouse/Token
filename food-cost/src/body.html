@@ -1,0 +1,143 @@
+#printcards { display: none; }
+@media print {
+  body { background: #fff; color: #000; padding: 0; }
+  .titlebar, nav.tabs, .wrap, .statusbar, .toast { display: none !important; }
+  #printcards { display: block; font-family: Arial, sans-serif; }
+  .card { page-break-after: always; break-after: page; padding: 8px 0; }
+  .card .ch { display: flex; justify-content: space-between; border-bottom: 2px solid #1b3a5c; padding-bottom: 4px; margin-bottom: 8px; }
+  .card .cb { font-weight: 800; font-size: 18px; letter-spacing: .04em; }
+  .card .cs { font-size: 12px; color: #555; align-self: end; }
+  .card h2 { font-size: 20px; margin: 4px 0; }
+  .card p { font-size: 12px; margin: 4px 0 10px; }
+  .card table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .card th, .card td { border: 1px solid #999; padding: 6px 8px; text-align: left; color: #000; background: #fff; position: static; }
+  .card th { background: #eee; }
+  .card .n { text-align: right; }
+  .card .chk { width: 34px; }
+  .card .foot { margin-top: 14px; font-size: 12px; }
+}
+</style>
+</head>
+<body>
+
+<header class="titlebar">
+  <span class="logo" id="t-logo" aria-hidden="true">F</span>
+  <span class="name" id="t-name">Food Cost</span>
+  <span class="doc">Menu costing workbook</span>
+  <span class="status" id="status">Loading…</span>
+  <button class="tbtn" id="t-file" type="button">File &amp; settings</button>
+</header>
+<nav class="tabs" role="tablist" aria-label="Sheets">
+  <button role="tab" id="tab-menu" aria-selected="true" data-view="menu">Menu costing</button>
+  <button role="tab" id="tab-prep" aria-selected="false" data-view="prep">Prep recipes</button>
+  <button role="tab" id="tab-ing" aria-selected="false" data-view="ing">Ingredients</button>
+  <button role="tab" id="tab-plan" aria-selected="false" data-view="plan">Order planner</button>
+</nav>
+
+<div class="wrap">
+  <div id="notices"></div>
+
+  <section class="view" id="view-menu" role="tabpanel" aria-labelledby="tab-menu">
+    <div class="cmdbar">
+      <button class="btn primary" id="m-new" type="button">New menu item</button>
+      <span class="sep"></span>
+      <button class="btn" id="m-print" type="button">Print all recipe cards</button>
+      <span class="grow"></span>
+      <label class="row muted">Target food cost <input type="number" id="target" min="1" max="100" step="1" style="width:60px"> %</label>
+    </div>
+    <div class="split" id="m-split">
+      <div class="tablewrap" id="m-list"></div>
+      <div class="panel" id="editor"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-prep" role="tabpanel" aria-labelledby="tab-prep" hidden>
+    <div class="cmdbar">
+      <button class="btn primary" id="m-newprep" type="button">New prep recipe</button>
+      <span class="sep"></span>
+      <button class="btn" id="r-print" type="button">Print prep cards</button>
+      <span class="grow"></span>
+      <span class="hint">Sauces, doughs, seasonings and dressings. Each batch gets its own cost per kg or L, cost per portion and, if you sell it, a price and food cost %.</span>
+    </div>
+    <div class="split" id="r-split">
+      <div class="tablewrap" id="r-list"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-ing" role="tabpanel" aria-labelledby="tab-ing" hidden>
+    <div class="cmdbar">
+      <button class="btn primary" id="i-new" type="button">New ingredient</button>
+      <span class="sep"></span>
+      <input type="text" id="i-search" placeholder="Search ingredients" aria-label="Search ingredients" style="width:220px">
+      <span class="grow"></span>
+      <span class="hint">Unit, pack size and unit price come straight off your invoice. Usable % is what's left after trimming or cooking (sirloin 90, fries 50, rice 290).</span>
+    </div>
+    <div class="tablewrap" id="i-table"></div>
+  </section>
+
+  <section class="view" id="view-plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
+    <div class="cmdbar">
+      <label class="row muted">Menu item <select id="p-item" style="min-width:240px"></select></label>
+      <span class="sep"></span>
+      <label class="row muted">Guests or orders <input type="number" id="p-n" min="1" step="1" value="20" style="width:80px"></label>
+      <span class="grow"></span>
+      <span class="hint">How much to buy, before trimming, and what you'll make.</span>
+    </div>
+    <div id="p-out"></div>
+  </section>
+</div>
+<dialog id="ing-dlg" aria-labelledby="d-title">
+  <form id="d-form" method="dialog">
+    <div class="dlghead" id="d-title">New ingredient</div>
+    <div class="dlgbody">
+      <p class="hint">Fill it in the way your invoice reads. Only the description is required.</p>
+      <div class="dlgrow">
+        <label>Item code<input type="text" id="d-code" autocomplete="off" placeholder="1259558"></label>
+        <label>Brand<input type="text" id="d-brand" autocomplete="off"></label>
+      </div>
+      <label>Description (ingredient name)<input type="text" id="d-name" required autocomplete="off" placeholder="e.g. Halloumi cheese"></label>
+      <div class="hint" id="d-msg" aria-live="polite"></div>
+      <label>Supplier<input type="text" id="d-sup" list="d-suppliers" autocomplete="off" placeholder="GFS"></label>
+      <div class="dlgrow">
+        <label>Unit<select id="d-buy"></select></label>
+        <label>Pack size<input type="text" id="d-pack" autocomplete="off" placeholder="6X160 G" style="text-transform:uppercase"></label>
+        <label>Unit price ($)<input type="number" id="d-price" min="0" step="0.01" placeholder="35.04"></label>
+      </div>
+      <div class="hint" id="d-preview" aria-live="polite"></div>
+      <div class="dlgrow">
+        <label>Cat<select id="d-cat"></select></label>
+        <label>Usable %<input type="number" id="d-yield" min="1" step="1" value="100"></label>
+      </div>
+      <p class="hint">Pack size units: UN, DZ, G, KG, LB, OZ, L, ML. Examples: 1X20 UN · 6X160 G · 1X15 DZ · 1X50 LB · 36X10 OZ · 2X3.7 L · 24X300 ML.</p>
+    </div>
+    <div class="dlgfoot"><button class="btn" type="button" id="d-cancel">Cancel</button><button class="btn primary" type="submit">Add ingredient</button></div>
+  </form>
+  <datalist id="d-suppliers"></datalist>
+</dialog>
+<dialog id="file-dlg" aria-labelledby="f-title">
+  <div class="dlghead" id="f-title">File &amp; settings</div>
+  <div class="dlgbody">
+    <p class="hint">Everything is saved automatically in this browser on this device. Nothing is sent anywhere. Export a backup regularly and keep it somewhere safe (USB stick, email, cloud drive). That backup is also how you move your workbook to another computer.</p>
+    <p class="hint" id="s-backup"></p>
+    <div class="dlgrow">
+      <button class="btn primary" id="f-backup" type="button">Export backup</button>
+      <button class="btn" id="f-restore" type="button">Load a backup…</button>
+    </div>
+    <div class="dlgrow">
+      <button class="btn" id="f-menu" type="button">Menu costs (CSV)</button>
+      <button class="btn" id="f-ing" type="button">Ingredients (CSV)</button>
+    </div>
+    <input type="file" id="f-file" accept=".json,application/json" hidden>
+    <form id="s-form" class="dlgbody" style="padding:0">
+      <h3>Settings</h3>
+      <label>Business name (shown on the title bar and recipe cards)<input type="text" id="s-name" autocomplete="organization"></label>
+      <label>Target food cost %<input type="number" id="s-target" min="1" max="100" step="1"></label>
+      <label>Menu sections, one per line<textarea id="s-sections" rows="6"></textarea></label>
+      <div class="dlgrow"><button class="btn primary" type="submit">Save settings</button></div>
+    </form>
+    <div class="dlgrow"><button class="btn danger" id="f-erase" type="button">Erase workbook…</button></div>
+  </div>
+  <div class="dlgfoot"><button class="btn" type="button" id="f-close">Close</button></div>
+</dialog>
+<footer class="statusbar" id="sumbar" aria-live="polite"></footer>
+<div id="printcards" aria-hidden="true"></div>
