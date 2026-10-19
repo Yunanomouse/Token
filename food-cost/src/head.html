@@ -123,6 +123,8 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .dlgrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
 .dlgfoot { display: flex; justify-content: flex-end; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface2); }
 [hidden] { display: none !important; }
+.method { display: grid; gap: 4px; }
+.method textarea { min-height: 120px; resize: vertical; line-height: 1.45; }
 .tbtn { background: transparent; color: var(--title-ink); border: 1px solid rgba(255,255,255,.45); border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 .tbtn:hover { background: rgba(255,255,255,.12); }
 .titlebar .status { margin-left: auto; }

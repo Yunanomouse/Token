@@ -49,7 +49,7 @@
   function toast(msg) { var t = document.querySelector(".toast"); if (t) t.remove(); t = el("div", { class: "toast", role: "status", text: msg }); document.body.appendChild(t); clearTimeout(toastT); toastT = setTimeout(function () { t.remove(); }, 2200); }
   function setStatus(m) { $("status").textContent = m; }
   function notice(msg, bad) { $("notices").replaceChildren(msg ? el("div", { class: "notice" + (bad ? " bad" : ""), text: msg }) : document.createTextNode("")); }
-  function editingNow(c) { var a = document.activeElement; return a && c.contains(a) && (a.tagName === "INPUT" || a.tagName === "SELECT"); }
+  function editingNow(c) { var a = document.activeElement; return a && c.contains(a) && (a.tagName === "INPUT" || a.tagName === "SELECT" || a.tagName === "TEXTAREA"); }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function target() { return num(S.settings.target, 32); }
@@ -438,11 +438,13 @@
         el("button", { class: "btn", type: "button", text: "Add ingredient", onclick: function () { d.lines = d.lines || []; d.lines.push({ kind: "ing", ing: "", qty: "", unit: "g" }); changed(); renderEditor(); } }),
         el("button", { class: "btn", type: "button", text: "Add extra cost", onclick: function () { d.lines = d.lines || []; d.lines.push({ kind: "other", label: "", amount: "" }); changed(); renderEditor(); } })
       ]),
+      el("label", { class: "method" }, [el("h3", { text: "Method" }), el("textarea", { rows: "7", placeholder: "One step per line. Prints on the recipe card.", oninput: function (e) { d.method = e.target.value; saveSoon("item", flushItem); S.dirty = true; } }, [d.method || ""])]),
       el("div", { class: "row" }, [del])
     ].filter(Boolean));
     renderTotals();
   }
   // ---------- recipe cards (print) ----------
+  function steps(m) { return String(m || "").split(/\n+/).map(function (s) { return s.trim().replace(/^\d+[.)]\s*/, ""); }).filter(Boolean); }
   function printCards(list) {
     var t = target(), cards = list.map(function (it) {
       var c = itemCalc(it), prep = isPrep(it);
@@ -457,6 +459,8 @@
         el("div", { class: "ch" }, [el("span", { class: "cb", text: (bizName() || "Recipe card").toUpperCase() }), el("span", { class: "cs", text: it.section || "" })]),
         el("h2", { text: it.name || "Unnamed" }), el("p", { text: sum }),
         el("table", null, [el("thead", null, [el("tr", null, [el("th", { text: prep ? "Ingredient (one batch)" : "Ingredient (one serving)" }), el("th", { class: "n", text: "Amount" }), el("th", { class: "n", text: "Weigh" }), el("th", { class: "n", text: "Cost" }), el("th", { class: "chk", text: "✓" })])]), el("tbody", null, rows)]),
+        steps(it.method).length ? el("h3", { class: "msteps", text: "Method" }) : null,
+        steps(it.method).length ? el("ol", { class: "msteps" }, steps(it.method).map(function (s) { return el("li", { text: s }); })) : null,
         el("p", { class: "foot", text: "Weighed by ________   Date ________   Actual weight ________" })
       ]);
     });
@@ -657,6 +661,22 @@
     };
     r.readAsText(file);
   }
+  // add or update recipes and ingredients from a file, keeping everything else
+  function importRecipes(file) {
+    var r = new FileReader();
+    r.onload = function () {
+      var data; try { data = JSON.parse(r.result); } catch (e) { toast("That file isn't a recipe file."); return; }
+      var n = LocalDB.count(data); if (n < 0 || n.ingredients + n.items === 0) { toast("That file has no recipes or ingredients in it."); return; }
+      var names = Object.keys(data.items || {}).map(function (k) { return (S.items[k] ? "update " : "add ") + (data.items[k].name || k); })
+        .concat(Object.keys(data.ingredients || {}).map(function (k) { return (S.ing[k] ? "update ingredient " : "add ingredient ") + (data.ingredients[k].name || (S.ing[k] && S.ing[k].name) || k); }));
+      if (!confirm("Add to this workbook:\n\n• " + names.join("\n• ") + "\n\nNothing else changes.")) return;
+      if (S.sel && S.dirty) flushItem();
+      clearTimeout(timers.item); var keep = S.sel; S.sel = null; S.draft = null; S.dirty = false;
+      try { LocalDB.merge(data); toast("Added " + names.length + (names.length === 1 ? " change" : " changes")); $("file-dlg").close(); if (keep) lsSet("fc-sel", keep); }
+      catch (e) { notice("Could not add from that file: " + (e && e.message || e), true); }
+    };
+    r.readAsText(file);
+  }
   function initFile() {
     $("t-file").addEventListener("click", function () {
       $("s-name").value = S.settings.name || ""; $("s-target").value = target();
@@ -671,6 +691,8 @@
     $("f-ing").addEventListener("click", exportIngCsv);
     $("f-restore").addEventListener("click", function () { $("f-file").click(); });
     $("f-file").addEventListener("change", function () { var f = $("f-file").files[0]; $("f-file").value = ""; if (f) importBackup(f); });
+    $("f-add").addEventListener("click", function () { $("f-addfile").click(); });
+    $("f-addfile").addEventListener("change", function () { var f = $("f-addfile").files[0]; $("f-addfile").value = ""; if (f) importRecipes(f); });
     $("f-erase").addEventListener("click", function () {
       if (!confirm("Erase every ingredient, menu item and prep recipe in this workbook? This can't be undone unless you have a backup.")) return;
       clearTimeout(timers.item); S.sel = null; S.draft = null; S.dirty = false; LocalDB.load({ app: "food-cost", version: 1, ingredients: {}, items: {}, settings: { target: target(), name: S.settings.name || "", sections: S.settings.sections } });

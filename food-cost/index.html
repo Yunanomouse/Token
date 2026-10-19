@@ -123,6 +123,8 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .dlgrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
 .dlgfoot { display: flex; justify-content: flex-end; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface2); }
 [hidden] { display: none !important; }
+.method { display: grid; gap: 4px; }
+.method textarea { min-height: 120px; resize: vertical; line-height: 1.45; }
 .tbtn { background: transparent; color: var(--title-ink); border: 1px solid rgba(255,255,255,.45); border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 .tbtn:hover { background: rgba(255,255,255,.12); }
 .titlebar .status { margin-left: auto; }
@@ -146,6 +148,9 @@ textarea { font: inherit; color: var(--ink); background: var(--surface); border:
   .card .n { text-align: right; }
   .card .chk { width: 34px; }
   .card .foot { margin-top: 14px; font-size: 12px; }
+  .card h3.msteps { margin: 14px 0 4px; font-size: 14px; }
+  .card ol.msteps { margin: 0; padding-left: 22px; font-size: 13px; line-height: 1.45; }
+  .card ol.msteps li { margin-bottom: 4px; }
 }
 </style>
 </head>
@@ -255,6 +260,10 @@ textarea { font: inherit; color: var(--ink); background: var(--surface); border:
       <button class="btn" id="f-restore" type="button">Load a backup…</button>
     </div>
     <div class="dlgrow">
+      <button class="btn" id="f-add" type="button">Add recipes from a file…</button>
+    </div>
+    <input type="file" id="f-addfile" accept=".json,application/json" hidden>
+    <div class="dlgrow">
       <button class="btn" id="f-menu" type="button">Menu costs (CSV)</button>
       <button class="btn" id="f-ing" type="button">Ingredients (CSV)</button>
     </div>
@@ -337,6 +346,14 @@ var LocalDB = (function () {
     },
     dump: function () { return Object.assign({ app: "food-cost", version: 1, exported: new Date().toISOString() }, clone({ ingredients: state.ingredients, items: state.items, settings: state.settings })); },
     count: function (d) { return valid(d) ? { ingredients: Object.keys(d.ingredients || {}).length, items: Object.keys(d.items || {}).length } : -1; },
+    // fields in the file win; anything not in the file is left alone
+    merge: function (d) {
+      if (!valid(d)) throw new Error("Not a Food Cost file");
+      var prev = JSON.stringify(state);
+      COLLS.forEach(function (c) { Object.keys(d[c] || {}).forEach(function (id) { state[c][id] = Object.assign({}, state[c][id] || {}, clone(d[c][id])); }); });
+      try { if (NATIVE) NATIVE.save(JSON.stringify(state)); else localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { state = JSON.parse(prev); throw new Error(NATIVE ? "Could not write the workbook file." : "This browser's storage is full."); }
+      emitAll();
+    },
     load: function (d) {
       if (!valid(d)) throw new Error("Not a Food Cost backup");
       var prev = state; state = blank();
@@ -399,7 +416,7 @@ var LocalDB = (function () {
   function toast(msg) { var t = document.querySelector(".toast"); if (t) t.remove(); t = el("div", { class: "toast", role: "status", text: msg }); document.body.appendChild(t); clearTimeout(toastT); toastT = setTimeout(function () { t.remove(); }, 2200); }
   function setStatus(m) { $("status").textContent = m; }
   function notice(msg, bad) { $("notices").replaceChildren(msg ? el("div", { class: "notice" + (bad ? " bad" : ""), text: msg }) : document.createTextNode("")); }
-  function editingNow(c) { var a = document.activeElement; return a && c.contains(a) && (a.tagName === "INPUT" || a.tagName === "SELECT"); }
+  function editingNow(c) { var a = document.activeElement; return a && c.contains(a) && (a.tagName === "INPUT" || a.tagName === "SELECT" || a.tagName === "TEXTAREA"); }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function target() { return num(S.settings.target, 32); }
@@ -788,11 +805,13 @@ var LocalDB = (function () {
         el("button", { class: "btn", type: "button", text: "Add ingredient", onclick: function () { d.lines = d.lines || []; d.lines.push({ kind: "ing", ing: "", qty: "", unit: "g" }); changed(); renderEditor(); } }),
         el("button", { class: "btn", type: "button", text: "Add extra cost", onclick: function () { d.lines = d.lines || []; d.lines.push({ kind: "other", label: "", amount: "" }); changed(); renderEditor(); } })
       ]),
+      el("label", { class: "method" }, [el("h3", { text: "Method" }), el("textarea", { rows: "7", placeholder: "One step per line. Prints on the recipe card.", oninput: function (e) { d.method = e.target.value; saveSoon("item", flushItem); S.dirty = true; } }, [d.method || ""])]),
       el("div", { class: "row" }, [del])
     ].filter(Boolean));
     renderTotals();
   }
   // ---------- recipe cards (print) ----------
+  function steps(m) { return String(m || "").split(/\n+/).map(function (s) { return s.trim().replace(/^\d+[.)]\s*/, ""); }).filter(Boolean); }
   function printCards(list) {
     var t = target(), cards = list.map(function (it) {
       var c = itemCalc(it), prep = isPrep(it);
@@ -807,6 +826,8 @@ var LocalDB = (function () {
         el("div", { class: "ch" }, [el("span", { class: "cb", text: (bizName() || "Recipe card").toUpperCase() }), el("span", { class: "cs", text: it.section || "" })]),
         el("h2", { text: it.name || "Unnamed" }), el("p", { text: sum }),
         el("table", null, [el("thead", null, [el("tr", null, [el("th", { text: prep ? "Ingredient (one batch)" : "Ingredient (one serving)" }), el("th", { class: "n", text: "Amount" }), el("th", { class: "n", text: "Weigh" }), el("th", { class: "n", text: "Cost" }), el("th", { class: "chk", text: "✓" })])]), el("tbody", null, rows)]),
+        steps(it.method).length ? el("h3", { class: "msteps", text: "Method" }) : null,
+        steps(it.method).length ? el("ol", { class: "msteps" }, steps(it.method).map(function (s) { return el("li", { text: s }); })) : null,
         el("p", { class: "foot", text: "Weighed by ________   Date ________   Actual weight ________" })
       ]);
     });
@@ -1007,6 +1028,22 @@ var LocalDB = (function () {
     };
     r.readAsText(file);
   }
+  // add or update recipes and ingredients from a file, keeping everything else
+  function importRecipes(file) {
+    var r = new FileReader();
+    r.onload = function () {
+      var data; try { data = JSON.parse(r.result); } catch (e) { toast("That file isn't a recipe file."); return; }
+      var n = LocalDB.count(data); if (n < 0 || n.ingredients + n.items === 0) { toast("That file has no recipes or ingredients in it."); return; }
+      var names = Object.keys(data.items || {}).map(function (k) { return (S.items[k] ? "update " : "add ") + (data.items[k].name || k); })
+        .concat(Object.keys(data.ingredients || {}).map(function (k) { return (S.ing[k] ? "update ingredient " : "add ingredient ") + (data.ingredients[k].name || (S.ing[k] && S.ing[k].name) || k); }));
+      if (!confirm("Add to this workbook:\n\n• " + names.join("\n• ") + "\n\nNothing else changes.")) return;
+      if (S.sel && S.dirty) flushItem();
+      clearTimeout(timers.item); var keep = S.sel; S.sel = null; S.draft = null; S.dirty = false;
+      try { LocalDB.merge(data); toast("Added " + names.length + (names.length === 1 ? " change" : " changes")); $("file-dlg").close(); if (keep) lsSet("fc-sel", keep); }
+      catch (e) { notice("Could not add from that file: " + (e && e.message || e), true); }
+    };
+    r.readAsText(file);
+  }
   function initFile() {
     $("t-file").addEventListener("click", function () {
       $("s-name").value = S.settings.name || ""; $("s-target").value = target();
@@ -1021,6 +1058,8 @@ var LocalDB = (function () {
     $("f-ing").addEventListener("click", exportIngCsv);
     $("f-restore").addEventListener("click", function () { $("f-file").click(); });
     $("f-file").addEventListener("change", function () { var f = $("f-file").files[0]; $("f-file").value = ""; if (f) importBackup(f); });
+    $("f-add").addEventListener("click", function () { $("f-addfile").click(); });
+    $("f-addfile").addEventListener("change", function () { var f = $("f-addfile").files[0]; $("f-addfile").value = ""; if (f) importRecipes(f); });
     $("f-erase").addEventListener("click", function () {
       if (!confirm("Erase every ingredient, menu item and prep recipe in this workbook? This can't be undone unless you have a backup.")) return;
       clearTimeout(timers.item); S.sel = null; S.draft = null; S.dirty = false; LocalDB.load({ app: "food-cost", version: 1, ingredients: {}, items: {}, settings: { target: target(), name: S.settings.name || "", sections: S.settings.sections } });

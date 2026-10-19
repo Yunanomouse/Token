@@ -63,6 +63,14 @@ var LocalDB = (function () {
     },
     dump: function () { return Object.assign({ app: "food-cost", version: 1, exported: new Date().toISOString() }, clone({ ingredients: state.ingredients, items: state.items, settings: state.settings })); },
     count: function (d) { return valid(d) ? { ingredients: Object.keys(d.ingredients || {}).length, items: Object.keys(d.items || {}).length } : -1; },
+    // fields in the file win; anything not in the file is left alone
+    merge: function (d) {
+      if (!valid(d)) throw new Error("Not a Food Cost file");
+      var prev = JSON.stringify(state);
+      COLLS.forEach(function (c) { Object.keys(d[c] || {}).forEach(function (id) { state[c][id] = Object.assign({}, state[c][id] || {}, clone(d[c][id])); }); });
+      try { if (NATIVE) NATIVE.save(JSON.stringify(state)); else localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { state = JSON.parse(prev); throw new Error(NATIVE ? "Could not write the workbook file." : "This browser's storage is full."); }
+      emitAll();
+    },
     load: function (d) {
       if (!valid(d)) throw new Error("Not a Food Cost backup");
       var prev = state; state = blank();

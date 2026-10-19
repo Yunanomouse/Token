@@ -15,6 +15,9 @@
   .card .n { text-align: right; }
   .card .chk { width: 34px; }
   .card .foot { margin-top: 14px; font-size: 12px; }
+  .card h3.msteps { margin: 14px 0 4px; font-size: 14px; }
+  .card ol.msteps { margin: 0; padding-left: 22px; font-size: 13px; line-height: 1.45; }
+  .card ol.msteps li { margin-bottom: 4px; }
 }
 </style>
 </head>
@@ -123,6 +126,10 @@
       <button class="btn primary" id="f-backup" type="button">Export backup</button>
       <button class="btn" id="f-restore" type="button">Load a backup…</button>
     </div>
+    <div class="dlgrow">
+      <button class="btn" id="f-add" type="button">Add recipes from a file…</button>
+    </div>
+    <input type="file" id="f-addfile" accept=".json,application/json" hidden>
     <div class="dlgrow">
       <button class="btn" id="f-menu" type="button">Menu costs (CSV)</button>
       <button class="btn" id="f-ing" type="button">Ingredients (CSV)</button>
