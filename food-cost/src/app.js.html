@@ -1,0 +1,738 @@
+<script>
+(function () {
+  "use strict";
+  var U = { mg: ["m", 0.001], g: ["m", 1], kg: ["m", 1000], oz: ["m", 28.3495], lb: ["m", 453.592],
+    ml: ["v", 1], L: ["v", 1000], tsp: ["v", 4.929], tbsp: ["v", 14.787], "fl oz": ["v", 29.5735], cup: ["v", 236.588], pt: ["v", 473.176], qt: ["v", 946.353], gal: ["v", 3785.41], pinch: ["v", 0.31],
+    each: ["e", 1], dozen: ["e", 12] };
+  var UGROUPS = [["Weight", "m"], ["Volume", "v"], ["Count", "e"]];
+  // grams per ml, used to switch between weight and volume (served form: cooked rice, fries, shredded cheese)
+  var DENS = { flour: 0.53, sugar: 0.85, salt: 1.2, sal_grosso: 1.1, rice: 0.75, potato: 0.45, honey: 1.42, olive_oil: 0.91, canola: 0.92, mayo: 0.95, butter: 0.96, milk: 1.03, buttermilk: 1.03, cream: 1.0, whipped_cream: 0.5, bbq_sauce: 1.1, pizza_sauce: 1.05, soy: 1.15, vinegar: 1.0, passion_pulp: 1.05, dulce: 1.3, mozzarella: 0.45, parmesan: 0.4, canastra: 0.45, minas: 0.5, cottage_cheese: 1.0, corn: 0.6, white_beans: 0.75, coconut: 0.3, oregano: 0.25, chili_flakes: 0.45, smoked_paprika: 0.45, cayenne: 0.45, cajun: 0.5, yeast: 0.6, tapioca: 0.55, macaroni: 0.45, garlic: 0.6, jalapeno: 0.6, roasted_pepper: 0.6, chocolate: 0.6, bell_peppers: 0.5, onion: 0.6, red_onion: 0.6, cabbage: 0.3, carrot: 0.5, tomatoes: 0.7, strawberries: 0.6, spring_mix: 0.1, ladyfingers: 0.2, cassava_chips: 0.2 };
+  // grams for one "each"
+  var EACH = { eggs: 50, limes: 67, lemons: 100, cucumber: 300, mango: 200, pineapple: 1500, parsley: 60, cilantro: 60, scallions: 100, brioche: 80, hoagie: 110, flatbread: 90 };
+  var UNITS = Object.keys(U);
+  var CATS = ["Beef", "Lamb", "Chicken", "Seafood", "Produce", "Dairy", "Frozen", "Grocery", "Dry goods", "Oils & sauces", "Bread", "Disposables", "Chemicals", "Other"];
+  var CATCODE = { Seafood: "SF", Produce: "PR", Dairy: "DY", Frozen: "FR", Grocery: "GR", Disposables: "DS", Chemicals: "CP" };
+  function catOpts() { return CATS.map(function (c) { return el("option", { value: c, text: CATCODE[c] ? c + " (" + CATCODE[c] + ")" : c }); }); }
+  var PREP = "Prep recipes";
+  var DEFAULT_SECTIONS = ["Starters", "Mains", "Shares", "Salads", "Sides", "Desserts", "Drinks", "Events"];
+  var S = { db: null, canWrite: true, ing: {}, items: {}, settings: { target: 32 }, loaded: {}, view: "menu", sel: null, draft: null, confirmDel: null, everWrote: false };
+  // menu sections come from Settings; prep recipes and Other are always there
+  function sections() {
+    var s = Array.isArray(S.settings.sections) && S.settings.sections.length ? S.settings.sections.slice() : DEFAULT_SECTIONS.slice();
+    Object.keys(S.items).forEach(function (k) { var x = S.items[k].section; if (x && s.indexOf(x) < 0 && x !== PREP && x !== "Other") s.push(x); });
+    return s.filter(function (x) { return x !== PREP && x !== "Other"; }).concat([PREP, "Other"]);
+  }
+  function bizName() { return String(S.settings.name || "").trim(); }
+
+  // ---------- helpers ----------
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, kids) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "text") n.textContent = attrs[k];
+      else if (k === "class") n.className = attrs[k];
+      else if (k === "value") n.value = attrs[k];
+      else if (k.slice(0, 2) === "on") n.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] === true) n.setAttribute(k, "");
+      else if (attrs[k] !== false && attrs[k] != null) n.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function num(v, d) { var x = parseFloat(v); return isFinite(x) ? x : (d === undefined ? 0 : d); }
+  function money(x) { if (!isFinite(x)) return "–"; return (x < 0 ? "−$" : "$") + Math.abs(Math.round(x * 100) / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function pct(x) { return isFinite(x) ? (Math.round(x * 10) / 10).toFixed(1) + "%" : "–"; }
+  function trimN(x, dp) { var s = x.toFixed(dp); return s.indexOf(".") >= 0 ? s.replace(/\.?0+$/, "") : s; }
+  function slug(s) { return (s || "x").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 30) || "x"; }
+  function newId(s) { return slug(s) + "_" + Math.random().toString(36).slice(2, 7); }
+  var toastT;
+  function toast(msg) { var t = document.querySelector(".toast"); if (t) t.remove(); t = el("div", { class: "toast", role: "status", text: msg }); document.body.appendChild(t); clearTimeout(toastT); toastT = setTimeout(function () { t.remove(); }, 2200); }
+  function setStatus(m) { $("status").textContent = m; }
+  function notice(msg, bad) { $("notices").replaceChildren(msg ? el("div", { class: "notice" + (bad ? " bad" : ""), text: msg }) : document.createTextNode("")); }
+  function editingNow(c) { var a = document.activeElement; return a && c.contains(a) && (a.tagName === "INPUT" || a.tagName === "SELECT" || a.tagName === "TEXTAREA"); }
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function target() { return num(S.settings.target, 32); }
+  function unitSel(val, fam, onch, label) {
+    var s = el("select", { "aria-label": label || "Unit", onchange: function () { onch(s.value); } }, UGROUPS.map(function (g) {
+      return el("optgroup", { label: g[0] }, UNITS.filter(function (u) { return U[u][0] === g[1]; }).map(function (u) { return el("option", { value: u, text: u }); }));
+    }));
+    s.value = U[val] ? val : "g"; return s;
+  }
+
+  // what you buy: Each or Case (with units per case), pack size in UN, G, KG, LB, L, ML
+  // invoice-style buying: Unit (CS case, EA each, ...) and Pack size written like "6X160 G" or "1x15 DZ"
+  var BUY = [["Case", "CS (case)"], ["Each", "EA (each)"], ["Bag", "BG (bag)"], ["Box", "BX (box)"], ["Jug", "JG (jug)"], ["Tub", "TB (tub)"], ["Tin", "TN (tin)"], ["Bunch", "BN (bunch)"]];
+  var PUNIT = { un: "each", ea: "each", ct: "each", each: "each", pc: "each", dz: "dozen", doz: "dozen", dozen: "dozen", g: "g", gr: "g", kg: "kg", lb: "lb", lbs: "lb", oz: "oz", l: "L", lt: "L", ltr: "L", ml: "ml", gal: "gal" };
+  function buySel(val, onch, label) {
+    var s = el("select", { "aria-label": label || "Unit", onchange: function () { onch(s.value); } }, BUY.map(function (b) { return el("option", { value: b[0], text: b[1] }); }));
+    s.value = BUY.some(function (b) { return b[0] === val; }) ? val : "Each"; return s;
+  }
+  function buyCode(v) { var b = BUY.filter(function (x) { return x[0] === (v || "Each"); })[0]; return b ? b[1].split(" ")[0] : "EA"; }
+  // price covers the whole pack (A x B) except EA, where it's for one B
+  function perCase(i) { return i && i.buyAs && i.buyAs !== "Each" ? Math.max(1, num(i.perCase, 1)) : 1; }
+  function packBase(i) { return i && U[i.unit] ? perCase(i) * num(i.packQty) * U[i.unit][1] : 0; }
+  function uLabel(u) { return u === "each" ? "UN" : u === "dozen" ? "DZ" : String(u || "").toUpperCase(); }
+  function packStr(i) { return Math.max(1, num(i.perCase, 1)) + "X" + trimN(num(i.packQty), 3) + " " + uLabel(i.unit); }
+  function packText(i) { return buyCode(i.buyAs) + " " + packStr(i); }
+  function parsePack(str) {
+    var m = String(str || "").trim().replace(",", ".").match(/^(?:(\d+(?:\.\d+)?)\s*[x×*]\s*)?(\d+(?:\.\d+)?)\s*([a-zA-Z]+)$/i);
+    if (!m) return null; var u = PUNIT[m[3].toLowerCase()]; if (!u || !(num(m[2]) > 0)) return null;
+    return { perCase: m[1] ? Math.max(1, num(m[1], 1)) : 1, packQty: num(m[2]), unit: u };
+  }
+  function packInput(x, onok, label) {
+    var inp = el("input", { type: "text", value: x.packQty ? packStr(x) : "", placeholder: "6X160 G", "aria-label": label || "Pack size", style: "width:100px;text-transform:uppercase", title: "Like your invoice: 6X160 G, 1X15 DZ, 1X50 LB, 2X3.7 L, 24X300 ML, 1X20 UN", oninput: function () {
+      var p = parsePack(inp.value); inp.style.borderColor = p || !inp.value ? "" : "var(--bad)";
+      if (p) { x.perCase = p.perCase; x.packQty = p.packQty; x.unit = p.unit; onok(); }
+    }, onchange: function () { if (parsePack(inp.value)) inp.value = packStr(x); } });
+    return inp;
+  }
+
+  // ---------- math ----------
+  // $ per usable base unit (g, ml or each) after trim/cooking
+  function usableCost(i) {
+    if (!i || !U[i.unit]) return NaN;
+    var base = packBase(i), y = num(i.yield, 100) / 100;
+    if (!(base > 0) || !(y > 0) || i.price == null || i.price === "") return NaN;
+    return num(i.price) / base / y;
+  }
+  function isPrep(it) { return it && it.section === PREP; }
+  function itemOf(id) { return id === S.sel && S.draft ? S.draft : S.items[id]; }
+  function prepBase(p) { return p && U[p.yieldUnit] ? num(p.yieldQty) * U[p.yieldUnit][1] : 0; }
+  // $ per base unit (g, ml or each) of a prep recipe's batch
+  function prepUnitCost(id, depth) {
+    var p = itemOf(id); if (!isPrep(p) || depth > 6) return NaN;
+    var base = prepBase(p); if (!(base > 0)) return NaN;
+    return rawCost(p, depth + 1).sub / base;
+  }
+  function densOf(x, id) { var d = num(x && x.density, NaN); if (d > 0) return d; if (DENS[id]) return DENS[id]; return x && (x.section === PREP || (U[x.unit] && U[x.unit][0] === "v")) ? 1 : NaN; }
+  function eachOf(x, id) { var g = num(x && x.eachG, NaN); return g > 0 ? g : (EACH[id] || NaN); }
+  function lineSrc(l) { return l.kind === "prep" ? [itemOf(l.prep), l.prep] : [S.ing[l.ing], l.ing]; }
+  // amount of a line in base units (g, ml or each) of the family it's priced in
+  function convert(qty, unit, toFam, x, id) {
+    if (!U[unit] || !toFam) return NaN;
+    var from = U[unit][0], b = num(qty) * U[unit][1];
+    if (from === toFam) return b;
+    var d = densOf(x, id), e = eachOf(x, id);
+    var g = from === "m" ? b : from === "v" ? b * d : b * e;
+    return toFam === "m" ? g : toFam === "v" ? g / d : g / e;
+  }
+  function lineAmt(l) { var s = lineSrc(l), fam = lineFam(l); return convert(l.qty, l.unit, fam, s[0], s[1]); }
+  function lineFam(l) {
+    if (l.kind === "prep") { var p = itemOf(l.prep); return p && U[p.yieldUnit] ? U[p.yieldUnit][0] : null; }
+    var i = S.ing[l.ing]; return i && U[i.unit] ? U[i.unit][0] : null;
+  }
+  function lineCost(l, depth) {
+    if (l.kind === "other") return num(l.amount);
+    var amt = lineAmt(l); if (!isFinite(amt)) return NaN;
+    var per = l.kind === "prep" ? prepUnitCost(l.prep, depth || 0) : usableCost(S.ing[l.ing]);
+    return amt * per;
+  }
+  function rawCost(it, depth) {
+    var sub = 0, bad = 0;
+    (it.lines || []).forEach(function (l) { var c = lineCost(l, depth); if (isFinite(c)) sub += c; else bad++; });
+    return { sub: sub, bad: bad };
+  }
+  function itemCalc(it) {
+    var r = rawCost(it, 0), sub = r.sub;
+    var cost = isPrep(it) ? sub : sub * (1 + num(it.buffer) / 100), price = num(it.price);
+    return { sub: sub, cost: cost, bad: r.bad, fc: price > 0 ? cost / price * 100 : NaN, gp: price - cost, gpp: price > 0 ? (price - cost) / price * 100 : NaN, need: cost / (target() / 100) };
+  }
+  function prepPerText(it) {
+    var base = prepBase(it); if (!(base > 0)) return "set batch size";
+    var c = rawCost(it, 0).sub / base, f = U[it.yieldUnit][0];
+    if (f === "m") return money(c * 1000) + "/kg · " + money(c * 28.3495) + "/oz";
+    if (f === "v") return money(c * 1000) + "/L · " + money(c * 29.5735) + "/fl oz";
+    return money(c) + " each";
+  }
+  // a prep recipe's price points: batch, per kg/L, per portion, sell price
+  var POINTS = { m: [["kg", 1000], ["lb", 453.592], ["100 g", 100], ["oz", 28.3495], ["g", 1]], v: [["L", 1000], ["qt", 946.353], ["cup", 236.588], ["fl oz", 29.5735], ["tbsp", 14.787], ["tsp", 4.929], ["ml", 1]], e: [["each", 1], ["dozen", 12]] };
+  function defPortion(fam) { return fam === "m" ? ["oz", 2] : fam === "v" ? ["fl oz", 2] : ["each", 1]; }
+  function prepStats(it) {
+    var base = prepBase(it), sub = rawCost(it, 0).sub, fam = U[it.yieldUnit] ? U[it.yieldUnit][0] : null;
+    var per = base > 0 ? sub / base : NaN;
+    var po = portion(it), pb = po ? convert(po[0], po[1], fam, it, it.id) : NaN;
+    var pc = pb * per, price = num(it.portionPrice);
+    return { batch: sub, per: per, fam: fam, portionBase: pb, portionCost: pc, portions: pb > 0 ? base / pb : NaN, price: price,
+      fc: price > 0 ? pc / price * 100 : NaN, gp: price - pc, gpp: price > 0 ? (price - pc) / price * 100 : NaN, need: pc / (target() / 100) };
+  }
+  function moneyP(x) { return isFinite(x) && x > 0 && x < 0.1 ? "$" + x.toFixed(4) : money(x); }
+  // count batches (dough balls, cookies) default to a 1-piece portion
+  function portion(it) { if (num(it.portionQty) > 0 && U[it.portionUnit]) return [num(it.portionQty), it.portionUnit]; return U[it.yieldUnit] && U[it.yieldUnit][0] === "e" ? [1, "each"] : null; }
+  function portionText(it) { var p = portion(it); return p ? trimN(p[0], 2) + " " + p[1] : ""; }
+  function weighText(l) {
+    if (l.kind === "other" || !U[l.unit]) return "";
+    var s = lineSrc(l), g = convert(l.qty, l.unit, "m", s[0], s[1]);
+    if (isFinite(g)) return trimN(g, g < 10 ? 1 : 0) + " g";
+    var f = U[l.unit][0], b = num(l.qty) * U[l.unit][1];
+    if (f === "v") return trimN(b, b < 10 ? 1 : 0) + " ml";
+    return trimN(b, 2) + " each";
+  }
+  function lineName(l) {
+    if (l.kind === "other") return l.label || "Extra cost";
+    if (l.kind === "prep") { var p = itemOf(l.prep); return p ? p.name + " (prep)" : "Missing prep recipe"; }
+    var i = S.ing[l.ing]; return i ? i.name : "Pick an ingredient";
+  }
+  function perText(i) {
+    var c = usableCost(i); if (!isFinite(c)) return "price?";
+    var f = U[i.unit][0];
+    if (f === "m") return money(c * 1000) + "/kg · " + money(c * 453.592) + "/lb";
+    if (f === "v") return money(c * 1000) + "/L";
+    return money(c) + " each";
+  }
+  function ingList() {
+    return Object.keys(S.ing).map(function (id) { return Object.assign({ id: id }, S.ing[id]); }).sort(function (a, b) {
+      return (a.name || "").localeCompare(b.name || "", "en", { sensitivity: "base" });
+    });
+  }
+  function itemList() {
+    return Object.keys(S.items).map(function (id) { return Object.assign({ id: id }, S.items[id]); }).sort(function (a, b) {
+      var SEC = sections(), ca = SEC.indexOf(a.section), cb = SEC.indexOf(b.section); if (ca !== cb) return (ca < 0 ? 99 : ca) - (cb < 0 ? 99 : cb);
+      return (a.name || "").localeCompare(b.name || "");
+    });
+  }
+
+  // ---------- persistence ----------
+  function onWriteError(e) {
+    var code = e && e.code;
+    if (code === "quota") notice("This browser's storage is full, so the last change was not saved. Export a backup now (File → Export backup).", true);
+    else toast("Could not save.");
+    throw e;
+  }
+  function write(path, data, merge) {
+    if (!S.db || !S.canWrite) { toast("Storage is not available, so nothing was saved."); return Promise.reject({ code: "not_granted" }); }
+    var ref = S.db.doc(path);
+    return (merge ? ref.update(data) : ref.set(data)).then(function () { S.everWrote = true; setStatus("Saved"); }, onWriteError);
+  }
+  function remove(path) { return S.db.doc(path).delete().catch(onWriteError); }
+  var timers = {};
+  function saveSoon(key, fn) { setStatus("Saving…"); clearTimeout(timers[key]); timers[key] = setTimeout(fn, 600); }
+
+  // ---------- views ----------
+  function showView(v) {
+    S.view = v; lsSet("fc-view", v);
+    if (v === "menu" || v === "prep") $(v === "prep" ? "r-split" : "m-split").appendChild($("editor"));
+    document.querySelectorAll("nav.tabs button").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.view === v ? "true" : "false"); });
+    document.querySelectorAll("section.view").forEach(function (s) { s.hidden = s.id !== "view-" + v; });
+    render();
+  }
+  document.querySelectorAll("nav.tabs button").forEach(function (b) { b.addEventListener("click", function () { showView(b.dataset.view); }); });
+  function welcome() {
+    var empty = S.loaded.items && S.loaded.ing && !Object.keys(S.items).length && !Object.keys(S.ing).length;
+    if (empty) { S.welcomed = true; $("notices").replaceChildren(el("div", { class: "notice" }, ["New workbook. Start on the Ingredients tab: add what you buy, the way your invoice reads. Then build dishes on Menu costing and sauces or doughs on Prep recipes. Already have a backup? Open ", el("b", { text: "File & settings" }), " and load it."])); }
+    else if (S.welcomed) { S.welcomed = false; notice(""); }
+  }
+  function render() { welcome(); if (S.view === "menu" || S.view === "prep") renderMenu(); else { if (S.view === "ing") renderIng(); else renderPlan(); renderSum(); } }
+
+  // ---------- menu list ----------
+  function fcChip(fc) { return el("span", { class: "chip " + (!isFinite(fc) ? "" : fc <= target() ? "good" : "bad"), text: pct(fc) }); }
+  var SORTS = { section: "Section", name: "Item", price: "Price", cost: "Cost", fc: "Food cost", gp: "Profit" };
+  S.sort = (function () { try { return JSON.parse(lsGet("fc-sort")) || { k: "section", d: 1 }; } catch (e) { return { k: "section", d: 1 }; } })();
+  function renderList() {
+    if (S.view === "prep") return renderPrepList();
+    var t = target(), rows = itemList().filter(function (it) { return !isPrep(it); }).map(function (it) {
+      var it2 = it.id === S.sel && S.draft ? Object.assign({ id: it.id }, S.draft) : it;
+      return { it: it2, c: itemCalc(it2), prep: isPrep(it2) };
+    });
+    var k = S.sort.k, d = S.sort.d;
+    if (k !== "section") rows.sort(function (a, b) {
+      var va = k === "name" ? (a.it.name || "") : k === "price" ? num(a.it.price) : k === "cost" ? a.c.cost : k === "fc" ? (a.prep ? -1 : a.c.fc) : (a.prep ? -1e9 : a.c.gp);
+      var vb = k === "name" ? (b.it.name || "") : k === "price" ? num(b.it.price) : k === "cost" ? b.c.cost : k === "fc" ? (b.prep ? -1 : b.c.fc) : (b.prep ? -1e9 : b.c.gp);
+      return (typeof va === "string" ? va.localeCompare(vb) : (isFinite(va) ? va : -1) - (isFinite(vb) ? vb : -1)) * d;
+    });
+    var body = [], last = null;
+    rows.forEach(function (r) {
+      if (k === "section" && r.it.section !== last) { last = r.it.section; body.push(el("tr", { class: "cat" }, [el("td", { colspan: "6", text: r.it.section || "Other" })])); }
+      var cls = !isFinite(r.c.fc) ? "" : r.c.fc <= t ? "good" : "over";
+      body.push(el("tr", { class: r.it.id === S.sel ? "sel" : "", tabindex: "0", onclick: function () { select(r.it.id); }, onkeydown: function (e) { if (e.key === "Enter") select(r.it.id); } }, [
+        el("td", { text: r.it.name || "Unnamed" }),
+        el("td", { class: "n", text: r.prep ? (num(r.it.yieldQty) ? trimN(num(r.it.yieldQty), 2) + " " + r.it.yieldUnit : "") : money(num(r.it.price)) }),
+        el("td", { class: "n", text: money(r.c.cost) }),
+        el("td", { class: "n muted", text: !r.prep && num(r.it.chefCost) > 0 ? money(num(r.it.chefCost)) : "" }),
+        el("td", { class: "n " + cls, text: r.prep ? "prep" : pct(r.c.fc) }),
+        el("td", { class: "n", text: r.prep ? prepPerText(r.it).split(" · ")[0] : money(r.c.gp) })
+      ]));
+    });
+    function th(key, label, n) {
+      var arrow = S.sort.k === key ? (S.sort.d > 0 ? " ▲" : " ▼") : "";
+      return el("th", { class: "sort" + (n ? " n" : ""), scope: "col", "aria-sort": arrow ? (S.sort.d > 0 ? "ascending" : "descending") : null, onclick: function () {
+        S.sort = S.sort.k === key ? { k: key, d: -S.sort.d } : { k: key, d: key === "name" ? 1 : -1 }; lsSet("fc-sort", JSON.stringify(S.sort)); renderList();
+      } }, [label + arrow]);
+    }
+    var head = el("tr", null, [th("name", "Item"), th("price", "Price", 1), th("cost", "Cost", 1), el("th", { class: "n", scope: "col", title: "Cost your chef or supplier quoted, for comparison" }, ["Chef"]), th("fc", "Food cost", 1), th("gp", "Profit", 1)]);
+    var tools = k !== "section" ? el("caption", { style: "caption-side:top;text-align:left;padding:4px 8px" }, [el("button", { class: "btn", type: "button", text: "Group by section", onclick: function () { S.sort = { k: "section", d: 1 }; lsSet("fc-sort", JSON.stringify(S.sort)); renderList(); } })]) : null;
+    $("m-list").replaceChildren(body.length ? el("table", { class: "sheet" }, [tools, el("thead", null, [head]), el("tbody", null, body)]) : el("div", { class: "empty", text: S.loaded.items ? "No menu items yet." : "Loading…" }));
+    renderSum();
+  }
+  function renderPrepList() {
+    var t = target(), rows = itemList().filter(isPrep).map(function (it) {
+      var it2 = it.id === S.sel && S.draft ? Object.assign({ id: it.id }, S.draft) : it;
+      return { it: it2, s: prepStats(it2), used: itemList().filter(function (x) { return (x.lines || []).some(function (l) { return l.kind === "prep" && l.prep === it.id; }); }).length };
+    }).sort(function (a, b) { return (a.it.name || "").localeCompare(b.it.name || ""); });
+    var body = rows.map(function (r) {
+      var f = r.s.fam, cls = !isFinite(r.s.fc) ? "" : r.s.fc <= t ? "good" : "over";
+      return el("tr", { class: r.it.id === S.sel ? "sel" : "", tabindex: "0", onclick: function () { select(r.it.id); }, onkeydown: function (e) { if (e.key === "Enter") select(r.it.id); } }, [
+        el("td", { text: r.it.name || "Unnamed", title: r.used ? "Used in " + r.used + " menu item" + (r.used > 1 ? "s" : "") : "Not used in a menu item yet" }),
+        el("td", { class: "n", text: num(r.it.yieldQty) ? trimN(num(r.it.yieldQty), 2) + " " + r.it.yieldUnit : "set size" }),
+        el("td", { class: "n", text: money(r.s.batch) }),
+        el("td", { class: "n", text: f === "m" ? money(r.s.per * 1000) + "/kg" : f === "v" ? money(r.s.per * 1000) + "/L" : f ? money(r.s.per) + " ea" : "–" }),
+        el("td", { class: "n", text: isFinite(r.s.portionCost) ? moneyP(r.s.portionCost) : "" }, [isFinite(r.s.portionCost) ? el("div", { class: "muted small", text: "per " + portionText(r.it) }) : null]),
+        el("td", { class: "n", text: r.s.price > 0 ? money(r.s.price) : "" }),
+        el("td", { class: "n " + cls, text: r.s.price > 0 ? pct(r.s.fc) : "" })
+      ]);
+    });
+    var head = el("tr", null, ["Prep recipe", "Batch", "Batch cost", "Per kg / L", "Portion cost", "Sell price", "Food cost"].map(function (h, k) { return el("th", { class: k ? "n" : "", scope: "col", text: h }); }));
+    $("r-list").replaceChildren(body.length ? el("table", { class: "sheet" }, [el("thead", null, [head]), el("tbody", null, body)]) : el("div", { class: "empty", text: S.loaded.items ? "No prep recipes yet. Press New prep recipe." : "Loading…" }));
+    renderSum();
+  }
+  function renderSum() {
+    var rows = itemList().map(function (it) { return { it: it, c: itemCalc(it), prep: isPrep(it) }; });
+    var menu = rows.filter(function (r) { return !r.prep && num(r.it.price) > 0; }), t = target();
+    var avg = menu.length ? menu.reduce(function (a, r) { return a + r.c.fc; }, 0) / menu.length : NaN;
+    var over = menu.filter(function (r) { return r.c.fc > t; }).length;
+    var ings = Object.keys(S.ing).length, est = Object.keys(S.ing).filter(function (k) { return /estimat|average/i.test(S.ing[k].note || ""); }).length;
+    $("sumbar").replaceChildren(
+      el("span", null, ["Menu items ", el("b", { text: String(menu.length) })]),
+      el("span", null, ["Prep recipes ", el("b", { text: String(rows.length - rows.filter(function (r) { return !r.prep; }).length) })]),
+      el("span", null, ["Average food cost ", el("b", { text: pct(avg) })]),
+      el("span", null, ["Target ", el("b", { text: t + "%" })]),
+      el("span", null, ["Over target ", el("b", { text: String(over) })]),
+      el("span", null, ["Ingredients ", el("b", { text: String(ings) }), est ? " (" + est + " still estimated)" : ""]),
+      (function () { var age = backupAge(), due = age === null ? ings + rows.length > 0 : age >= 7; return el("span", { class: due ? "due" : "" }, [due ? el("button", { class: "linkbtn", type: "button", text: age === null ? "No backup yet: back up now" : "Last backup " + age + " days ago: back up now", onclick: exportBackup }) : "Backed up " + (age === 0 ? "today" : age + (age === 1 ? " day" : " days") + " ago")]); })()
+    );
+  }
+  function select(id) {
+    if (S.draft && S.sel && S.sel !== id && S.dirty) flushItem();
+    S.sel = id; S.confirmDel = null; S.draft = S.items[id] ? JSON.parse(JSON.stringify(S.items[id])) : null;
+    lsSet(isPrep(S.draft) ? "fc-sel-prep" : "fc-sel", id); renderMenu();
+    if (window.innerWidth < 900) $("editor").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function flushItem() {
+    if (!S.sel || !S.draft) return;
+    clearTimeout(timers.item);
+    var id = S.sel, d = JSON.parse(JSON.stringify(S.draft)); S.dirty = false;
+    write("items/" + id, d).catch(function () {});
+  }
+  function changed() { S.dirty = true; renderList(); renderTotals(); saveSoon("item", flushItem); }
+  // keep the editor on a menu item in Menu costing and on a prep recipe in Prep recipes
+  function ensureSel() {
+    var wantPrep = S.view === "prep";
+    if (S.sel && S.draft && !!isPrep(S.draft) === wantPrep) return;
+    if (S.sel && S.draft && S.dirty) flushItem();
+    var want = lsGet(wantPrep ? "fc-sel-prep" : "fc-sel"), list = itemList().filter(function (it) { return !!isPrep(it) === wantPrep; });
+    if (wantPrep) list.sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+    var id = want && S.items[want] && !!isPrep(S.items[want]) === wantPrep ? want : list[0] && list[0].id;
+    S.sel = id || null; S.confirmDel = null; S.draft = id ? JSON.parse(JSON.stringify(S.items[id])) : null;
+  }
+  function renderMenu() {
+    if (S.loaded.items) ensureSel();
+    if (!editingNow($("target"))) $("target").value = target();
+    renderList();
+    if (!editingNow($("editor"))) renderEditor();
+  }
+
+  // ---------- editor ----------
+  function renderTotals() {
+    var box = $("e-totals"); if (!box || !S.draft) return;
+    var c = itemCalc(S.draft), t = target();
+    if (isPrep(S.draft)) {
+      var s = prepStats(S.draft), pt = portionText(S.draft);
+      box.replaceChildren.apply(box, [
+        tile("Batch cost", money(s.batch), num(S.draft.yieldQty) ? "makes " + trimN(num(S.draft.yieldQty), 2) + " " + S.draft.yieldUnit : "set the batch size"),
+        tile(s.fam === "m" ? "Cost per kg" : s.fam === "v" ? "Cost per L" : "Cost each", s.fam === "e" ? moneyP(s.per) : money(s.per * 1000), prepPerText(S.draft).split(" · ")[1] || ""),
+        tile("Portion cost", isFinite(s.portionCost) ? moneyP(s.portionCost) : "–", pt ? "per " + pt : "set a portion size"),
+        tile("Portions per batch", isFinite(s.portions) ? trimN(s.portions, 1) : "–", ""),
+        s.price > 0 ? tile("Food cost", pct(s.fc), "target " + t + "%", isFinite(s.fc) ? (s.fc <= t ? "good" : "over") : "") : null,
+        s.price > 0 ? tile("Profit per portion", money(s.gp), pct(s.gpp) + " gross margin") : null,
+        isFinite(s.need) && s.need > 0 ? tile("Price for " + t + "% target", money(s.need), "per portion") : null
+      ].filter(Boolean));
+      var pts = $("e-points");
+      if (pts) pts.replaceChildren.apply(pts, (POINTS[s.fam] || []).map(function (p) { return el("tr", null, [el("td", { text: "Per " + p[0] }), el("td", { class: "n", text: isFinite(s.per) ? moneyP(s.per * p[1]) : "–" })]); }));
+    } else {
+      box.replaceChildren.apply(box, [
+        tile("Plate cost", money(c.cost), num(S.draft.buffer) ? "includes " + trimN(num(S.draft.buffer), 1) + "% waste buffer" : ""),
+        tile("Food cost", pct(c.fc), "target " + t + "%", isFinite(c.fc) ? (c.fc <= t ? "good" : "over") : ""),
+        tile("Profit per sale", money(c.gp), pct(c.gpp) + " gross margin"),
+        tile("Price for " + t + "% target", money(c.need), ""),
+        num(S.draft.chefCost) > 0 ? tile("Chef's cost", money(num(S.draft.chefCost)), (c.cost - num(S.draft.chefCost) >= 0 ? "program is " + money(c.cost - num(S.draft.chefCost)) + " higher" : "program is " + money(num(S.draft.chefCost) - c.cost) + " lower")) : null
+      ].filter(Boolean));
+    }
+    document.querySelectorAll("[data-line]").forEach(function (td) { var l = S.draft.lines[+td.dataset.line]; if (!l) return; var v = lineCost(l); td.textContent = isFinite(v) ? money(v) : "–"; });
+    document.querySelectorAll("[data-weigh]").forEach(function (td) { var l = S.draft.lines[+td.dataset.weigh]; if (l) td.textContent = weighText(l); });
+    var w = $("e-warn");
+    if (w) w.textContent = c.bad ? c.bad + " line" + (c.bad > 1 ? "s" : "") + " can't be costed: pick an ingredient and give it a price. To mix weight, volume and count, fill in “g per cup” or “g each” for that ingredient on the Ingredients sheet." : "";
+  }
+  function tile(k, v, s, cls) { return el("div", { class: "tile" + (cls ? " " + cls : "") }, [el("div", { class: "k", text: k }), el("div", { class: "v", text: v }), s ? el("div", { class: "s", text: s }) : null]); }
+  function defUnit(fam) { return fam === "m" ? "g" : fam === "v" ? "ml" : "each"; }
+  function renderEditor() {
+    var box = $("editor");
+    if (!S.sel || !S.draft) { box.replaceChildren(el("div", { class: "panelhead", text: "Details" }), el("div", { class: "empty", text: S.loaded.items ? "Select a row to see and change its cost." : "Loading…" })); return; }
+    var d = S.draft, prep = isPrep(d);
+    function fld(label, input) { return el("label", null, [label, input]); }
+    var name = el("input", { type: "text", value: d.name || "", oninput: function (e) { d.name = e.target.value; changed(); } });
+    var sec = el("select", { onchange: function (e) { d.section = e.target.value; if (isPrep(d) && !d.yieldUnit) { d.yieldQty = 1; d.yieldUnit = "L"; } changed(); if (!!isPrep(d) !== (S.view === "prep")) { lsSet(isPrep(d) ? "fc-sel-prep" : "fc-sel", S.sel); flushItem(); showView(isPrep(d) ? "prep" : "menu"); } else renderEditor(); } }, sections().map(function (s) { return el("option", { value: s, text: s }); })); sec.value = sections().indexOf(d.section) >= 0 ? d.section : "Other";
+    var top;
+    if (prep) {
+      top = [fld("Prep recipe", name), fld("Section", sec),
+        fld("Batch makes", el("input", { type: "number", min: "0", step: "0.01", value: d.yieldQty != null ? d.yieldQty : "", oninput: function (e) { d.yieldQty = num(e.target.value); changed(); } })),
+        fld("Batch unit", unitSel(d.yieldUnit || "L", null, function (v) { d.yieldUnit = v; if (!U[d.portionUnit] || U[d.portionUnit][0] !== U[v][0]) { var dp = defPortion(U[v][0]); d.portionUnit = dp[0]; d.portionQty = dp[1]; } changed(); renderEditor(); }, "Batch unit")),
+        fld("Portion size", el("input", { type: "number", min: "0", step: "0.01", value: d.portionQty != null ? d.portionQty : "", placeholder: "e.g. 2", oninput: function (e) { d.portionQty = num(e.target.value); if (!U[d.portionUnit]) d.portionUnit = defPortion(U[d.yieldUnit] ? U[d.yieldUnit][0] : "v")[0]; changed(); } })),
+        fld("Portion unit", unitSel(U[d.portionUnit] ? d.portionUnit : defPortion(U[d.yieldUnit] ? U[d.yieldUnit][0] : "v")[0], null, function (v) { d.portionUnit = v; changed(); }, "Portion unit")),
+        fld("Sell price per portion ($)", el("input", { type: "number", min: "0", step: "0.01", value: num(d.portionPrice) > 0 ? d.portionPrice : "", placeholder: "if sold on its own", oninput: function (e) { d.portionPrice = e.target.value === "" ? null : num(e.target.value); changed(); } }))];
+    } else {
+      top = [fld("Menu item", name), fld("Section", sec),
+        fld("Menu price ($)", el("input", { type: "number", min: "0", step: "0.01", value: d.price != null ? d.price : "", oninput: function (e) { d.price = num(e.target.value); changed(); } })),
+        fld("Waste buffer (%)", el("input", { type: "number", min: "0", step: "1", value: d.buffer != null ? d.buffer : 0, oninput: function (e) { d.buffer = num(e.target.value); changed(); } })),
+        fld("Chef's cost ($)", el("input", { type: "number", min: "0", step: "0.01", value: num(d.chefCost) > 0 ? d.chefCost : "", placeholder: "optional", oninput: function (e) { d.chefCost = e.target.value === "" ? null : num(e.target.value); changed(); } }))];
+    }
+    var ings = ingList(), preps = itemList().filter(function (p) { return isPrep(p) && p.id !== S.sel; });
+    var rows = (d.lines || []).map(function (l, i) {
+      var cells;
+      if (l.kind === "other") {
+        cells = [
+          el("td", { colspan: "4" }, [el("input", { type: "text", value: l.label || "", placeholder: "e.g. Packaging", "aria-label": "Extra cost", oninput: function (e) { l.label = e.target.value; changed(); } })]),
+          el("td", { class: "n" }, [el("input", { type: "number", min: "0", step: "0.01", value: l.amount != null ? l.amount : "", "aria-label": "Extra cost amount ($)", oninput: function (e) { l.amount = num(e.target.value); changed(); } })])
+        ];
+      } else {
+        var fam = lineFam(l);
+        var sel = el("select", { "aria-label": "Ingredient", onchange: function () {
+          var v = sel.value;
+          if (v.indexOf("prep:") === 0) { l.kind = "prep"; l.prep = v.slice(5); delete l.ing; } else { l.kind = "ing"; l.ing = v.slice(4); delete l.prep; }
+          var f = lineFam(l); if (f && !U[l.unit]) l.unit = defUnit(f);
+          changed(); renderEditor();
+        } }, [el("option", { value: "ing:", text: "Pick an ingredient" }),
+          el("optgroup", { label: "Ingredients" }, ings.map(function (n) { return el("option", { value: "ing:" + n.id, text: n.name + (n.supplier ? " (" + n.supplier + ")" : "") }); })),
+          preps.length ? el("optgroup", { label: "Prep recipes (sauces, doughs)" }, preps.map(function (p) { return el("option", { value: "prep:" + p.id, text: p.name }); })) : null]);
+        sel.value = l.kind === "prep" ? "prep:" + l.prep : "ing:" + (l.ing || "");
+        sel.style.minWidth = "170px"; sel.style.width = "100%";
+        cells = [
+          el("td", null, [sel]),
+          el("td", null, [el("input", { type: "number", min: "0", step: "0.01", value: l.qty != null ? l.qty : "", "aria-label": "Amount", oninput: function (e) { l.qty = num(e.target.value); changed(); } })]),
+          el("td", null, [unitSel(l.unit || "g", fam, function (v) { l.unit = v; changed(); })]),
+          el("td", { class: "n muted", "data-weigh": String(i), text: weighText(l) }),
+          el("td", { class: "n", "data-line": String(i) })
+        ];
+      }
+      return el("tr", null, cells.concat([el("td", null, [el("button", { class: "btn danger", type: "button", "aria-label": "Remove line", text: "✕", onclick: function () { d.lines.splice(i, 1); changed(); renderEditor(); } })])]));
+    });
+    var del = el("button", { class: "btn danger", type: "button", text: S.confirmDel === S.sel ? "Tap again to delete" : (prep ? "Delete prep recipe" : "Delete item"), onclick: function () {
+      if (S.confirmDel !== S.sel) { S.confirmDel = S.sel; renderEditor(); return; }
+      var id = S.sel; clearTimeout(timers.item); S.sel = null; S.draft = null;
+      remove("items/" + id).then(function () { toast("Deleted"); }, function () {}); renderMenu();
+    } });
+    var used = prep ? itemList().filter(function (it) { return (it.lines || []).some(function (l) { return l.kind === "prep" && l.prep === S.sel; }); }).map(function (it) { return it.name; }) : [];
+    box.replaceChildren.apply(box, [
+      el("div", { class: "panelhead", text: prep ? "Prep recipe" : "Menu item" }),
+      d.note ? el("div", { class: "warn", text: d.note }) : null,
+      el("div", { class: "fields" }, top),
+      el("div", { class: "tiles", id: "e-totals" }),
+      prep ? el("div", { class: "tablewrap" }, [el("table", null, [el("thead", null, [el("tr", null, [el("th", { text: "Price points" }), el("th", { class: "n", text: "Cost" })])]), el("tbody", { id: "e-points" })])]) : null,
+      el("div", { class: "toolbar" }, [el("h3", { text: prep ? "Ingredients for one batch" : "Ingredients for one serving" }), el("button", { class: "btn", type: "button", text: "Print recipe card", onclick: function () { printCards([Object.assign({ id: S.sel }, d)]); } })]),
+      el("p", { class: "hint", text: prep ? (used.length ? "Used in: " + used.join(", ") + "." : "Not used in any menu item yet.") : "Amounts are what goes on the plate. Weigh column shows grams or ml for the scale. Trim and cooking loss come from each ingredient's usable %." }),
+      el("div", { class: "tablewrap" }, [el("table", null, [
+        el("thead", null, [el("tr", null, [el("th", { text: "Ingredient" }), el("th", { class: "n", text: "Amount" }), el("th", { text: "Unit" }), el("th", { class: "n", text: "Weigh" }), el("th", { class: "n", text: "Cost" }), el("th", { text: "" })])]),
+        el("tbody", null, rows.length ? rows : [el("tr", null, [el("td", { colspan: "6", class: "empty", text: "No ingredients yet." })])])
+      ])]),
+      el("div", { class: "warn", id: "e-warn" }),
+      el("div", { class: "row" }, [
+        el("button", { class: "btn", type: "button", text: "Add ingredient", onclick: function () { d.lines = d.lines || []; d.lines.push({ kind: "ing", ing: "", qty: "", unit: "g" }); changed(); renderEditor(); } }),
+        el("button", { class: "btn", type: "button", text: "Add extra cost", onclick: function () { d.lines = d.lines || []; d.lines.push({ kind: "other", label: "", amount: "" }); changed(); renderEditor(); } })
+      ]),
+      el("label", { class: "method" }, [el("h3", { text: "Method" }), el("textarea", { rows: "7", placeholder: "One step per line. Prints on the recipe card.", oninput: function (e) { d.method = e.target.value; saveSoon("item", flushItem); S.dirty = true; } }, [d.method || ""])]),
+      el("div", { class: "row" }, [del])
+    ].filter(Boolean));
+    renderTotals();
+  }
+  // ---------- recipe cards (print) ----------
+  function steps(m) { return String(m || "").split(/\n+/).map(function (s) { return s.trim().replace(/^\d+[.)]\s*/, ""); }).filter(Boolean); }
+  function printCards(list) {
+    var t = target(), cards = list.map(function (it) {
+      var c = itemCalc(it), prep = isPrep(it);
+      var rows = (it.lines || []).map(function (l) {
+        var v = lineCost(l);
+        return el("tr", null, [el("td", { text: lineName(l) }), el("td", { class: "n", text: l.kind === "other" ? "" : trimN(num(l.qty), 2) + " " + (l.unit || "") }), el("td", { class: "n", text: weighText(l) }), el("td", { class: "n", text: isFinite(v) ? money(v) : "–" }), el("td", { class: "chk", text: "" })]);
+      });
+      var ps = prep ? prepStats(it) : null;
+      var sum = prep ? "Batch makes " + trimN(num(it.yieldQty), 2) + " " + (it.yieldUnit || "") + " · batch cost " + money(c.cost) + " · " + prepPerText(it) + (portionText(it) ? " · " + portionText(it) + " portion " + moneyP(ps.portionCost) : "") + (ps.price > 0 ? " · sells " + money(ps.price) + " (" + pct(ps.fc) + ")" : "")
+        : "Menu price " + money(num(it.price)) + " · plate cost " + money(c.cost) + " · food cost " + pct(c.fc) + " (target " + t + "%) · profit " + money(c.gp) + (num(it.buffer) ? " · includes " + trimN(num(it.buffer), 1) + "% waste buffer" : "");
+      return el("div", { class: "card" }, [
+        el("div", { class: "ch" }, [el("span", { class: "cb", text: (bizName() || "Recipe card").toUpperCase() }), el("span", { class: "cs", text: it.section || "" })]),
+        el("h2", { text: it.name || "Unnamed" }), el("p", { text: sum }),
+        el("table", null, [el("thead", null, [el("tr", null, [el("th", { text: prep ? "Ingredient (one batch)" : "Ingredient (one serving)" }), el("th", { class: "n", text: "Amount" }), el("th", { class: "n", text: "Weigh" }), el("th", { class: "n", text: "Cost" }), el("th", { class: "chk", text: "✓" })])]), el("tbody", null, rows)]),
+        steps(it.method).length ? el("h3", { class: "msteps", text: "Method" }) : null,
+        steps(it.method).length ? el("ol", { class: "msteps" }, steps(it.method).map(function (s) { return el("li", { text: s }); })) : null,
+        el("p", { class: "foot", text: "Weighed by ________   Date ________   Actual weight ________" })
+      ]);
+    });
+    $("printcards").replaceChildren.apply($("printcards"), cards);
+    window.print();
+  }
+  $("m-print").addEventListener("click", function () { printCards(itemList().filter(function (it) { return !isPrep(it); })); });
+  $("r-print").addEventListener("click", function () { printCards(itemList().filter(isPrep).sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); })); });
+  $("m-new").addEventListener("click", function () {
+    var id = newId("item"), d = { name: "New item", section: sections()[0], price: 0, buffer: 0, lines: [] };
+    S.items[id] = d; select(id); write("items/" + id, d).catch(function () {});
+  });
+  $("m-newprep").addEventListener("click", function () {
+    var id = newId("prep"), d = { name: "New prep recipe", section: PREP, yieldQty: 1, yieldUnit: "L", portionQty: 2, portionUnit: "fl oz", lines: [] };
+    S.items[id] = d; select(id); write("items/" + id, d).catch(function () {});
+  });
+  $("target").addEventListener("input", function () { S.settings.target = num($("target").value, 32); renderList(); renderTotals(); saveSoon("settings", function () { write("settings/main", JSON.parse(JSON.stringify(S.settings))).catch(function () {}); }); });
+
+  // ---------- ingredients ----------
+  function saveIng(id) { saveSoon("ing_" + id, function () { write("ingredients/" + id, JSON.parse(JSON.stringify(S.ing[id]))).catch(function () {}); }); }
+  function renderIng() {
+    if (editingNow($("i-table"))) return;
+    var q = $("i-search").value.trim().toLowerCase(), tbody = [], last = null;
+    ingList().filter(function (i) { return !q || ((i.name || "") + " " + (i.supplier || "") + " " + (i.cat || "") + " " + (i.code || "") + " " + (i.brand || "")).toLowerCase().indexOf(q) >= 0; }).forEach(function (i) {
+      var letter = (i.name || "?").normalize("NFD").charAt(0).toUpperCase();
+      if (letter !== last) { last = letter; tbody.push(el("tr", { class: "cat" }, [el("td", { colspan: "13", text: letter })])); }
+      var x = S.ing[i.id], out = el("td", { class: "n", text: perText(x) });
+      var used = itemList().filter(function (it) { return (it.lines || []).some(function (l) { return l.ing === i.id; }); }).length;
+      function upd() { out.textContent = perText(x); saveIng(i.id); renderList(); }
+      var cat = el("select", { "aria-label": "Group", onchange: function () { x.cat = cat.value; saveIng(i.id); } }, catOpts()); cat.value = CATS.indexOf(x.cat) >= 0 ? x.cat : "Other";
+      tbody.push(el("tr", { id: "ing-row-" + i.id, class: S.flash === i.id ? "sel" : "" }, [
+        el("td", null, [el("input", { type: "text", value: x.code || "", "aria-label": "Item code", style: "width:80px;min-width:70px", oninput: function (e) { x.code = e.target.value.trim(); saveIng(i.id); } })]),
+        el("td", null, [el("input", { type: "text", value: x.name || "", "aria-label": "Ingredient", style: "min-width:170px", oninput: function (e) { x.name = e.target.value; saveIng(i.id); }, onchange: function () { setTimeout(function () { showIng(i.id); }, 0); } }), x.note ? el("div", { class: "warn", text: x.note }) : null]),
+        el("td", null, [el("input", { type: "text", value: x.brand || "", "aria-label": "Brand", style: "width:90px;min-width:70px", oninput: function (e) { x.brand = e.target.value; saveIng(i.id); } })]),
+        el("td", null, [el("input", { type: "text", value: x.supplier || "", "aria-label": "Supplier", style: "min-width:90px", oninput: function (e) { x.supplier = e.target.value; saveIng(i.id); } })]),
+        el("td", null, [buySel(x.buyAs, function (v) { x.buyAs = v; upd(); })]),
+        el("td", null, [packInput(x, upd)]),
+        el("td", null, [el("input", { type: "number", min: "0", step: "0.01", value: x.price != null ? x.price : "", placeholder: "price?", "aria-label": "Unit price", oninput: function (e) { x.price = e.target.value === "" ? null : num(e.target.value); upd(); } })]),
+        el("td", null, [el("input", { type: "number", min: "1", step: "1", value: x.yield != null ? x.yield : 100, "aria-label": "Usable percent", oninput: function (e) { x.yield = num(e.target.value, 100); upd(); } })]),
+        el("td", null, [el("input", { type: "number", min: "0", step: "1", value: num(x.density, 0) > 0 ? Math.round(x.density * 236.588) : "", placeholder: isFinite(densOf(x, i.id)) ? String(Math.round(densOf(x, i.id) * 236.588)) : "–", "aria-label": "Grams per cup", title: "Grams in one cup. Lets recipes use cups and spoons for things priced by weight, and grams for things priced by volume.", oninput: function (e) { var v = num(e.target.value, 0); if (v > 0) x.density = v / 236.588; else delete x.density; upd(); } })]),
+        el("td", null, [el("input", { type: "number", min: "0", step: "1", value: num(x.eachG, 0) > 0 ? x.eachG : "", placeholder: EACH[i.id] ? String(EACH[i.id]) : "–", "aria-label": "Grams each", title: "Weight of one (one egg, one lime, one bunch). Lets recipes count items priced by weight, or weigh items priced each.", oninput: function (e) { var v = num(e.target.value, 0); if (v > 0) x.eachG = v; else delete x.eachG; upd(); } })]),
+        out, el("td", null, [cat]),
+        el("td", null, [el("button", { class: "btn danger", type: "button", text: S.confirmDel === i.id ? (used ? "Used in " + used + ". Tap again" : "Tap again") : "Delete", onclick: function () {
+          if (S.confirmDel !== i.id) { S.confirmDel = i.id; renderIng(); return; }
+          remove("ingredients/" + i.id).then(function () { toast("Deleted"); }, function () {});
+        } })])
+      ]));
+    });
+    $("i-table").replaceChildren(tbody.length ? el("table", null, [el("thead", null, [el("tr", null, ["Item code", "Ingredient", "Brand", "Supplier", "Unit", "Pack size", "Unit price ($)", "Usable %", "g per cup", "g each", "Real cost", "Group", ""].map(function (h, k) { return el("th", { class: k === 10 ? "n" : "", text: h }); }))]), el("tbody", null, tbody)]) : el("div", { class: "empty", text: S.loaded.ing ? (q ? "Nothing matches." : "No ingredients yet.") : "Loading…" }));
+  }
+  $("i-search").addEventListener("input", function () { var a = $("i-search"); a.blur(); renderIng(); a.focus(); });
+  // re-sort and jump to an ingredient, highlighted for a few seconds
+  var flashT;
+  function showIng(id) {
+    S.flash = id; if (document.activeElement && $("i-table").contains(document.activeElement)) document.activeElement.blur();
+    renderIng();
+    var row = $("ing-row-" + id); if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
+    clearTimeout(flashT); flashT = setTimeout(function () { S.flash = null; var r = $("ing-row-" + id); if (r) r.classList.remove("sel"); }, 3500);
+  }
+  // new-ingredient window
+  var dlg = $("ing-dlg");
+  $("d-buy").replaceWith(buySel("Case", function () { dlgPreview(); }, "Unit")); dlg.querySelector('[aria-label="Unit"]').id = "d-buy";
+  $("d-cat").replaceChildren.apply($("d-cat"), catOpts());
+  function dlgPreview() {
+    var p = parsePack($("d-pack").value), out = $("d-preview");
+    $("d-pack").style.borderColor = p || !$("d-pack").value ? "" : "var(--bad)";
+    if (!p) { out.textContent = $("d-pack").value ? "Write it like the invoice: 6X160 G, 1X15 DZ, 1X50 LB, 2X3.7 L, 1X20 UN" : ""; return; }
+    var x = { buyAs: $("d-buy").value, perCase: p.perCase, packQty: p.packQty, unit: p.unit, price: $("d-price").value === "" ? null : num($("d-price").value), yield: num($("d-yield").value, 100) || 100 };
+    var tot = packBase(x), fam = U[p.unit][0];
+    var amt = fam === "m" ? (tot >= 1000 ? trimN(tot / 1000, 3) + " kg" : trimN(tot, 1) + " g") : fam === "v" ? (tot >= 1000 ? trimN(tot / 1000, 3) + " L" : trimN(tot, 1) + " ml") : trimN(tot, 1) + " each";
+    out.textContent = "Price covers " + amt + (x.price != null ? " → " + perText(x) : "") + (x.buyAs === "Each" && p.perCase > 1 ? " (EA: price is for one " + trimN(p.packQty, 3) + " " + uLabel(p.unit) + ")" : "");
+  }
+  ["d-pack", "d-price", "d-yield"].forEach(function (k) { $(k).addEventListener("input", dlgPreview); });
+  function dupOf(name) { var n = name.trim().toLowerCase(); return Object.keys(S.ing).filter(function (k) { return (S.ing[k].name || "").trim().toLowerCase() === n; })[0]; }
+  $("d-name").addEventListener("input", function () {
+    var v = $("d-name").value.trim(), d = v && dupOf(v);
+    $("d-msg").textContent = d ? "\u201c" + S.ing[d].name + "\u201d is already on the list." : v ? "Goes under " + v.normalize("NFD").charAt(0).toUpperCase() + "." : "";
+  });
+  $("i-new").addEventListener("click", function () {
+    if (!S.canWrite) { toast("Storage is not available."); return; }
+    ["d-code", "d-name", "d-brand", "d-sup", "d-price", "d-pack"].forEach(function (k) { $(k).value = ""; });
+    $("d-buy").value = "Case"; $("d-yield").value = "100"; $("d-cat").value = "Other"; $("d-msg").textContent = ""; $("d-preview").textContent = ""; $("d-pack").style.borderColor = "";
+    var sups = {}; Object.keys(S.ing).forEach(function (k) { if (S.ing[k].supplier) sups[S.ing[k].supplier] = 1; });
+    $("d-suppliers").replaceChildren.apply($("d-suppliers"), Object.keys(sups).sort().map(function (n) { return el("option", { value: n }); }));
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+    setTimeout(function () { $("d-name").focus(); }, 0);
+  });
+  $("d-cancel").addEventListener("click", function () { dlg.close ? dlg.close() : dlg.removeAttribute("open"); });
+  $("d-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var name = $("d-name").value.trim(); if (!name) { $("d-msg").textContent = "Type the ingredient's name first."; $("d-name").focus(); return; }
+    var dup = dupOf(name); if (dup) { dlg.close ? dlg.close() : dlg.removeAttribute("open"); $("i-search").value = ""; showIng(dup); toast("Already on the list"); return; }
+    var p = parsePack($("d-pack").value);
+    if ($("d-pack").value.trim() && !p) { dlgPreview(); $("d-pack").focus(); return; }
+    p = p || { perCase: 1, packQty: 1, unit: "kg" };
+    var id = newId(name), d = { code: $("d-code").value.trim(), name: name, brand: $("d-brand").value.trim(), supplier: $("d-sup").value.trim(), buyAs: $("d-buy").value, perCase: p.perCase, packQty: p.packQty, unit: p.unit, price: $("d-price").value === "" ? null : num($("d-price").value), yield: num($("d-yield").value, 100) || 100, cat: $("d-cat").value };
+    S.ing[id] = d; $("i-search").value = "";
+    dlg.close ? dlg.close() : dlg.removeAttribute("open");
+    write("ingredients/" + id, d).then(function () { toast("Added " + name); }, function () {});
+    showIng(id);
+  });
+
+  // ---------- planner ----------
+  function fmtQty(base, fam) {
+    if (fam === "m") return base >= 1000 ? trimN(base / 1000, 2) + " kg (" + trimN(base / 453.592, 1) + " lb)" : Math.round(base) + " g";
+    if (fam === "v") return base >= 1000 ? trimN(base / 1000, 2) + " L" : Math.round(base) + " ml";
+    return trimN(base, 1) + " each";
+  }
+  // break an item down to raw ingredients, following prep recipes
+  function expand(it, mult, agg, acc, depth) {
+    if (depth > 6) return;
+    (it.lines || []).forEach(function (l) {
+      if (l.kind === "other") { acc.other += num(l.amount) * mult; return; }
+      if (!U[l.unit]) return;
+      if (l.kind === "prep") {
+        var p = itemOf(l.prep), base = prepBase(p); if (!isPrep(p) || !(base > 0)) return;
+        var amt = convert(l.qty, l.unit, U[p.yieldUnit][0], p, l.prep); if (!isFinite(amt)) return;
+        expand(p, mult * amt / base, agg, acc, depth + 1); return;
+      }
+      var i = S.ing[l.ing]; if (!i || !U[i.unit]) return;
+      var amt0 = convert(l.qty, l.unit, U[i.unit][0], i, l.ing); if (!isFinite(amt0)) return;
+      var served = amt0 * mult, buy = served / (num(i.yield, 100) / 100);
+      if (!agg[l.ing]) agg[l.ing] = { i: i, served: 0, buy: 0 };
+      agg[l.ing].served += served; agg[l.ing].buy += buy;
+    });
+  }
+  function renderPlan() {
+    var sel = $("p-item");
+    if (!editingNow($("view-plan"))) {
+      var cur = sel.value || lsGet("fc-plan");
+      sel.replaceChildren.apply(sel, itemList().filter(function (it) { return !isPrep(it); }).map(function (it) { return el("option", { value: it.id, text: it.name }); }));
+      if (cur && S.items[cur]) sel.value = cur;
+    }
+    var it = S.items[sel.value], out = $("p-out");
+    if (!it) { out.replaceChildren(el("div", { class: "empty", text: "Pick a menu item." })); return; }
+    var n = Math.max(0, num($("p-n").value)), mult = 1 + num(it.buffer) / 100, c = itemCalc(it);
+    var agg = {}, acc = { other: 0 };
+    expand(it, n * mult, agg, acc, 0);
+    var rows = Object.keys(agg).sort(function (a, b) { return (agg[a].i.name || "").localeCompare(agg[b].i.name || ""); }).map(function (k) {
+      var a = agg[k], fam = U[a.i.unit][0], pack = packBase(a.i), cost = pack > 0 && a.i.price != null ? a.buy / pack * num(a.i.price) : NaN;
+      return el("tr", null, [el("td", { text: a.i.name + (a.i.supplier ? " (" + a.i.supplier + ")" : "") }), el("td", { class: "n", text: fmtQty(a.served, fam) }), el("td", { class: "n", text: fmtQty(a.buy, fam) }),
+        el("td", { class: "n", text: pack > 0 ? trimN(a.buy / pack, a.buy / pack < 1 ? 2 : 1) + " " + (a.i.buyAs || "Each").toLowerCase() + " (" + packText(a.i) + ")" : "–" }), el("td", { class: "n", text: money(cost) })]);
+    });
+    if (acc.other) rows.push(el("tr", null, [el("td", { text: "Extra costs" }), el("td"), el("td"), el("td"), el("td", { class: "n", text: money(acc.other) })]));
+    var sales = n * num(it.price), food = c.cost * n, t = target();
+    out.replaceChildren(el("div", { class: "stack" }, [
+      el("div", { class: "tiles" }, [tile("Sales", money(sales), n + " × " + money(num(it.price))), tile("Food cost", money(food), pct(c.fc), isFinite(c.fc) ? (c.fc <= t ? "good" : "over") : ""), tile("Gross profit", money(sales - food), pct(c.gpp))]),
+      el("h3", { text: "What to buy" }),
+      el("div", { class: "tablewrap" }, [el("table", null, [el("thead", null, [el("tr", null, ["Ingredient", "Served", "Buy (before trim)", "Packs", "Cost"].map(function (h, k) { return el("th", { class: k ? "n" : "", text: h }); }))]), el("tbody", null, rows)])]),
+      el("p", { class: "hint", text: "Sauces and doughs are broken down into their raw ingredients." + (num(it.buffer) ? " Includes the item's " + trimN(num(it.buffer), 1) + "% waste buffer." : "") })
+    ]));
+  }
+  $("p-item").addEventListener("change", function () { lsSet("fc-plan", $("p-item").value); renderPlan(); });
+  $("p-n").addEventListener("input", renderPlan);
+
+  // ---------- branding ----------
+  function applyBrand() {
+    var n = bizName();
+    $("t-name").textContent = n ? n + " Food Cost" : "Food Cost";
+    $("t-logo").textContent = (n || "F").charAt(0).toUpperCase();
+    document.title = n ? n + " Food Cost" : "Food Cost";
+  }
+
+  // ---------- file: backup, restore, export, settings ----------
+  function download(name, text, type) {
+    var blob = new Blob([text], { type: type }), url = URL.createObjectURL(blob), link = el("a", { href: url, download: name });
+    document.body.appendChild(link); link.click(); link.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+  function stamp() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function fileSlug() { return (slug(bizName()) || "food").replace(/_/g, "-") + "-cost"; }
+  function exportBackup() {
+    download(fileSlug() + "-backup-" + stamp() + ".json", JSON.stringify(LocalDB.dump(), null, 1), "application/json");
+    lsSet("fc-last-backup", String(Date.now())); renderSum(); toast("Backup saved to your downloads");
+  }
+  function csvCell(v) { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  function csv(rows) { return "\ufeff" + rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n"); }
+  function r2(x) { return isFinite(x) ? Math.round(x * 100) / 100 : ""; }
+  function exportMenuCsv() {
+    var rows = [["Section", "Menu item", "Menu price", "Plate cost", "Food cost %", "Gross profit", "Gross margin %", "Price for target"]];
+    itemList().filter(function (it) { return !isPrep(it); }).forEach(function (it) { var c = itemCalc(it); rows.push([it.section, it.name, r2(num(it.price)), r2(c.cost), r2(c.fc), r2(c.gp), r2(c.gpp), r2(c.need)]); });
+    rows.push([]); rows.push(["Prep recipe", "Batch", "Batch cost", "Cost per kg/L/each", "Portion", "Portion cost", "Sell price", "Food cost %"]);
+    itemList().filter(isPrep).forEach(function (it) { var s = prepStats(it); rows.push([it.name, trimN(num(it.yieldQty), 2) + " " + (it.yieldUnit || ""), r2(s.batch), r2(s.fam === "e" ? s.per : s.per * 1000), portionText(it), r2(s.portionCost), s.price > 0 ? r2(s.price) : "", s.price > 0 ? r2(s.fc) : ""]); });
+    download(fileSlug() + "-menu-" + stamp() + ".csv", csv(rows), "text/csv");
+  }
+  function exportIngCsv() {
+    var rows = [["Item code", "Ingredient", "Brand", "Supplier", "Unit", "Pack size", "Unit price", "Usable %", "Cost per usable kg/L/each", "Group", "Note"]];
+    ingList().forEach(function (i) { var c = usableCost(i), f = U[i.unit] ? U[i.unit][0] : null; rows.push([i.code, i.name, i.brand, i.supplier, buyCode(i.buyAs), i.packQty ? packStr(i) : "", i.price, i.yield, r2(f === "e" ? c : c * 1000), i.cat, i.note]); });
+    download(fileSlug() + "-ingredients-" + stamp() + ".csv", csv(rows), "text/csv");
+  }
+  function importBackup(file) {
+    var r = new FileReader();
+    r.onload = function () {
+      var data; try { data = JSON.parse(r.result); } catch (e) { toast("That file isn't a backup."); return; }
+      var n = LocalDB.count(data); if (n < 0) { toast("That file isn't a Food Cost backup."); return; }
+      if (!confirm("Replace everything in this workbook with the backup (" + n.ingredients + " ingredients, " + n.items + " menu items and prep recipes)? Export a backup first if you want to keep what's here.")) return;
+      clearTimeout(timers.item); S.sel = null; S.draft = null; S.dirty = false;
+      try { LocalDB.load(data); toast("Backup loaded"); $("file-dlg").close(); } catch (e) { notice("Could not load the backup: " + (e && e.message || e), true); }
+    };
+    r.readAsText(file);
+  }
+  // add or update recipes and ingredients from a file, keeping everything else
+  function importRecipes(file) {
+    var r = new FileReader();
+    r.onload = function () {
+      var data; try { data = JSON.parse(r.result); } catch (e) { toast("That file isn't a recipe file."); return; }
+      var n = LocalDB.count(data); if (n < 0 || n.ingredients + n.items === 0) { toast("That file has no recipes or ingredients in it."); return; }
+      var names = Object.keys(data.items || {}).map(function (k) { return (S.items[k] ? "update " : "add ") + (data.items[k].name || k); })
+        .concat(Object.keys(data.ingredients || {}).map(function (k) { return (S.ing[k] ? "update ingredient " : "add ingredient ") + (data.ingredients[k].name || (S.ing[k] && S.ing[k].name) || k); }));
+      if (!confirm("Add to this workbook:\n\n• " + names.join("\n• ") + "\n\nNothing else changes.")) return;
+      if (S.sel && S.dirty) flushItem();
+      clearTimeout(timers.item); var keep = S.sel; S.sel = null; S.draft = null; S.dirty = false;
+      try { LocalDB.merge(data); toast("Added " + names.length + (names.length === 1 ? " change" : " changes")); $("file-dlg").close(); if (keep) lsSet("fc-sel", keep); }
+      catch (e) { notice("Could not add from that file: " + (e && e.message || e), true); }
+    };
+    r.readAsText(file);
+  }
+  function initFile() {
+    $("t-file").addEventListener("click", function () {
+      $("s-name").value = S.settings.name || ""; $("s-target").value = target();
+      $("s-sections").value = sections().filter(function (x) { return x !== PREP && x !== "Other"; }).join("\n");
+      var last = num(lsGet("fc-last-backup"), 0);
+      $("s-backup").textContent = last ? "Last backup from this browser: " + new Date(last).toLocaleString() + "." : "No backup has been exported from this browser yet.";
+      $("file-dlg").showModal();
+    });
+    $("f-close").addEventListener("click", function () { $("file-dlg").close(); });
+    $("f-backup").addEventListener("click", exportBackup);
+    $("f-menu").addEventListener("click", exportMenuCsv);
+    $("f-ing").addEventListener("click", exportIngCsv);
+    $("f-restore").addEventListener("click", function () { $("f-file").click(); });
+    $("f-file").addEventListener("change", function () { var f = $("f-file").files[0]; $("f-file").value = ""; if (f) importBackup(f); });
+    $("f-add").addEventListener("click", function () { $("f-addfile").click(); });
+    $("f-addfile").addEventListener("change", function () { var f = $("f-addfile").files[0]; $("f-addfile").value = ""; if (f) importRecipes(f); });
+    $("f-erase").addEventListener("click", function () {
+      if (!confirm("Erase every ingredient, menu item and prep recipe in this workbook? This can't be undone unless you have a backup.")) return;
+      clearTimeout(timers.item); S.sel = null; S.draft = null; S.dirty = false; LocalDB.load({ app: "food-cost", version: 1, ingredients: {}, items: {}, settings: { target: target(), name: S.settings.name || "", sections: S.settings.sections } });
+      toast("Workbook erased"); $("file-dlg").close();
+    });
+    $("s-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var secs = $("s-sections").value.split(/\n/).map(function (s) { return s.trim(); }).filter(function (s, i, arr) { return s && s !== PREP && s !== "Other" && arr.indexOf(s) === i; });
+      S.settings = Object.assign({}, S.settings, { name: $("s-name").value.trim(), target: num($("s-target").value, 32), sections: secs.length ? secs : DEFAULT_SECTIONS.slice() });
+      write("settings/main", JSON.parse(JSON.stringify(S.settings))).then(function () { toast("Settings saved"); }, function () {});
+      $("file-dlg").close();
+    });
+  }
+  function backupAge() { var last = num(lsGet("fc-last-backup"), 0); return last ? Math.floor((Date.now() - last) / 864e5) : null; }
+
+  // ---------- boot ----------
+  var sv = lsGet("fc-view"); showView(sv && $("view-" + sv) ? sv : "menu");
+  var db = LocalDB.open();
+  if (!db) { S.canWrite = false; setStatus("No storage"); notice("This browser is blocking storage (private window or site data turned off), so nothing can be saved. Open the app in a normal window.", true); return; }
+  S.db = db; setStatus(LocalDB.native ? "Saved to this computer" : "Saved on this device");
+  if (LocalDB.native) { var info = $("s-where"); if (info) info.textContent = "Everything saves automatically to a file on this computer, and a dated copy is kept every day in the backups folder (" + window.fcNative.dataDir() + "). Export a backup now and then to a USB stick or email as well, in case the computer itself fails."; }
+  function onErr() { setStatus("Storage error. Reload the page."); }
+  (function () {
+    db.collection("ingredients").onSnapshot(function (snap) {
+      var m = {}; snap.docs.forEach(function (d) { var x = d.data(); if (x) m[d.id] = Object.assign({}, x); });
+      var a = document.activeElement, inIng = a && $("i-table").contains(a);
+      if (inIng) Object.keys(S.ing).forEach(function (k) { if (m[k]) m[k] = S.ing[k]; });
+      S.ing = m; S.loaded.ing = true; render();
+    }, onErr);
+    db.collection("items").onSnapshot(function (snap) {
+      var m = {}; snap.docs.forEach(function (d) { var x = d.data(); if (x) m[d.id] = Object.assign({}, x); });
+      S.items = m; S.loaded.items = true;
+      if (!S.sel) { var want = lsGet("fc-sel"); var first = itemList()[0]; var id = want && m[want] ? want : first && first.id; if (id) { S.sel = id; S.draft = JSON.parse(JSON.stringify(m[id])); } }
+      else if (!m[S.sel]) { if (!timers.item) { S.sel = null; S.draft = null; } }
+      render();
+    }, onErr);
+    db.doc("settings/main").onSnapshot(function (d) { S.settings = Object.assign({ target: 32 }, d.exists ? d.data() : {}); applyBrand(); renderSum(); if (S.view === "menu" || S.view === "prep") renderMenu(); }, onErr);
+  })();
+  initFile();
+  // installable app when served from a web address (works offline after the first visit)
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(function () {});
+})();
+</script>

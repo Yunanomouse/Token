@@ -1,0 +1,84 @@
+<script>
+/* Local storage for the Food Cost workbook. Everything stays in this browser.
+   Same shape as a small document database: collections "ingredients" and "items", and the doc "settings/main". */
+var LocalDB = (function () {
+  "use strict";
+  var KEY = "foodcost-workbook-v1", COLLS = ["ingredients", "items"];
+  // in the Windows/desktop app the workbook is a real file on disk, written by the app itself
+  var NATIVE = window.fcNative || null;
+  var state = null, listeners = {}, docListeners = {};
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+  function blank() { return { app: "food-cost", version: 1, ingredients: {}, items: {}, settings: { target: 32 } }; }
+  function read() {
+    var raw = NATIVE ? NATIVE.load() : localStorage.getItem(KEY); if (!raw) return blank();
+    var d = JSON.parse(raw), b = blank();
+    COLLS.forEach(function (c) { b[c] = d[c] && typeof d[c] === "object" ? d[c] : {}; });
+    b.settings = d.settings && typeof d.settings === "object" ? d.settings : b.settings;
+    return b;
+  }
+  function persist() {
+    try { if (NATIVE) NATIVE.save(JSON.stringify(state)); else localStorage.setItem(KEY, JSON.stringify(state)); return Promise.resolve(); }
+    catch (e) { return Promise.reject({ code: "quota", message: String(e) }); }
+  }
+  function snapColl(c) { return { docs: Object.keys(state[c]).sort().map(function (id) { return { id: id, exists: true, data: function () { return clone(state[c][id]); } }; }) }; }
+  function snapDoc() { var has = !!state.settings; return { id: "main", exists: has, data: function () { return has ? clone(state.settings) : undefined; } }; }
+  function emit(c) {
+    setTimeout(function () {
+      if (c === "settings") (docListeners.settings || []).forEach(function (cb) { cb(snapDoc()); });
+      else (listeners[c] || []).forEach(function (cb) { cb(snapColl(c)); });
+    }, 0);
+  }
+  function emitAll() { COLLS.forEach(emit); emit("settings"); }
+  function split(path) {
+    var p = String(path).split("/");
+    if (p.length !== 2) throw new Error("Bad path " + path);
+    if (p[0] === "settings") return ["settings", null];
+    if (COLLS.indexOf(p[0]) < 0) throw new Error("Unknown collection " + p[0]);
+    return p;
+  }
+  function apply(path, fn) {
+    var p = split(path), before = JSON.stringify(state);
+    fn(p[0], p[1]);
+    return persist().then(function () { emit(p[0]); }, function (e) { state = JSON.parse(before); throw e; });
+  }
+  var db = {
+    collection: function (c) { return { onSnapshot: function (cb) { (listeners[c] = listeners[c] || []).push(cb); emit(c); return function () { listeners[c] = listeners[c].filter(function (x) { return x !== cb; }); }; } }; },
+    doc: function (path) {
+      return {
+        onSnapshot: function (cb) { var c = split(path)[0]; (docListeners[c] = docListeners[c] || []).push(cb); emit(c); return function () {}; },
+        set: function (data) { return apply(path, function (c, id) { if (c === "settings") state.settings = clone(data); else state[c][id] = clone(data); }); },
+        update: function (data) { return apply(path, function (c, id) { if (c === "settings") state.settings = Object.assign({}, state.settings, clone(data)); else state[c][id] = Object.assign({}, state[c][id], clone(data)); }); },
+        delete: function () { return apply(path, function (c, id) { if (c === "settings") state.settings = { target: 32 }; else delete state[c][id]; }); }
+      };
+    }
+  };
+  // another tab of the app changed the workbook
+  window.addEventListener("storage", function (e) { if (e.key === KEY && state) { try { state = read(); emitAll(); } catch (err) {} } });
+  function valid(d) { return d && typeof d === "object" && (d.app === "food-cost" || d.ingredients || d.items) && (!d.ingredients || typeof d.ingredients === "object") && (!d.items || typeof d.items === "object"); }
+  return {
+    native: !!NATIVE,
+    open: function () {
+      try { if (!NATIVE) { var t = "__fc_test"; localStorage.setItem(t, "1"); localStorage.removeItem(t); } state = read(); return db; }
+      catch (e) { return null; }
+    },
+    dump: function () { return Object.assign({ app: "food-cost", version: 1, exported: new Date().toISOString() }, clone({ ingredients: state.ingredients, items: state.items, settings: state.settings })); },
+    count: function (d) { return valid(d) ? { ingredients: Object.keys(d.ingredients || {}).length, items: Object.keys(d.items || {}).length } : -1; },
+    // fields in the file win; anything not in the file is left alone
+    merge: function (d) {
+      if (!valid(d)) throw new Error("Not a Food Cost file");
+      var prev = JSON.stringify(state);
+      COLLS.forEach(function (c) { Object.keys(d[c] || {}).forEach(function (id) { state[c][id] = Object.assign({}, state[c][id] || {}, clone(d[c][id])); }); });
+      try { if (NATIVE) NATIVE.save(JSON.stringify(state)); else localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { state = JSON.parse(prev); throw new Error(NATIVE ? "Could not write the workbook file." : "This browser's storage is full."); }
+      emitAll();
+    },
+    load: function (d) {
+      if (!valid(d)) throw new Error("Not a Food Cost backup");
+      var prev = state; state = blank();
+      COLLS.forEach(function (c) { state[c] = clone(d[c] || {}); });
+      state.settings = Object.assign({ target: 32 }, clone(d.settings || {}));
+      try { if (NATIVE) NATIVE.save(JSON.stringify(state)); else localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { state = prev; throw new Error(NATIVE ? "Could not write the workbook file." : "This browser's storage is full."); }
+      emitAll();
+    }
+  };
+})();
+</script>
