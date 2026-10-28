@@ -9,6 +9,11 @@ was seen. Everything is **paper**: no indicator here places an order.
 - **Codex's entry:** `indicators/codex.py` and `pine/codex_*.pine`, when submitted.
 - **Reference:** `indicators/kama_baseline.py`, the live intraday bot's own KAMA rule.
 
+**Result (scored 2026-10-28):** Codex never submitted an entry, so there was no head-to-head.
+On the forward window, Claude's Supertrend made **+20.2%** and the live bot's KAMA rule lost
+**−10.8%**. One good month after one bad one is too little to show an edge; see
+[the forward window](#the-forward-window-scored-2026-10-28).
+
 ## The rules (pre-registered 2026-09-29)
 
 **What an indicator is.** A Python file with numpy as its only dependency.
@@ -136,6 +141,42 @@ KAMA at 30 minutes (also trend-following) did best, with VWAP reversion next.
 **Choosing the best of 20 on one month and a half picked the one most fitted to that stretch.** This is
 the same finding as `docs/intraday_research.md` and `docs/quant_methods_survey.md`: on these stocks,
 at this account size and these costs, nothing tried so far beats random entries out of sample.
+
+## The forward window (scored 2026-10-28)
+
+Scored once, the day after the window closed, on bars fetched from Yahoo that day:
+`python3 scripts/indicator_duel.py --fetch --forward indicators/claude.py indicators/kama_baseline.py`.
+The download held all 58 stocks and all 20 sessions, each through its 15:55 bar.
+
+**Codex's file never arrived** on any branch, so the forward window compares Claude's entry with
+the reference, the live bot's own rule. Neither entry showed look-ahead.
+
+| | Forward return | Trades | Won | Worst drawdown |
+|---|---|---|---|---|
+| **Claude: Supertrend 5m** | **+20.2%** ($50.00 → $60.10) | 35 | 34% | 5.0% |
+| KAMA baseline (live bot) | −10.8% ($50.00 → $44.63) | 49 | 31% | 20.6% |
+
+**By the pre-registered rule, the Supertrend is ahead:** the rule is the higher forward return.
+
+**The same checks as the test window, for context only** (they don't change the rule's answer):
+
+| | First half (Sep 30 – Oct 13) | Second half (Oct 14 – Oct 27) | At 0.25% per side | Beats random |
+|---|---|---|---|---|
+| Claude: Supertrend 5m | +13.1% | +10.0% | +16.9% | 40 of 40 (random median −6.9%, best +13.1%) |
+| KAMA baseline | −4.3% | −6.5% | −12.9% | 5 of 40 (random median −4.4%) |
+
+**What this does and doesn't show.**
+
+- **It is a real out-of-sample result.** The pick was locked on 2026-09-29, before any of these
+  sessions happened. Nothing was tuned on them.
+- **It is one month.** The same rule lost 7.5% on the test window just before (beating only 5% of
+  random runs), then made 20.2% here. Chained, the two windows come to about +11% over 40 sessions
+  (0.925 × 1.202). That is one good month after one bad one, on 74 trades in all. It is too few
+  to show an edge; by `docs/research/02_overfitting_methods.md`, a few dozen trades cannot.
+- **What would show more:** the same rule, unchanged, on several more forward months, and still
+  ahead of random entries at the 0.25% cost. Nothing about the rule should be re-tuned on these results.
+- **The live bot is unchanged.** Its KAMA rule lost on both windows. Switching the bot to the Supertrend
+  is a separate decision for the owner, and it would still be paper only.
 
 ## Brief for Codex (copy everything below this line)
 
