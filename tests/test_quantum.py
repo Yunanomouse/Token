@@ -1668,6 +1668,72 @@ class TestCLI(unittest.TestCase):
                 self.assertEqual(main(argv), 0, f"{argv[0]} failed")
 
 
+class TestLiveCLIMessages(unittest.TestCase):
+    """``quantum live`` explains bad input in one line instead of a traceback."""
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.csv = self.tmp / "p.csv"
+        rng = np.random.default_rng(0)
+        px = 50 * np.cumprod(1 + rng.normal(0, 0.01, (30, 4)), axis=0)
+        self.csv.write_text("date,A,B,C,D\n" + "".join(
+            f"2020-01-{i + 1:02d}," + ",".join(f"{v:.4f}" for v in row) + "\n" for i, row in enumerate(px)))
+        self.state = self.tmp / "s.json"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _live(self, *extra, tickers="A,B,C,D", replay=None):
+        import contextlib, io
+        from quantum.cli import main
+        argv = ["live", "--replay", str(replay or self.csv), "--tickers", tickers, "--window", "5",
+                "--state", str(self.state), *extra]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = main(argv)
+        return code, out.getvalue()
+
+    def test_cardinality_above_ticker_count(self):
+        code, text = self._live(tickers="A,B")
+        self.assertEqual(code, 2)
+        self.assertIn("cardinality", text)
+
+    def test_unknown_solver(self):
+        code, text = self._live("--solver", "bogus")
+        self.assertEqual(code, 2)
+        self.assertIn("unknown solver 'bogus'", text)
+
+    def test_missing_replay_file(self):
+        code, text = self._live(replay=self.tmp / "nope.csv")
+        self.assertEqual(code, 2)
+        self.assertIn("nope.csv", text)
+        self.assertIn("not found", text)
+
+    def test_corrupt_state_is_reported_and_left_alone(self):
+        self.state.write_text("{bad", encoding="utf-8")
+        code, text = self._live()
+        self.assertEqual(code, 2)
+        self.assertIn(str(self.state), text)
+        self.assertIn("left untouched", text)
+        self.assertEqual(self.state.read_text(encoding="utf-8"), "{bad")
+
+    def test_tickers_missing_from_the_file(self):
+        code, text = self._live(tickers="A,ZZZZ,B,YYYY")
+        self.assertEqual(code, 2)
+        self.assertIn("ZZZZ, YYYY", text)
+        self.assertFalse(self.state.exists())
+
+    def test_resume_says_how_many_bars_are_new(self):
+        code, text = self._live("--fresh")
+        self.assertEqual(code, 0)
+        self.assertIn("replaying 30 bars", text)
+        code, text = self._live()
+        self.assertEqual(code, 0)
+        self.assertIn("0 new, 30 already in the state", text)
+
+
 class TestAgainstReferenceLibraries(unittest.TestCase):
     """Independent implementations, installed with ``pip install -e ".[test]"``.
 
@@ -2213,7 +2279,7 @@ class TestLiveEngine(unittest.TestCase):
         """Per-name cap and turnover cap are enforced on the cardinality strategy."""
         import tempfile
         from pathlib import Path
-        from quantum.live import Bar, ReplayFeed, RiskLimits, run
+        from quantum.live import ReplayFeed, RiskLimits, run
 
         with tempfile.TemporaryDirectory() as d:
             config = self._config(
@@ -2369,6 +2435,111 @@ class TestLiveEngine(unittest.TestCase):
         self.assertAlmostEqual(fills[0].quantity, 20.0)
         self.assertAlmostEqual(broker.cash(), 0.0)
 
+    def test_paper_broker_never_shorts_and_keeps_whole_shares_whole(self):
+        from quantum.live import Bar, Order, PaperBroker
+
+        bar = Bar("2024-01-02", {"AAA": 10.0})
+        broker = PaperBroker(cash=100.0, fee_rate=0.0, positions={"AAA": 3.0})
+        fills = broker.submit([Order("AAA", -5.0)], bar)  # asked to sell more than it holds
+        self.assertEqual([(f.ticker, f.quantity) for f in fills], [("AAA", -3.0)])
+        self.assertEqual(broker.positions(), {})
+        self.assertAlmostEqual(broker.cash(), 130.0)
+        self.assertEqual(broker.submit([Order("AAA", -1.0)], bar), [])  # nothing left to sell
+        whole = PaperBroker(cash=100.0, fee_rate=0.0, whole_shares=True)
+        fills = whole.submit([Order("AAA", 2.7)], bar)
+        self.assertEqual([f.quantity for f in fills], [2.0])
+        self.assertEqual(whole.positions(), {"AAA": 2.0})
+        self.assertEqual(whole.submit([Order("AAA", 0.4)], bar), [])
+
+    def test_state_file_from_another_version_still_loads(self):
+        import json
+        import tempfile
+        from dataclasses import asdict
+        from pathlib import Path
+        from quantum.live import EngineState
+
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "s.json"
+            data = asdict(EngineState(["A"], dates=["2024-01-02"], prices=[[1.0]], cash=5.0))
+            del data["halt_index"]           # written before that field existed
+            data["future_field"] = {"x": 1}  # written by a newer version
+            p.write_text(json.dumps(data))
+            st = EngineState.load(p)
+            self.assertEqual((st.tickers, st.cash, st.halt_index, st.dates), (["A"], 5.0, -1, ["2024-01-02"]))
+
+    def test_snapshot_reports_the_config_mode_with_the_paper_broker(self):
+        from quantum.live import Bar, Engine, EngineConfig, RiskLimits, snapshot
+
+        e = Engine(EngineConfig(["A", "B"], strategy="equal_weight", window=3, mode="live",
+                                limits=RiskLimits(min_history=3), state_path="unused.json"))
+        for i, d in enumerate(["2024-01-02", "2024-01-03", "2024-01-04"]):
+            e.on_bar(Bar(d, {"A": 10.0 + i, "B": 5.0}))
+        self.assertEqual(snapshot(e)[0]["mode"], "live")
+
+    def test_reconcile_rebases_history_on_a_split_and_a_dividend(self):
+        """The feed rewrites its past when a stock splits or goes ex-dividend; the
+        book must follow instead of reading it as a crash (kill switch) or a loss."""
+        import csv
+        import tempfile
+        from pathlib import Path
+        from quantum.live import Bar, Engine, EngineConfig, FileFeed, RiskLimits, snapshot, todays_orders, trade_ledger
+
+        def write(path, rows):
+            with open(path, "w", newline="") as fh:
+                w = csv.writer(fh)
+                w.writerow(["date", "AAA", "BBB"])
+                w.writerows(rows)
+
+        rows = [("2024-01-02", 100.0, 50.0), ("2024-01-03", 102.0, 51.0), ("2024-01-04", 104.0, 50.5)]
+        for whole in (False, True):
+            with tempfile.TemporaryDirectory() as d:
+                d = Path(d)
+                feed = d / "prices.csv"
+                write(feed, rows)
+                cfg = EngineConfig(["AAA", "BBB"], strategy="equal_weight", window=3, rebalance_every=1,
+                                   initial_cash=1000.0, fee_rate=0.0, whole_shares=whole,
+                                   limits=RiskLimits(min_history=3, max_drawdown=0.2, max_turnover=1.0, max_weight=0.6),
+                                   state_path=str(d / "s.json"))
+                engine = Engine(cfg)
+                engine.run(FileFeed(feed, cfg.tickers, poll_seconds=0.0, max_polls=1))
+                st = engine.state
+                held, equity, n_trades = dict(st.positions), st.equity_curve[-1], len(st.fills)
+                self.assertEqual((st.n_bars, sorted(held)), (3, ["AAA", "BBB"]))
+                # Overnight AAA splits 4:1 and BBB goes ex-dividend (2%): the feed's past moves.
+                adjusted = [(dt, a / 4, b * 0.98) for dt, a, b in rows] + [("2024-01-05", 26.5, 49.8)]
+                write(feed, adjusted)
+                tail = FileFeed(feed, cfg.tickers, poll_seconds=0.0, after="2024-01-04", max_polls=1)
+                changes = engine.reconcile(tail.history())
+                self.assertEqual([(c["ticker"], c["kind"]) for c in changes], [("AAA", "split"), ("BBB", "dividend")])
+                # Stored history is on the feed's basis; the shares moved the other way;
+                # the book is worth the same on the last date both copies hold.
+                self.assertEqual([round(v, 6) for v in st.prices[0]], [25.0, 49.0])
+                self.assertAlmostEqual(st.positions["AAA"], held["AAA"] * 4)
+                scaled_b = held["BBB"] / 0.98
+                self.assertAlmostEqual(st.positions["BBB"], int(scaled_b) if whole else scaled_b)
+                self.assertAlmostEqual(engine.equity(Bar("2024-01-04", {"AAA": 26.0, "BBB": 49.49})), equity, places=9)
+                events = engine.run(tail)
+                self.assertEqual([e["date"] for e in events], ["2024-01-05"])
+                self.assertFalse(st.halted)
+                self.assertNotEqual(events[0]["action"], "kill_switch")
+                # The day's move is the real one: +1.9% on AAA, +0.6% on BBB, no 75% crash.
+                self.assertLess(abs(st.equity_curve[-1] / equity - 1), 0.02)
+                if not whole:
+                    expect = equity + held["AAA"] * 104.0 * (26.5 / 26.0 - 1) + held["BBB"] * 50.5 * (49.8 / 49.49 - 1)
+                    self.assertAlmostEqual(st.equity_curve[-1], expect, places=6)
+                # Bookkeeping fills carry a note; gains and losses still add up to the equity change.
+                notes = [f for f in st.fills if f.get("note")]
+                self.assertEqual(len(notes), 3 if whole else 2)  # whole shares: cash in lieu of BBB's fraction
+                led = trade_ledger(st.fills, dict(zip(st.tickers, st.prices[-1])))
+                self.assertAlmostEqual(led["total_pnl"], st.equity_curve[-1] - cfg.initial_cash, places=6)
+                self.assertTrue(all("re-based" in line for line in st.log if "adjustment" in line))
+                # They are neither orders to place nor trades to count.
+                self.assertTrue(all(not o.get("note") and o["close"] > 0 for o in todays_orders(engine)["orders"]))
+                self.assertEqual(snapshot(engine)[0]["n_fills"], len(st.fills) - len(notes))
+                # A second pass over the same file changes nothing.
+                self.assertEqual(engine.reconcile(FileFeed(feed, cfg.tickers).history()), [])
+                self.assertGreater(len(st.fills) - len(notes), n_trades)  # and 01-05 still rebalanced
+
 
 # ==========================================================================
 # Desktop dashboard (controller + HTTP API; no browser needed)
@@ -2523,36 +2694,57 @@ class TestWebEngineParity(unittest.TestCase):
         rows = list(_csv.DictReader(open("data/prices/us_equities_1989_2018.csv")))
         tick = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
         rows = [r for r in rows if "2007-01-01" <= r["date"] <= "2012-12-31" and all(r[t] for t in tick)]
-        cases = [("equal_weight", 0.9, None, 0), ("markowitz", 0.9, None, 0), ("cardinality", 0.9, None, 0),
-                 ("cardinality", 0.12, None, 0), ("cardinality", 0.9, "2010-03-01", 0), ("cardinality", 0.12, None, 63)]
+        cases = [
+            dict(strategy="equal_weight", max_drawdown=0.9),
+            dict(strategy="markowitz", max_drawdown=0.9),
+            dict(strategy="cardinality", max_drawdown=0.9),
+            dict(strategy="cardinality", max_drawdown=0.12),
+            dict(strategy="cardinality", max_drawdown=0.9, trade_from="2010-03-01"),
+            dict(strategy="cardinality", max_drawdown=0.12, rearm_after=63),
+            # The $40 whole-share bot's rules: round down, spend the leftover, keep a
+            # cash reserve, and skip the turnover cap for the first buy from cash.
+            dict(strategy="cardinality", max_drawdown=0.25, rearm_after=63, initial_cash=40.0, fee_rate=0.0,
+                 cardinality=2, max_weight=0.5, min_cash_fraction=0.03, deploy_from_cash=True,
+                 whole_shares=True, fill_leftover=True, trade_from="2009-01-02"),
+            dict(strategy="cardinality", max_drawdown=0.9, initial_cash=250.0, cardinality=3,
+                 min_cash_fraction=0.1, deploy_from_cash=True, whole_shares=True),
+        ]
         expected = []
-        for strat, ks, tf, rearm in cases:
-            e = Engine(EngineConfig(tickers=tick, strategy=strat, cardinality=4, solver="exhaustive",
-                                    window=252, rebalance_every=21, initial_cash=100000, fee_rate=0.0005,
-                                    limits=RiskLimits(max_weight=0.4, max_turnover=0.5, max_drawdown=ks, min_history=252,
-                                                      rearm_after=rearm),
-                                    state_path="unused.json", trade_from=tf))
+        for c in cases:
+            limits = RiskLimits(max_weight=c.get("max_weight", 0.4), max_turnover=0.5, max_drawdown=c["max_drawdown"],
+                                min_history=252, rearm_after=c.get("rearm_after", 0),
+                                min_cash_fraction=c.get("min_cash_fraction", 0.0),
+                                deploy_from_cash=c.get("deploy_from_cash", False))
+            e = Engine(EngineConfig(tickers=tick, strategy=c["strategy"], cardinality=c.get("cardinality", 4),
+                                    solver="exhaustive", window=252, rebalance_every=21,
+                                    initial_cash=c.get("initial_cash", 100000.0), fee_rate=c.get("fee_rate", 0.0005),
+                                    limits=limits, state_path="unused.json", trade_from=c.get("trade_from"),
+                                    whole_shares=c.get("whole_shares", False), fill_leftover=c.get("fill_leftover", False)))
             for r in rows:
                 e.on_bar(Bar(r["date"], {t: float(r[t]) for t in tick}))
             led = trade_ledger(e.state.fills, dict(zip(tick, e.state.prices[-1])))
             expected.append([e.state.equity_curve[-1], len(e.state.fills), e.state.halted,
                              led["realized_pnl"], led["unrealized_pnl"], led["n_round_trips"], led["n_wins"]])
+        self.assertTrue(all(n_fills > 0 for _, n_fills, *_ in expected[-2:]))  # the whole-share cases did trade
         with tempfile.TemporaryDirectory() as d:
-            payload = {"rows": [[r["date"]] + [float(r[t]) for t in tick] for r in rows], "tick": tick,
-                       "cases": [list(c) for c in cases]}
+            payload = {"rows": [[r["date"]] + [float(r[t]) for t in tick] for r in rows], "tick": tick, "cases": cases}
             (Path(d) / "in.json").write_text(json.dumps(payload))
             script = Path(d) / "run.js"
             script.write_text(
-                "const QT=require(%s);const p=require(%s);const out=p.cases.map(([s,ks,tf,ra])=>{"
-                "const e=new QT.Engine({tickers:p.tick,strategy:s,cardinality:4,riskAversion:2,window:252,"
-                "rebalanceEvery:21,initialCash:100000,feeRate:0.0005,limits:{maxWeight:0.4,maxTurnover:0.5,"
-                "maxDrawdown:ks,minHistory:252,rearmAfter:ra},tradeFrom:tf});p.rows.forEach(r=>{const q={};p.tick.forEach((t,i)=>q[t]=r[i+1]);"
+                "const QT=require(%s);const p=require(%s);const out=p.cases.map(c=>{"
+                "const e=new QT.Engine({tickers:p.tick,strategy:c.strategy,cardinality:c.cardinality||4,riskAversion:2,"
+                "window:252,rebalanceEvery:21,initialCash:c.initial_cash||100000,feeRate:c.fee_rate==null?0.0005:c.fee_rate,"
+                "tradeFrom:c.trade_from||null,wholeShares:!!c.whole_shares,fillLeftover:!!c.fill_leftover,"
+                "limits:{maxWeight:c.max_weight||0.4,maxTurnover:0.5,maxDrawdown:c.max_drawdown,minHistory:252,"
+                "rearmAfter:c.rearm_after||0,minCashFraction:c.min_cash_fraction||0,deployFromCash:!!c.deploy_from_cash}});"
+                "p.rows.forEach(r=>{const q={};p.tick.forEach((t,i)=>q[t]=r[i+1]);"
                 "e.onBar({date:r[0],prices:q});});const last=p.rows[p.rows.length-1],lp={};p.tick.forEach((t,i)=>lp[t]=last[i+1]);"
                 "const L=QT.ledger(e.fills,lp);return [e.equity[e.equity.length-1],e.fills.length,e.halted,"
                 "L.realized_pnl,L.unrealized_pnl,L.n_round_trips,L.n_wins];});"
                 "console.log(JSON.stringify(out));"
                 % (json.dumps(str(Path("web/engine.js").resolve())), json.dumps(str(Path(d) / "in.json"))))
             got = json.loads(subprocess.run([node, str(script)], capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(len(got), len(cases))
         for (pe, pf, ph, pr, pu, pn, pw), (je, jf, jh, jr, ju, jn, jw) in zip(expected, got):
             self.assertAlmostEqual(pe, je, delta=1e-6 * pe)
             self.assertEqual(pf, jf)
@@ -2633,9 +2825,12 @@ class TestLiveBot(unittest.TestCase):
             self.assertLess(len(json.dumps(second)), 256 * 1024)
             self.assertLess(len(json.dumps(prices)), 256 * 1024)
 
-    def test_fetch_script_refuses_a_partial_market(self):
+    def test_fetch_script_never_writes_a_partial_market(self):
+        """One source for every ticker; a source that lags on a ticker hands over
+        to the next; a lag both share is written up to the common date, within a limit."""
         import importlib.util
         import json
+        import os
         import tempfile
         from pathlib import Path
         from unittest import mock
@@ -2649,21 +2844,56 @@ class TestLiveBot(unittest.TestCase):
             cfg = Path(d) / "c.json"
             cfg.write_text(json.dumps({"tickers": ["AAA", "BBB"]}))
             out = Path(d) / "p.csv"
-            with mock.patch.object(mod, "fetch", side_effect=[(good, "stooq"), (lagging, "stooq")]), \
-                 mock.patch("sys.argv", ["x", "--config", str(cfg), "--out", str(out), "--days", "36500"]):
-                self.assertEqual(mod.main(), 2)
-            self.assertFalse(out.exists())
             argv = ["x", "--config", str(cfg), "--out", str(out), "--days", "36500"]
-            with mock.patch.object(mod, "fetch", side_effect=[(good, "stooq"), (dict(good), "yahoo")]), \
-                 mock.patch("sys.argv", argv):
-                self.assertEqual(mod.main(), 3)  # the fixed dates are stale by now
-            with mock.patch.object(mod, "fetch", side_effect=[(good, "stooq"), (dict(good), "yahoo")]), \
-                 mock.patch("sys.argv", argv + ["--max-age-days", "36500"]):
-                self.assertEqual(mod.main(), 0)
+
+            def run(table, extra=("--max-age-days", "36500")):
+                calls = []
+
+                def fake(ticker, days, only=None):
+                    calls.append((ticker, only))
+                    r = table[(ticker, only[0])]
+                    if isinstance(r, Exception):
+                        raise r
+                    return r, only[0]
+
+                with mock.patch.object(mod, "fetch", side_effect=fake), \
+                     mock.patch.dict(os.environ, {}, clear=True), mock.patch("sys.argv", argv + list(extra)):
+                    return mod.main(), calls
+
+            # The fixed dates are long past: refused as stale unless the age limit allows them.
+            code, _ = run({("AAA", "yahoo"): good, ("BBB", "yahoo"): dict(good)}, extra=())
+            self.assertEqual(code, 3)
+            self.assertFalse(out.exists())
+            # Yahoo has every ticker at the newest date: written; Stooq is never asked.
+            code, calls = run({("AAA", "yahoo"): good, ("BBB", "yahoo"): dict(good)})
+            self.assertEqual(code, 0)
+            self.assertTrue(all(s == ("yahoo",) for _, s in calls))
             used = json.loads((Path(d) / "p_sources.json").read_text())["sources"]
-            self.assertEqual(used, {"AAA": "stooq", "BBB": "yahoo"})
+            self.assertEqual(used, {"AAA": "yahoo", "BBB": "yahoo"})  # one source for every stock
             self.assertEqual(out.read_text().splitlines()[0], "date,AAA,BBB")
             self.assertEqual(len(out.read_text().splitlines()), 3)
+            out.unlink()
+            # Yahoo lags on BBB: Stooq has both, so both dates are written, all from Stooq.
+            code, calls = run({("AAA", "yahoo"): good, ("BBB", "yahoo"): lagging,
+                               ("AAA", "stooq"): good, ("BBB", "stooq"): {"2026-09-21": 20.0, "2026-09-22": 21.0}})
+            self.assertEqual(code, 0)
+            self.assertEqual(len(out.read_text().splitlines()), 3)
+            self.assertIn("2026-09-22,11.000000,21.000000", out.read_text())
+            out.unlink()
+            # Both sources lag on BBB by a day: written up to the date every ticker has.
+            code, _ = run({("AAA", "yahoo"): good, ("BBB", "yahoo"): lagging,
+                           ("AAA", "stooq"): good, ("BBB", "stooq"): lagging})
+            self.assertEqual(code, 0)
+            self.assertEqual(out.read_text().splitlines()[1:], ["2026-09-21,10.000000,20.000000"])
+            out.unlink()
+            # A lag beyond the limit is refused, and so is every source failing.
+            far = {"2026-09-01": 20.0}
+            code, _ = run({("AAA", "yahoo"): good, ("BBB", "yahoo"): far, ("AAA", "stooq"): good, ("BBB", "stooq"): far})
+            self.assertEqual(code, 2)
+            self.assertFalse(out.exists())
+            code, _ = run({("AAA", "yahoo"): RuntimeError("down"), ("AAA", "stooq"): RuntimeError("down")})
+            self.assertEqual(code, 2)
+            self.assertFalse(out.exists())
 
     def test_fetch_skips_a_source_that_is_unreachable(self):
         import importlib.util
@@ -2675,20 +2905,20 @@ class TestLiveBot(unittest.TestCase):
         spec.loader.exec_module(mod)
         good = {"2026-09-22": 11.0}
         with mock.patch.object(mod.time, "sleep"), \
-             mock.patch.object(mod, "stooq", side_effect=ConnectionResetError("reset")) as st, \
-             mock.patch.object(mod, "yahoo", return_value=good):
-            self.assertEqual(mod.fetch("AAA", 10), (good, "yahoo"))
-            self.assertEqual(mod.fetch("BBB", 10), (good, "yahoo"))
-            self.assertEqual(st.call_count, 3)  # retried for the first ticker only
+             mock.patch.object(mod, "yahoo", side_effect=ConnectionResetError("reset")) as ya, \
+             mock.patch.object(mod, "stooq", return_value=good):
+            self.assertEqual(mod.fetch("AAA", 10), (good, "stooq"))
+            self.assertEqual(mod.fetch("BBB", 10), (good, "stooq"))
+            self.assertEqual(ya.call_count, 3)  # retried for the first ticker only
         mod.UNREACHABLE.clear()
         # An HTTP error or bad data is about one ticker: the source stays in use.
         http = urllib.error.HTTPError("u", 404, "Not Found", {}, None)
         with mock.patch.object(mod.time, "sleep"), \
-             mock.patch.object(mod, "stooq", side_effect=[http, http, http, good]) as st, \
-             mock.patch.object(mod, "yahoo", return_value=good):
-            self.assertEqual(mod.fetch("AAA", 10), (good, "yahoo"))
-            self.assertEqual(mod.fetch("BBB", 10), (good, "stooq"))
-            self.assertEqual(st.call_count, 4)
+             mock.patch.object(mod, "yahoo", side_effect=[http, http, http, good]) as ya, \
+             mock.patch.object(mod, "stooq", return_value=good):
+            self.assertEqual(mod.fetch("AAA", 10), (good, "stooq"))
+            self.assertEqual(mod.fetch("BBB", 10), (good, "yahoo"))
+            self.assertEqual(ya.call_count, 4)
         self.assertEqual(mod.UNREACHABLE, set())
 
     def test_yahoo_retries_a_rate_limit_as_another_user_agent(self):
@@ -2845,7 +3075,11 @@ class TestAlpacaBroker(unittest.TestCase):
             feed = type("Feed", (), {"bars": lambda self: iter(bars)})()
             engine = run(cfg, feed, broker=b)
         self.assertEqual({s["symbol"] for s in fake.posted()}, {"AAPL", "XOM"})
-        self.assertTrue(all(s["client_order_id"].startswith("qt-2026-09-2") for s in fake.posted()))
+        # The rebalance fell due on 09-21, two days before TODAY; the broker
+        # does not trade a bar that old, so the engine waited for 09-22.
+        self.assertTrue(all(s["client_order_id"].startswith("qt-2026-09-22") for s in fake.posted()))
+        self.assertIn("broker does not trade this bar", engine.state.log[2])
+        self.assertEqual(engine.state.last_rebalance_index, 4)
         self.assertEqual(snapshot(engine)[0]["mode"], "alpaca-paper")
 
     def test_cli_refuses_without_keys(self):
@@ -2975,10 +3209,13 @@ class TestPriceSources(unittest.TestCase):
         import os
         from unittest import mock
         with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual([n for n, _ in self.mod.sources("AAA", 10)], ["stooq", "yahoo"])
+            # Keyless Stooq answers with a refusal page now, so it goes after Yahoo.
+            self.assertEqual([n for n, _ in self.mod.sources("AAA", 10)], ["yahoo", "stooq"])
         with mock.patch.dict(os.environ, {"FMP_API_KEY": "k", "TWELVEDATA_API_KEY": "t"}, clear=True):
             self.assertEqual([n for n, _ in self.mod.sources("AAA", 10)],
-                             ["fmp", "twelvedata", "stooq", "yahoo"])
+                             ["fmp", "twelvedata", "yahoo", "stooq"])
+        with mock.patch.dict(os.environ, {"STOOQ_API_KEY": "s"}, clear=True):
+            self.assertEqual([n for n, _ in self.mod.sources("AAA", 10)], ["stooq", "yahoo"])
 
     def test_fmp_parses_adjusted_closes_and_reports_errors(self):
         import json
@@ -3062,6 +3299,70 @@ class TestEvaluation(unittest.TestCase):
         from quantum.live import Engine, EngineConfig, snapshot
         engine = Engine(EngineConfig(tickers=["A", "B"], strategy="equal_weight", window=3))
         self.assertIn("verdict", snapshot(engine)[0]["evaluation"])
+
+    @staticmethod
+    def _warmup_runup(n_warm=10, n_flat=30):
+        """Prices that double during the warm-up, then go nowhere."""
+        import datetime as dt
+        d0 = dt.date(2020, 1, 1)
+        dates = [(d0 + dt.timedelta(days=i)).isoformat() for i in range(n_warm + n_flat)]
+        rows = [[10.0 * 2 ** (i / (n_warm - 1))] * 2 for i in range(n_warm)]
+        rows += [[20.0 * (1 + 0.001 * (i % 2)), 20.0 * (1 - 0.001 * (i % 2))] for i in range(n_flat)]
+        return dates, rows
+
+    def test_evaluation_skips_the_warmup_when_trade_from_is_unset(self):
+        # Backtests and CLI replays have no trade_from: the bot sits in cash
+        # until min_history/window bars are in, and equal weight must not be
+        # credited with the run-up the bot could not trade.
+        from quantum.live import Bar, Engine, EngineConfig, RiskLimits, snapshot
+        dates, rows = self._warmup_runup()
+        for window, min_history in ((10, 10), (5, 10), (12, 5)):
+            engine = Engine(EngineConfig(tickers=["A", "B"], strategy="equal_weight", window=window,
+                                         limits=RiskLimits(min_history=min_history)))
+            events = [engine.on_bar(Bar(d, dict(zip("AB", r)))) for d, r in zip(dates, rows)]
+            first = next(i for i, e in enumerate(events) if e["action"] == "rebalance")
+            self.assertEqual(first, max(window, min_history) - 1)
+            ev = snapshot(engine)[0]["evaluation"]
+            self.assertEqual(ev["from"], dates[first])
+            self.assertEqual(ev["days"], len(dates) - 1 - first)
+            self.assertLess(abs(ev["equal_weight_return"]), 0.01)  # not the +100% warm-up
+
+    def test_evaluation_with_trade_from_is_unchanged(self):
+        from quantum.evaluation import evaluate_bot
+        from quantum.live import Bar, Engine, EngineConfig, RiskLimits, snapshot
+        dates, rows = self._warmup_runup()
+        engine = Engine(EngineConfig(tickers=["A", "B"], strategy="equal_weight", window=3,
+                                     limits=RiskLimits(min_history=3), trade_from=dates[5]))
+        for d, r in zip(dates, rows):
+            engine.on_bar(Bar(d, dict(zip("AB", r))))
+        ev = snapshot(engine)[0]["evaluation"]
+        self.assertEqual(ev["from"], dates[5])
+        self.assertEqual(ev["days"], len(dates) - 1 - 5)
+        old = evaluate_bot(engine.state, dates[5])
+        self.assertEqual(ev["equal_weight_return"], old["equal_weight_return"])
+        self.assertEqual(ev["bot_return"], old["bot_return"])
+
+    def test_cli_replay_scores_from_the_first_tradable_day(self):
+        import contextlib, io, json, re, tempfile
+        from quantum.cli import main
+        dates, rows = self._warmup_runup()
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "p.csv"
+            csv_path.write_text("date,A,B\n" + "".join(f"{d},{a},{b}\n" for d, (a, b) in zip(dates, rows)))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = main(["live", "--replay", str(csv_path), "--tickers", "A,B", "--strategy", "equal_weight",
+                             "--window", "10", "--state", str(Path(tmp) / "s.json"), "--fresh",
+                             "--snapshot", str(Path(tmp) / "snap.json")])
+            self.assertEqual(code, 0)
+            text = out.getvalue()
+            ev = json.loads((Path(tmp) / "snap.json").read_text())["evaluation"]
+        self.assertEqual(ev["from"], dates[9])
+        self.assertIn(f"from {dates[9]}", text)
+        m = re.search(r"equal weight ([+-][\d.]+)%", text)
+        self.assertIsNotNone(m, text)
+        self.assertAlmostEqual(float(m.group(1)) / 100, ev["equal_weight_return"], places=4)
+        self.assertLess(abs(ev["equal_weight_return"]), 0.01)
 
 
 class TestQuasiMonteCarlo(unittest.TestCase):

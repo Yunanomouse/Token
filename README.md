@@ -48,6 +48,15 @@ The same program runs every command-line engine command, e.g.
 **desktop app** workflow on every push that changes the app;
 `python packaging/build.py` builds it locally for the machine you are on.
 
+## Paper Trading (buy and sell by hand)
+
+A Windows program (install **Paper Trading Setup.exe** from the
+[paper-trading-latest release](https://github.com/Yunanomouse/Token/releases/tag/paper-trading-latest),
+or double-click `Paper Trading.bat` to run it from source) for placing market,
+limit and stop orders yourself with pretend money, on delayed Yahoo prices or
+made-up demo prices, in its own window. No broker is connected. It lives on its own in [`paper_trading/`](paper_trading/) and needs
+nothing from the rest of this project. Guide: **[paper_trading/README.md](paper_trading/README.md)**.
+
 ## What it does
 
 | Module | Application | Status today |
@@ -109,7 +118,7 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   in; it matches the Python engine to the cent (tested). Open the file, or the
   published copy, and press Start.
 - **Live, on GitHub** — `.github/workflows/live-bot.yml` runs the paper bot
-  after every US close on real prices (Financial Modeling Prep or Twelve Data with free keys, Stooq and Yahoo as fallbacks) and commits its
+  after every US close on real prices (Financial Modeling Prep or Twelve Data with free keys, Yahoo and Stooq as fallbacks; one source per run) and commits its
   state to `live/`. The web page's **Live bot** tab shows that state and
   re-runs the same engine in the browser to confirm it lands on the same
   number. See [live/README.md](live/README.md).
@@ -119,7 +128,7 @@ simulator, `subspace_qaoa` (constraint-preserving, smallest state space), and
   speed, tail a CSV live, set every risk limit, stop, reset, and clear the
   kill switch. Paper only, loopback only.
 
-181 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
+241 tests, run in CI on Python 3.10–3.12: `python3 -m pytest tests -q`
 
 ## Memory
 

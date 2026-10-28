@@ -32,7 +32,7 @@ import numpy as np
 
 from ..optimize import multi_start_nelder_mead
 from ..qubo import QUBO
-from ..statevector import Circuit, probabilities
+from ..statevector import Circuit
 from .base import Solver, SolverResult
 
 __all__ = ["QAOASolver"]

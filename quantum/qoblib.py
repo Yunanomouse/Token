@@ -34,10 +34,8 @@ from __future__ import annotations
 
 import gzip
 import lzma
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Sequence
 
 import numpy as np
 

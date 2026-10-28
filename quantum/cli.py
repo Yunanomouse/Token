@@ -14,8 +14,7 @@ import sys
 
 import numpy as np
 
-from .amplitude import classical_monte_carlo_error
-from .arbitrage import build_rate_matrix, cycle_profit, find_arbitrage
+from .arbitrage import build_rate_matrix, find_arbitrage
 from .locality import locality_report
 from .market import load_price_csv, synthetic_prices
 from .portfolio import (
@@ -36,7 +35,7 @@ from .risk import (
 from .solvers import available_solvers, get_solver
 from .backtest import cardinality_strategy, equal_weight, markowitz_long_only, walk_forward
 from .export import elementary_gate_count, to_qasm
-from .noise import HARDWARE_PROFILES, hardware_survey, noise_threshold_sweep, survival_probability
+from .noise import hardware_survey, noise_threshold_sweep, survival_probability
 from .pricing import build_european_payoff_circuit
 from .statevector import probability_of_one
 
@@ -416,33 +415,61 @@ def cmd_live(args) -> int:
     if broker_name not in ("paper", "alpaca"):
         print(f"unknown broker {broker_name!r}: use paper or alpaca")
         return 2
-    if args.config:
-        config = load_config(args.config)
-    else:
-        if not args.tickers:
-            print("give --config, or --tickers with --replay/--feed")
+    if not args.config and not args.tickers:
+        print("give --config, or --tickers with --replay/--feed")
+        return 2
+    try:
+        if args.config:
+            config = load_config(args.config)
+        else:
+            config = EngineConfig(
+                tickers=[t.strip() for t in args.tickers.split(",") if t.strip()],
+                strategy=args.strategy, cardinality=args.cardinality,
+                risk_aversion=args.risk_aversion, solver=args.solver,
+                window=args.window, rebalance_every=args.rebalance_every,
+                initial_cash=args.cash, fee_rate=args.fee, state_path=args.state,
+                limits=RiskLimits(max_drawdown=args.max_drawdown, max_weight=args.max_weight,
+                                  min_history=args.window),
+                seed=args.seed,
+            )
+        if config.strategy == "cardinality" and config.solver != "exhaustive":
+            from .solvers import get_solver
+            get_solver(config.solver)
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"invalid settings: {exc}")
+        return 2
+    # A state file that cannot be read stops the run before anything writes it.
+    prior = None
+    if not args.fresh and os.path.exists(config.state_path):
+        from .live import EngineState
+        try:
+            prior = EngineState.load(config.state_path)
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            print(f"cannot read the state file {config.state_path} ({exc}); it was left untouched. "
+                  "Restore it from a backup, or move it aside to start over.")
             return 2
-        config = EngineConfig(
-            tickers=[t.strip() for t in args.tickers.split(",") if t.strip()],
-            strategy=args.strategy, cardinality=args.cardinality,
-            risk_aversion=args.risk_aversion, solver=args.solver,
-            window=args.window, rebalance_every=args.rebalance_every,
-            initial_cash=args.cash, fee_rate=args.fee, state_path=args.state,
-            limits=RiskLimits(max_drawdown=args.max_drawdown, max_weight=args.max_weight,
-                              min_history=args.window),
-            seed=args.seed,
-        )
     if args.replay:
+        if not os.path.isfile(args.replay):
+            print(f"price file not found: {args.replay}")
+            return 2
+        import csv
+        with open(args.replay, newline="", encoding="utf-8") as fh:
+            header = next(csv.reader(fh), [])
+        missing = [t for t in config.tickers if t not in header]
+        if missing:
+            print(f"not in {args.replay}: {', '.join(missing)} (its columns: {', '.join(header[1:]) or 'none'})")
+            return 2
         feed = ReplayFeed(args.replay, config.tickers, start=args.start, end=args.end)
-        print(f"replaying {len(feed)} bars from {args.replay} ({broker_name} broker)")
+        if prior is not None and prior.dates:
+            new = sum(1 for b in feed.bars() if b.date > prior.dates[-1])
+            print(f"replaying {len(feed)} bars from {args.replay}: {new} new, {len(feed) - new} already "
+                  f"in the state up to {prior.dates[-1]} ({broker_name} broker)")
+        else:
+            print(f"replaying {len(feed)} bars from {args.replay} ({broker_name} broker)")
     elif args.feed:
         # Resume from the last bar the state file knows, so the writer may
         # keep the whole history in the CSV and only new rows are delivered.
-        last = None
-        if not args.fresh and os.path.exists(config.state_path):
-            from .live import EngineState
-            dates = EngineState.load(config.state_path).dates
-            last = dates[-1] if dates else None
+        last = prior.dates[-1] if prior is not None and prior.dates else None
         feed = FileFeed(args.feed, config.tickers, poll_seconds=args.poll,
                         after=last, max_polls=1 if (args.once or args.catch_up) else None)
         print(f"tailing {args.feed} every {args.poll:.0f}s ({broker_name} broker); Ctrl-C to stop")
@@ -457,8 +484,11 @@ def cmd_live(args) -> int:
     broker = None
     if broker_name == "alpaca":
         from .alpaca import BrokerRefused, from_environment
+        # The engine's own fills are its cash ledger (realized P&L included);
+        # None when the run starts without a state to resume.
+        prior_fills = prior.fills if prior is not None else None
         try:
-            broker = from_environment(config.tickers, config.initial_cash, log=print)
+            broker = from_environment(config.tickers, config.initial_cash, log=print, fills=prior_fills)
         except BrokerRefused as exc:
             print(f"broker refused, nothing sent: {exc}")
             return 2
@@ -473,10 +503,11 @@ def cmd_live(args) -> int:
         print("stopped; state is on disk and the next start resumes from it")
         return 0
     print(engine.summary())
-    from .evaluation import evaluate_bot
-    ev = evaluate_bot(engine.state, config.trade_from)
+    from .live import _evaluation
+    ev = _evaluation(engine)  # the same window as the snapshot's evaluation
     if "information_ratio_annual" in ev:
-        print(f"against equal weight: bot {ev['bot_return']:+.2%}, equal weight "
+        print(f"against equal weight from {ev['from']} (first tradable day, {ev['days']} days): "
+              f"bot {ev['bot_return']:+.2%}, equal weight "
               f"{ev['equal_weight_return']:+.2%}, information ratio {ev['information_ratio_annual']:+.2f}")
     print(f"verdict : {ev['verdict']}")
     print(f"\nstate: {config.state_path}")

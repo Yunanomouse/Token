@@ -20,17 +20,22 @@ code.  The status banner says PAPER on every screen for that reason.
 
 Security note: the server binds to loopback only and has no authentication.
 Anything on the same machine can drive it.  Do not bind it to a public
-interface.
+interface.  To keep web pages out, requests must name the server by its
+loopback Host (defeats DNS rebinding), POSTs must be ``application/json``
+(a cross-site form or ``text/plain`` fetch cannot send that without a
+preflight the server never answers) and must not carry a foreign Origin.
+Every file name a request supplies has to resolve inside the working
+directory; the state file is a bare ``*.json`` name in it.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 import time
 import webbrowser
-from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
@@ -51,6 +56,11 @@ from .live import (
 __all__ = ["Controller", "DashboardServer", "serve", "DEFAULT_PORT"]
 
 DEFAULT_PORT = 8765
+MAX_BODY = 1_048_576  # bytes; a POST body larger than this is refused unread
+STRATEGIES = ("cardinality", "markowitz", "equal_weight")  # what quantum.live.build_strategy builds
+# Solvers that quantum.backtest.cardinality_strategy / solve_portfolio take by name,
+# besides the registry in quantum.solvers (checked with get_solver).
+EXTRA_SOLVERS = ("exhaustive", "subspace_qaoa", "xy_qaoa", "grover", "grover_search")
 DEFAULT_TICKERS = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
 
 
@@ -62,16 +72,26 @@ DEFAULT_TICKERS = ["AAPL", "XOM", "JPM", "WMT", "PFE", "AMZN", "BAC", "T"]
 class _Stoppable(PriceFeed):
     """Wrap a feed so the engine loop can be interrupted and throttled."""
 
-    def __init__(self, inner: PriceFeed, stop: threading.Event, bars_per_second: float | None) -> None:
+    def __init__(self, inner: PriceFeed, stop: threading.Event, bars_per_second: float | None,
+                 skip_until: str | None = None) -> None:
         self.inner = inner
         self.stop = stop
         self.delay = (1.0 / bars_per_second) if bars_per_second and bars_per_second > 0 else 0.0
         self.tickers = inner.tickers
+        # Bars dated on or before this are passed over without a pause: a
+        # resumed replay keeps its full history (so the engine can reconcile
+        # against it) but does not sleep through what the state already holds.
+        self.skip_until = skip_until
+
+    def history(self) -> list[Bar]:
+        return self.inner.history()
 
     def bars(self) -> Iterator[Bar]:
         for bar in self.inner.bars():
             if self.stop.is_set():
                 return
+            if self.skip_until and bar.date <= self.skip_until:
+                continue
             yield bar
             if self.delay:
                 # Sleep in slices so a stop request lands within ~50 ms.
@@ -115,6 +135,44 @@ class Controller:
                 found.extend(p.relative_to(self.workdir).as_posix() for p in sorted(base.glob("*.csv")))
         return found
 
+    def _inside(self, name: str) -> Path | None:
+        """``name`` resolved under the working directory, or None if it escapes."""
+        root = self.workdir.resolve()
+        try:
+            path = (root / str(name)).resolve()
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return path if root in path.parents else None
+
+    def _state_file(self, name: str) -> Path | None:
+        """The state file: a bare ``*.json`` name directly in the working directory."""
+        name = str(name)
+        if (not name.endswith(".json") or name.startswith(".") or "/" in name or "\\" in name
+                or ":" in name or Path(name).name != name):
+            return None
+        path = self._inside(name)
+        return path if path is not None and path.parent == self.workdir.resolve() else None
+
+    @staticmethod
+    def _flag(value) -> bool:
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return bool(value)
+
+    @staticmethod
+    def _check_strategy(config: EngineConfig) -> str | None:
+        """Why ``config``'s strategy or solver would fail at the first rebalance, or None."""
+        if config.strategy not in STRATEGIES:
+            return f"unknown strategy {config.strategy!r}; use one of {', '.join(STRATEGIES)}"
+        if config.strategy == "cardinality" and config.solver not in EXTRA_SOLVERS:
+            from .solvers import available_solvers, get_solver
+            try:
+                get_solver(config.solver)
+            except ValueError:
+                return (f"unknown solver {config.solver!r}; use one of "
+                        f"{', '.join(sorted(available_solvers() + list(EXTRA_SOLVERS)))}")
+        return None
+
     @staticmethod
     def config_from_form(form: dict) -> EngineConfig:
         tickers = form.get("tickers", DEFAULT_TICKERS)
@@ -126,6 +184,8 @@ class Controller:
             max_drawdown=float(form.get("max_drawdown", 0.25)),
             rearm_after=int(form.get("rearm_after", 0)),
             min_history=int(form.get("window", 252)),
+            min_cash_fraction=float(form.get("min_cash_fraction", 0.0)),
+            deploy_from_cash=Controller._flag(form.get("deploy_from_cash", False)),
         )
         return EngineConfig(
             tickers=tickers,
@@ -140,6 +200,9 @@ class Controller:
             limits=limits,
             state_path=str(form.get("state_path", "live_state.json")),
             seed=int(form.get("seed", 0)),
+            trade_from=str(form.get("trade_from") or "") or None,
+            whole_shares=Controller._flag(form.get("whole_shares", False)),
+            fill_leftover=Controller._flag(form.get("fill_leftover", False)),
         )
 
     # -- commands ----------------------------------------------------------
@@ -156,12 +219,28 @@ class Controller:
             config = self.config_from_form(form)
         except (ValueError, TypeError) as exc:
             return {"ok": False, "error": f"bad config: {exc}"}
+        problem = self._check_strategy(config)
+        if problem:
+            return {"ok": False, "error": problem}
+        try:
+            speed = float(form.get("bars_per_second") or 0)
+            poll = float(form.get("poll_seconds", 5.0))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "replay speed and poll seconds must be numbers"}
+        if not (math.isfinite(speed) and speed >= 0 and math.isfinite(poll) and poll >= 0):
+            return {"ok": False, "error": "replay speed and poll seconds must be zero or more"}
         mode = str(form.get("mode", "replay"))
-        csv_path = self.workdir / str(form.get("csv", "data/prices/us_equities_1989_2018.csv"))
+        csv_name = str(form.get("csv", "data/prices/us_equities_1989_2018.csv"))
+        csv_path = self._inside(csv_name)
+        if csv_path is None or csv_path.suffix.lower() != ".csv":
+            return {"ok": False, "error": f"price file must be a .csv inside {self.workdir}: {csv_name}"}
         if not csv_path.exists():
             return {"ok": False, "error": f"price file not found: {csv_path}"}
-        state_path = self.workdir / config.state_path
-        fresh = bool(form.get("fresh", False))
+        state_path = self._state_file(config.state_path)
+        if state_path is None:
+            return {"ok": False, "error": f"state file must be a plain *.json name in {self.workdir}: "
+                                          f"{config.state_path}"}
+        fresh = self._flag(form.get("fresh", False))
         try:
             state = EngineState.load(state_path) if state_path.exists() and not fresh else None
             if state is not None and state.tickers != config.tickers:
@@ -176,19 +255,18 @@ class Controller:
                                           start=form.get("start") or None, end=form.get("end") or None)
             if len(inner) == 0:
                 return {"ok": False, "error": "no bars in that date range with all tickers present"}
-            if engine.state.dates:
-                # Resuming: drop bars the state already holds *before* the
-                # throttle, so a paced replay does not sleep through history.
-                last = engine.state.dates[-1]
-                inner._bars = [b for b in inner._bars if b.date > last]
-                if not inner._bars:
-                    return {"ok": False, "error": f"nothing new to replay after {last}; tick 'start fresh' to rerun"}
-            speed = form.get("bars_per_second")
-            feed = _Stoppable(inner, self.stop_event, float(speed) if speed not in (None, "", 0, "0") else None)
-            self.source = f"replay {csv_path.name} ({len(inner)} bars)"
+            last = engine.state.dates[-1] if engine.state.dates else None
+            # Resuming: keep the full bar list so history() still overlaps the
+            # state and Engine.reconcile can re-base a re-adjusted file; the
+            # wrapper skips the stored dates without pausing on them.
+            new = sum(1 for b in inner.bars() if last is None or b.date > last)
+            if not new:
+                return {"ok": False, "error": f"nothing new to replay after {last}; tick 'start fresh' to rerun"}
+            feed = _Stoppable(inner, self.stop_event, speed or None, skip_until=last)
+            self.source = f"replay {csv_path.name} ({new} bars)"
         elif mode == "feed":
             last = engine.state.dates[-1] if engine.state.dates else None
-            inner = FileFeed(csv_path, config.tickers, poll_seconds=float(form.get("poll_seconds", 5.0)), after=last)
+            inner = FileFeed(csv_path, config.tickers, poll_seconds=poll, after=last)
             feed = _Stoppable(inner, self.stop_event, None)
             self.source = f"tailing {csv_path.name}"
         else:
@@ -225,7 +303,9 @@ class Controller:
     def reset(self, state_path: str = "live_state.json") -> dict:
         if self.running:
             return {"ok": False, "error": "stop the engine before resetting"}
-        path = self.workdir / state_path
+        path = self._state_file(state_path)
+        if path is None:
+            return {"ok": False, "error": f"state file must be a plain *.json name: {state_path}"}
         if path.exists():
             path.unlink()
         self.engine = None
@@ -236,7 +316,9 @@ class Controller:
         """Clear the kill switch -- the one deliberate manual override."""
         if self.running:
             return {"ok": False, "error": "stop the engine first"}
-        path = self.workdir / state_path
+        path = self._state_file(state_path)
+        if path is None:
+            return {"ok": False, "error": f"state file must be a plain *.json name: {state_path}"}
         if not path.exists():
             return {"ok": False, "error": "no state file"}
         state = EngineState.load(path)
@@ -251,8 +333,8 @@ class Controller:
         engine = self.engine
         state = engine.state if engine else None
         if state is None:
-            path = self.workdir / state_path
-            if path.exists():
+            path = self._state_file(state_path)
+            if path is not None and path.exists():
                 try:
                     state = EngineState.load(path)
                 except (OSError, json.JSONDecodeError, TypeError):
@@ -298,7 +380,7 @@ class Controller:
             curve=[eq[i] for i in idx], dates=[state.dates[i] for i in idx], drawdown=[dd[i] for i in idx],
             positions=state.positions, weights=weights, target_weights=state.target_weights,
             cash=state.cash, prices=last_prices,
-            fills=ledger["fills"][-25:][::-1], n_fills=len(state.fills),
+            fills=ledger["fills"][-25:][::-1], n_fills=sum(1 for f in state.fills if not f.get("note")),  # trades, not bookkeeping
             pnl={k: v for k, v in ledger.items() if k not in ("fills", "round_trips")},
             fees=sum(f.get("fee", 0.0) for f in state.fills),
             log=state.log[-30:][::-1], halted=state.halted, halt_reason=state.halt_reason,
@@ -310,6 +392,17 @@ class Controller:
 # --------------------------------------------------------------------------
 # HTTP layer
 # --------------------------------------------------------------------------
+
+
+def _finite(obj):
+    """``obj`` with NaN and infinities as None: browsers reject them in JSON."""
+    if isinstance(obj, float):
+        return obj if obj == obj and obj not in (float("inf"), float("-inf")) else None
+    if isinstance(obj, dict):
+        return {k: _finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_finite(v) for v in obj]
+    return obj
 
 
 class DashboardServer(ThreadingHTTPServer):
@@ -336,9 +429,55 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, obj, status: int = 200) -> None:
-        self._send(status, json.dumps(obj).encode("utf-8"), "application/json")
+        self._send(status, json.dumps(_finite(obj), allow_nan=False).encode("utf-8"), "application/json")
+
+    def _origins(self) -> tuple[set[str], set[str]]:
+        port = self.server.server_address[1]
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        return hosts, {f"http://{h}" for h in hosts}
+
+    def _allowed(self, post: bool) -> bool:
+        """Refuse (and answer) requests a web page could forge; True if allowed."""
+        hosts, origins = self._origins()
+        if (self.headers.get("Host") or "").strip().lower() not in hosts:
+            self._json({"ok": False, "error": "forbidden host"}, 403)
+            return False
+        if post:
+            origin = self.headers.get("Origin")
+            if origin is not None and origin.strip().lower() not in origins:
+                self._json({"ok": False, "error": "forbidden origin"}, 403)
+                return False
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                self._json({"ok": False, "error": "Content-Type must be application/json"}, 415)
+                return False
+        return True
+
+    def _read_json_body(self) -> dict | None:
+        """The POST body as a JSON object, or None after answering 400 or 413.
+
+        Content-Length must be a plain non-negative integer of at most
+        ``MAX_BODY``; a bigger body is refused before anything is read."""
+        length = (self.headers.get("Content-Length") or "").strip()
+        if not (length.isascii() and length.isdigit()):
+            self._json({"ok": False, "error": "a valid Content-Length is required"}, 400)
+            return None
+        if int(length) > MAX_BODY:
+            self._json({"ok": False, "error": f"request body over {MAX_BODY} bytes"}, 413)
+            return None
+        try:
+            body = json.loads(self.rfile.read(int(length)) or b"{}")
+        except (ValueError, RecursionError):  # bad JSON or UTF-8, or nested too deeply
+            self._json({"ok": False, "error": "bad JSON"}, 400)
+            return None
+        if not isinstance(body, dict):
+            self._json({"ok": False, "error": "expected a JSON object"}, 400)
+            return None
+        return body
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._allowed(post=False):
+            return
         path = urlparse(self.path).path
         ctl = self.server.controller
         if path in ("/", "/index.html"):
@@ -353,13 +492,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._allowed(post=True):
+            return
         path = urlparse(self.path).path
         ctl = self.server.controller
-        length = int(self.headers.get("Content-Length") or 0)
-        try:
-            body = json.loads(self.rfile.read(length) or b"{}")
-        except json.JSONDecodeError:
-            self._json({"ok": False, "error": "bad JSON"}, 400)
+        body = self._read_json_body()
+        if body is None:
             return
         if path == "/api/start":
             self._json(ctl.start(body))
@@ -442,8 +580,8 @@ header h1 { font-size:18px; margin:0; font-weight:600; }
 .badge.run  { border-color:var(--good); }
 .badge.halted { border-color:var(--critical); color:var(--text-primary); }
 .spacer { flex:1; }
-main { display:grid; grid-template-columns: 320px 1fr; gap:16px; padding:16px; max-width:1500px; margin:0 auto; }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; padding:16px; } }
+main { display:grid; grid-template-columns: 320px minmax(0, 1fr); gap:16px; padding:16px; max-width:1500px; margin:0 auto; }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); padding:16px; } }
 .card { background:var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
 .card h2 { font-size:13px; font-weight:600; color:var(--text-secondary); margin:0 0 10px; text-transform:uppercase; letter-spacing:.06em; }
 label { display:block; font-size:12px; color:var(--text-secondary); margin:8px 0 3px; }
@@ -475,8 +613,9 @@ td.num, th.num { text-align:right; font-variant-numeric: tabular-nums; }
 pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space:pre-wrap;
   color:var(--text-secondary); max-height:220px; overflow:auto; }
 .stack { display:grid; gap:16px; }
-.two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-@media (max-width: 1100px) { .two { grid-template-columns:1fr; } }
+.two { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:16px; }
+@media (max-width: 1100px) { .two { grid-template-columns:minmax(0, 1fr); } }
+.tablewrap { overflow-x:auto; }  /* a wide table scrolls inside its card, not the page */
 .error { color:var(--critical); font-weight:600; margin-top:8px; min-height:1.2em; }
 .note { color:var(--text-muted); font-size:12px; margin-top:8px; }
 .halt { border:1px solid var(--critical); border-radius:8px; padding:10px 12px; margin-bottom:12px; display:none; }
@@ -585,14 +724,14 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
     <div class="two">
       <div class="card">
         <h2>Positions</h2>
-        <table><thead><tr><th>Ticker</th><th class="num">Shares</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Gain/loss</th><th class="num">Weight</th><th style="width:20%"></th></tr></thead>
-        <tbody id="positions"></tbody></table>
+        <div class="tablewrap"><table><thead><tr><th>Ticker</th><th class="num">Shares</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Gain/loss</th><th class="num">Weight</th><th style="width:20%"></th></tr></thead>
+        <tbody id="positions"></tbody></table></div>
         <div class="note" id="cash"></div>
       </div>
       <div class="card">
         <h2>Recent fills</h2>
-        <table><thead><tr><th>Date</th><th>Ticker</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Fee</th><th class="num">Realized</th></tr></thead>
-        <tbody id="fills"></tbody></table>
+        <div class="tablewrap"><table><thead><tr><th>Date</th><th>Ticker</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Fee</th><th class="num">Realized</th></tr></thead>
+        <tbody id="fills"></tbody></table></div>
       </div>
     </div>
     <div class="two">
@@ -726,7 +865,7 @@ pre { margin:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mon
     (s.fills || []).forEach(f => {
       const tr = document.createElement('tr');
       const sold = f.quantity < 0 && f.realized_pnl != null;
-      [f.date, f.ticker, f.quantity.toFixed(2), fmtMoney(f.price), fmtMoney(f.fee), sold ? fmtSigned(f.realized_pnl) : ''].forEach((v, i) => {
+      [f.date, f.ticker + (f.note ? ' · ' + f.note : ''), f.quantity.toFixed(2), fmtMoney(f.price), fmtMoney(f.fee), sold ? fmtSigned(f.realized_pnl) : ''].forEach((v, i) => {
         const td = document.createElement('td'); td.textContent = v; if (i >= 2) td.className = 'num';
         if (i === 5 && sold) td.style.color = signColor(f.realized_pnl);
         tr.appendChild(td); });

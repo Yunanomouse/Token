@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .amplitude import AmplitudeEstimationResult, estimate_amplitude
+from .amplitude import estimate_amplitude
 from .preparation import GridDistribution, prepare_distribution
 from .pricing import integer_comparator
 from .statevector import Circuit

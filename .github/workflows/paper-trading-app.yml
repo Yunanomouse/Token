@@ -1,0 +1,183 @@
+name: paper trading app
+
+# Builds Paper Trading (paper_trading/) as a Windows program: "Paper Trading.exe"
+# in its own window (Python, the page and the window included, nothing to
+# install) and "Paper Trading Setup.exe", a per-user installer with a Start
+# menu entry and a desktop icon.  Before anything is published it tests what
+# was built: the program's server answers and fills a demo order, the real
+# window opens and connects, and the installer installs, runs and uninstalls
+# it, leaving the account in %APPDATA%\Paper Trading.  Then it replaces the
+# "paper-trading-latest" release: one stable download link.  That happens on
+# every push that changes paper_trading/, and on a manual run with "publish"
+# ticked (a manual run needs this file on the default branch).
+on:
+  push:
+    paths:
+      - "paper_trading/**"
+      - ".github/workflows/paper-trading-app.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to the paper-trading-latest release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      DIST: dist/paper-trading-windows-x64
+      EXE: Paper Trading.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the build tools
+        run: python -m pip install --upgrade pip && python -m pip install "pyinstaller>=6.10,<7" "pywebview>=5,<7" pillow tzdata
+      - name: Build
+        run: |
+          python paper_trading/packaging/build.py
+          ls -la "$DIST"
+          # Nothing from the trading bots: no numpy, no quantum package.
+          if ls "$DIST/_internal" | grep -i -E "^(numpy|quantum)"; then echo "numpy or quantum got in"; exit 1; fi
+
+      - name: "Test the built program: server, account, a demo order"
+        run: |
+          H="$(cygpath -u "$RUNNER_TEMP")/pt-server"
+          "$DIST/$EXE" --headless --port 8797 --home "$(cygpath -w "$H")" &
+          ok=
+          for i in $(seq 1 60); do
+            curl -sf -H "Host: 127.0.0.1:8797" http://127.0.0.1:8797/api/account > account.json && ok=1 && break
+            sleep 1
+          done
+          if [ -z "$ok" ]; then echo "the program did not answer"; cat "$H/paper_trading.log" 2>/dev/null; exit 1; fi
+          python -c "import json; a = json.load(open('account.json')); assert a['starting_cash'] == 100000, a['starting_cash']; print('account up, starting cash', a['starting_cash'])"
+          curl -sf -H "Host: 127.0.0.1:8797" http://127.0.0.1:8797/ > page.html
+          grep -q 'id="conn"' page.html || { echo "the page is not the real one:"; head -c 400 page.html; exit 1; }
+          post() { curl -sf -X POST -H "Host: 127.0.0.1:8797" -H "Content-Type: application/json" -d "$2" "http://127.0.0.1:8797$1"; }
+          post /api/reset '{"prices":"demo"}' > reset.json
+          post /api/order '{"ticker":"AAPL","side":"buy","qty":1}' > order.json
+          cat order.json; echo
+          python -c "import json; r = json.load(open('reset.json')); assert r['ok'], r; o = json.load(open('order.json')); assert o['ok'] and o['order']['status'] == 'filled', o; print('demo order filled at', o['order']['fill_price'])"
+          taskkill //F //IM "$EXE" || true
+          sleep 2
+          rm -f account.json page.html reset.json order.json
+          echo "--- log"; cat "$H/paper_trading.log" 2>/dev/null || true
+
+      - name: "Test the built program: the real window opens and connects"
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path (Join-Path $env:DIST $env:EXE)).Path
+          $dir = Join-Path $env:RUNNER_TEMP "pt-window"
+          $p = Start-Process -FilePath $exe -ArgumentList "--smoke 90 --home `"$dir`"" -PassThru
+          $null = $p.Handle  # keeps the exit code readable after it ends
+          if (-not $p.WaitForExit(180000)) { Stop-Process -Id $p.Id -Force; Write-Host "the window test did not finish"; $code = 99 } else { $code = $p.ExitCode }
+          Write-Host "exit code: $code"
+          if ($code -ne 0) { Get-Content (Join-Path $dir "paper_trading.log") -ErrorAction SilentlyContinue; exit 1 }
+          Get-Content (Join-Path $dir "paper_trading.log") -ErrorAction SilentlyContinue
+
+      - name: Build the installer
+        run: |
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          [ -f "$ISCC" ] || choco install innosetup -y --no-progress
+          "$ISCC" //DSourceDir="$(cygpath -w "$PWD/$DIST")" //DAppVersion="1.0.${{ github.run_number }}" \
+            //DSetupIcon="$(cygpath -w "$PWD/build/paper_trading/paper_trading.ico")" \
+            //O"$(cygpath -w "$PWD/dist")" paper_trading/packaging/installer.iss
+          ls -la dist
+          [ -f "dist/Paper Trading Setup.exe" ]
+
+      - name: Install it (silently, per user, with the desktop icon)
+        run: |
+          "dist/Paper Trading Setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //TASKS=desktopicon
+          APPDIR="$(cygpath -u "$LOCALAPPDATA")/Programs/Paper Trading"
+          MENU="$(cygpath -u "$APPDATA")/Microsoft/Windows/Start Menu/Programs/Paper Trading"
+          ls -la "$APPDIR" "$MENU"
+          [ -f "$APPDIR/$EXE" ]
+          [ -f "$APPDIR/_internal/paper_page.html" ]
+          [ -f "$MENU/Paper Trading.lnk" ]
+          ls "$(cygpath -u "$USERPROFILE")/Desktop/Paper Trading.lnk" || ls "$(cygpath -u "$PUBLIC")/Desktop/Paper Trading.lnk"
+
+      - name: "Installed program: the real window opens and connects"
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA "Programs\Paper Trading\$env:EXE"
+          $dir = Join-Path $env:RUNNER_TEMP "pt-installed"
+          $p = Start-Process -FilePath $exe -ArgumentList "--smoke 90 --home `"$dir`"" -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(180000)) { Stop-Process -Id $p.Id -Force; Write-Host "the window test did not finish"; $code = 99 } else { $code = $p.ExitCode }
+          Write-Host "exit code: $code"
+          if ($code -ne 0) { Get-Content (Join-Path $dir "paper_trading.log") -ErrorAction SilentlyContinue; exit 1 }
+
+      - name: "Installed program: account in %APPDATA%, then uninstall keeps it"
+        run: |
+          APPDIR="$(cygpath -u "$LOCALAPPDATA")/Programs/Paper Trading"
+          MENU="$(cygpath -u "$APPDATA")/Microsoft/Windows/Start Menu/Programs/Paper Trading"
+          DATA="$(cygpath -u "$APPDATA")/Paper Trading"
+          rm -rf "$DATA"
+          # No --home: the account goes where a person's would.  Left running
+          # so the uninstaller has to close it.
+          (cd "$APPDIR" && ./"$EXE" --headless --port 8796 &)
+          ok=
+          for i in $(seq 1 60); do
+            curl -sf -H "Host: 127.0.0.1:8796" http://127.0.0.1:8796/api/account > /dev/null && ok=1 && break
+            sleep 1
+          done
+          if [ -z "$ok" ]; then echo "the installed program did not answer"; cat "$DATA/paper_trading.log" 2>/dev/null; exit 1; fi
+          # Mark the account (demo prices) so we can tell it is the same one afterwards.
+          curl -sf -X POST -H "Host: 127.0.0.1:8796" -H "Content-Type: application/json" -d '{"prices":"demo"}' \
+            http://127.0.0.1:8796/api/reset
+          echo
+          ls -la "$DATA"
+          [ -f "$DATA/account.json" ]
+          tasklist | grep -i "Paper Trading"
+          # The uninstaller hands off to a temporary copy and returns at once: wait for the folder to go.
+          "$APPDIR/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
+          for i in $(seq 1 90); do [ -e "$APPDIR" ] || break; sleep 1; done
+          if [ -e "$APPDIR" ] || [ -e "$MENU" ]; then echo "left behind:"; find "$APPDIR" "$MENU" 2>/dev/null | head -20; exit 1; fi
+          if [ -e "$(cygpath -u "$USERPROFILE")/Desktop/Paper Trading.lnk" ]; then echo "desktop icon left behind"; exit 1; fi
+          if tasklist | grep -i "Paper Trading"; then echo "still running after uninstall"; exit 1; fi
+          [ -f "$DATA/account.json" ] || { echo "the uninstaller removed the account"; exit 1; }
+          python -c "import json, os; a = json.load(open(os.path.join(os.environ['APPDATA'], 'Paper Trading', 'account.json'))); assert a['prices'] == 'demo', a['prices']; print('account kept after uninstall')"
+          echo "uninstalled cleanly: program stopped, folder and shortcuts gone, account kept"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paper-trading-windows
+          path: |
+            dist/*.zip
+            dist/*.exe
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: paper-trading-windows
+          path: files
+      - name: Replace the paper-trading-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la files
+          gh release delete paper-trading-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create paper-trading-latest files/*.exe files/*.zip --target "$GITHUB_SHA" --prerelease \
+            --title "Paper Trading for Windows (pretend money)" \
+            --notes "To install: download Paper Trading Setup.exe below and double-click it. If Windows SmartScreen warns about an unrecognized app, click More info, then Run anyway. It installs for you only (no administrator rights needed) and adds Paper Trading to the Start menu and, if you leave the box ticked, the desktop. It opens in its own window; Python is not needed.
+
+          Pretend money only: there is no broker and no real money, and nothing it does can place a real order.
+
+          Your account is kept in %APPDATA%\\Paper Trading, not in the program folder, so it stays when you install a newer version and when you uninstall. To start completely fresh, delete that folder.
+
+          The zip is the same program without an installer: unzip it anywhere and double-click Paper Trading.exe. Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}."

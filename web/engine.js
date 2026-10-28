@@ -151,7 +151,7 @@ const QT = (function () {
 
   // ---- paper broker (quantum/live.py PaperBroker) -----------------------
   class PaperBroker {
-    constructor(cash, feeRate) { this.cash = cash; this.feeRate = feeRate; this.pos = {}; }
+    constructor(cash, feeRate, wholeShares) { this.cash = cash; this.feeRate = feeRate; this.wholeShares = !!wholeShares; this.pos = {}; }
     positions() {
       const o = {};
       for (const [k, v] of Object.entries(this.pos)) if (Math.abs(v) > 1e-12) o[k] = v;
@@ -160,12 +160,16 @@ const QT = (function () {
     submit(orders, bar) {
       const fills = [];
       const sorted = orders.slice().sort((a, b) => a.quantity - b.quantity);
-      for (let o of sorted) {
-        if (Math.abs(o.quantity) < 1e-12) continue;
+      for (const o of sorted) {
+        let q = o.quantity;
+        if (q < 0) q = -Math.min(-q, Math.max(this.pos[o.ticker] || 0, 0));  // a cash account cannot go short
+        if (this.wholeShares) q = Math.sign(q) * Math.floor(Math.abs(q) + 1e-9);
+        if (Math.abs(q) < 1e-12) continue;
         const price = bar.prices[o.ticker];
-        let q = o.quantity, notional = q * price, fee = Math.abs(notional) * this.feeRate;
+        let notional = q * price, fee = Math.abs(notional) * this.feeRate;
         if (notional + fee > this.cash + 1e-9) {
-          const affordable = Math.max(this.cash / (price * (1 + this.feeRate)), 0);
+          let affordable = Math.max(this.cash / (price * (1 + this.feeRate)), 0);
+          if (this.wholeShares) affordable = Math.floor(affordable + 1e-9);
           if (affordable < 1e-9) continue;
           q = affordable; notional = affordable * price; fee = notional * this.feeRate;
         }
@@ -186,6 +190,21 @@ const QT = (function () {
     for (const f of fills) {
       const t = f.ticker, q = f.quantity, px = f.price, fee = f.fee, held = shares[t] || 0;
       let pnl = 0;
+      if (f.note && px === 0) {
+        // A split or dividend re-base: the share count changes, the cost does not.
+        if (held > 1e-12) {
+          shares[t] = held + q;
+          if (shares[t] <= 1e-9 * Math.max(held, 1)) {
+            pnl = -(basis[t] || 0); realized[t] = (realized[t] || 0) + pnl;
+            shares[t] = 0; basis[t] = 0;
+            const done = trip[t]; delete trip[t]; done.pnl += pnl;
+            done.exit_date = f.date; done.exit_price = 0; done.return_pct = done.cost > 0 ? done.pnl / done.cost : 0;
+            trips.push(done);
+          }
+        }
+        annotated.push(Object.assign({}, f, { realized_pnl: pnl }));
+        continue;
+      }
       if (q > 0) {
         if (held <= 1e-12) trip[t] = { ticker: t, entry_date: f.date, cost: 0, pnl: 0 };
         shares[t] = held + q; basis[t] = (basis[t] || 0) + q * px + fee; trip[t].cost += q * px + fee;
@@ -232,7 +251,7 @@ const QT = (function () {
     constructor(cfg) {
       this.cfg = cfg;
       this.tickers = cfg.tickers.slice();
-      this.broker = new PaperBroker(cfg.initialCash, cfg.feeRate);
+      this.broker = new PaperBroker(cfg.initialCash, cfg.feeRate, cfg.wholeShares);
       this.strategy = strategyFor(cfg);
       this.dates = []; this.prices = [];
       this.equity = []; this.peak = 0; this.lastRebalance = -1;
@@ -303,25 +322,55 @@ const QT = (function () {
         const underSum = target.reduce((a, v, i) => a + (over[i] ? 0 : v), 0);
         if (over.some(o => !o) && underSum > 0) target = target.map((v, i) => over[i] ? v : v + excess * v / underSum);
       }
+      const investable = 1 - (L.minCashFraction || 0);
+      target = target.map(v => v * investable);
       const w = this.weights(bar);
       const current = this.tickers.map(t => w[t] || 0);
       const move = target.map((v, i) => v - current[i]);
       const turnover = (move.reduce((a, v) => a + Math.abs(v), 0) + Math.abs(move.reduce((a, v) => a + v, 0))) / 2;  // cash counts: max(buys, sells)
       let note = "";
-      if (turnover > L.maxTurnover && turnover > 0) {
+      // deployFromCash: no cap when almost nothing is held -- there is no churn to limit.
+      const fromCash = !!L.deployFromCash && current.reduce((a, v) => a + v, 0) < 0.05;
+      if (turnover > L.maxTurnover && turnover > 0 && !fromCash) {
         const sc = L.maxTurnover / turnover;
         target = current.map((c, i) => c + move[i] * sc);
         note = `turnover ${(turnover * 100).toFixed(1)}% capped to ${(L.maxTurnover * 100).toFixed(1)}%`;
       }
       const eq = this.value(bar), held = this.broker.positions(), orders = [];
+      const prices = this.tickers.map(t => bar.prices[t]);
+      let shares = target.map((v, i) => v * eq / prices[i]);
+      if (this.cfg.wholeShares) {
+        shares = shares.map(s => Math.floor(s + 1e-9));
+        if (this.cfg.fillLeftover) shares = this.fillLeftover(shares, target, prices, eq);
+      }
       this.tickers.forEach((t, i) => {
-        const delta = target[i] * eq / bar.prices[t] - (held[t] || 0);
-        if (Math.abs(delta * bar.prices[t]) >= 1) orders.push({ ticker: t, quantity: delta });
+        const delta = shares[i] - (held[t] || 0);
+        if (Math.abs(delta * prices[i]) >= 1) orders.push({ ticker: t, quantity: delta });
       });
       const fills = this.broker.submit(orders, bar);
       this.targets = {};
       this.tickers.forEach((t, i) => { if (target[i] > 1e-9) this.targets[t] = target[i]; });
       return [fills, note];
+    }
+    // Whole shares: spend what rounding down left behind, one share at a time,
+    // on the names furthest below target, within the rebalance's own budget
+    // (so the cash reserve and a capped turnover still hold) and the per-name cap.
+    fillLeftover(shares, target, prices, eq) {
+      shares = shares.slice();
+      const fee = 1 + this.cfg.feeRate, capValue = this.cfg.limits.maxWeight * eq;
+      let budget = target.reduce((a, v) => a + v, 0) * eq - shares.reduce((a, s, i) => a + s * prices[i], 0) * fee;
+      for (;;) {
+        let best = -1, bestShort = -Infinity;
+        for (let i = 0; i < shares.length; i++) {
+          const fits = prices[i] * fee <= budget + 1e-9 && (shares[i] + 1) * prices[i] <= capValue + 1e-9 && target[i] > 1e-9;
+          if (!fits) continue;
+          const short = target[i] * eq - shares[i] * prices[i];
+          if (short > bestShort) { bestShort = short; best = i; }
+        }
+        if (best < 0) return shares;
+        shares[best] += 1;
+        budget -= prices[best] * fee;
+      }
     }
   }
 

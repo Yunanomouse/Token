@@ -26,7 +26,7 @@ starting point.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import numpy as np
 
@@ -174,7 +174,6 @@ class QUBO:
         # Cross terms couple each high variable to the whole low block.
         cross = (Q[:n_high, n_high:] + Q[n_high:, :n_high].T) @ low_bits.T.astype(dtype)
 
-        high_q = QUBO(Q=Q[:n_high, :n_high].copy(), offset=self.offset) if n_high else None
         for high in range(1 << n_high):
             high_bits = np.array(
                 [(high >> (n_high - 1 - j)) & 1 for j in range(n_high)], dtype=dtype
