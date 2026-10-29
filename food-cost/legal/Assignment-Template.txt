@@ -5,7 +5,7 @@ Fill in the brackets, and have both parties sign and date it.
 
 Date: [DATE]
 
-Assignor: [OWNER NAME], of [ADDRESS] ("Assignor")
+Assignor: Matthew Neil Louis Marinier, of [ADDRESS], Calgary, Alberta ("Assignor")
 Assignee: [BUYER NAME OR COMPANY], of [ADDRESS] ("Assignee")
 
 1. Assignment. For the payment of $[AMOUNT] CAD, received in full, the Assignor

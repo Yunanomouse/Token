@@ -1,8 +1,8 @@
 RESTAURANT - END-USER LICENCE
 
-Copyright (c) 2026 [YOUR FULL LEGAL NAME]. All rights reserved.
+Copyright (c) 2026 Matthew Neil Louis Marinier. All rights reserved.
 
-Restaurant ("the Software") is owned by [YOUR FULL LEGAL NAME] ("the Owner"),
+Restaurant ("the Software") is owned by Matthew Neil Louis Marinier ("the Owner"),
 of Calgary, Alberta. It is licensed, not sold. By installing or using the
 Software you agree to these terms.
 

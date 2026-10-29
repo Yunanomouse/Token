@@ -5,7 +5,7 @@ Unicode true
 
 !define APPNAME "Restaurant"
 !ifndef PUBLISHER
-  !define PUBLISHER "Restaurant"
+  !define PUBLISHER "Matthew Neil Louis Marinier"
 !endif
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\RestaurantCosting"
 
