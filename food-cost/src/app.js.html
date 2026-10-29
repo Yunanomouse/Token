@@ -140,9 +140,11 @@
     (it.lines || []).forEach(function (l) { var c = lineCost(l, depth); if (isFinite(c)) sub += c; else bad++; });
     return { sub: sub, bad: bad };
   }
+  // waste buffer is a Professional feature; Essentials ignores one saved by another edition
+  function bufferOf(it) { return has(PRO) ? num(it.buffer) : 0; }
   function itemCalc(it) {
     var r = rawCost(it, 0), sub = r.sub;
-    var cost = isPrep(it) ? sub : sub * (1 + num(it.buffer) / 100), price = num(it.price);
+    var cost = isPrep(it) ? sub : sub * (1 + bufferOf(it) / 100), price = num(it.price);
     return { sub: sub, cost: cost, bad: r.bad, fc: price > 0 ? cost / price * 100 : NaN, gp: price - cost, gpp: price > 0 ? (price - cost) / price * 100 : NaN, need: cost / (target() / 100) };
   }
   function prepPerText(it) {
@@ -366,7 +368,7 @@
       if (pts) pts.replaceChildren.apply(pts, (POINTS[s.fam] || []).map(function (p) { return el("tr", null, [el("td", { text: "Per " + p[0] }), el("td", { class: "n", text: isFinite(s.per) ? moneyP(s.per * p[1]) : "–" })]); }));
     } else {
       box.replaceChildren.apply(box, [
-        tile("Plate cost", money(c.cost), num(S.draft.buffer) ? "includes " + trimN(num(S.draft.buffer), 1) + "% waste buffer" : ""),
+        tile("Plate cost", money(c.cost), bufferOf(S.draft) ? "includes " + trimN(bufferOf(S.draft), 1) + "% waste buffer" : ""),
         tile("Food cost", pct(c.fc), "target " + t + "%", isFinite(c.fc) ? (c.fc <= t ? "good" : "over") : ""),
         tile("Profit per sale", money(c.gp), pct(c.gpp) + " gross margin"),
         tile("Price for " + t + "% target", money(c.need), ""),
@@ -471,7 +473,7 @@
       });
       var ps = prep ? prepStats(it) : null;
       var sum = prep ? "Batch makes " + trimN(num(it.yieldQty), 2) + " " + (it.yieldUnit || "") + " · batch cost " + money(c.cost) + " · " + prepPerText(it) + (portionText(it) ? " · " + portionText(it) + " portion " + moneyP(ps.portionCost) : "") + (ps.price > 0 ? " · sells " + money(ps.price) + " (" + pct(ps.fc) + ")" : "")
-        : "Menu price " + money(num(it.price)) + " · plate cost " + money(c.cost) + " · food cost " + pct(c.fc) + " (target " + t + "%) · profit " + money(c.gp) + (num(it.buffer) ? " · includes " + trimN(num(it.buffer), 1) + "% waste buffer" : "");
+        : "Menu price " + money(num(it.price)) + " · plate cost " + money(c.cost) + " · food cost " + pct(c.fc) + " (target " + t + "%) · profit " + money(c.gp) + (bufferOf(it) ? " · includes " + trimN(bufferOf(it), 1) + "% waste buffer" : "");
       return el("div", { class: "card" }, [
         el("div", { class: "ch" }, [el("span", { class: "cb", text: (bizName() || "Recipe card").toUpperCase() }), el("span", { class: "cs", text: it.section || "" })]),
         el("h2", { text: it.name || "Unnamed" }), el("p", { text: sum }),
