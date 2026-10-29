@@ -1,27 +1,42 @@
 RESTAURANT - END-USER LICENCE
 
-Copyright (c) 2026 Matthew Neil Louis Marinier. All rights reserved.
+Copyright (c) 2026 Matthew Neil Louis Marinier, operating as Brigade Kitchen
+Tools. All rights reserved.
 
-Restaurant ("the Software") is owned by Matthew Neil Louis Marinier ("the Owner"),
-of Calgary, Alberta. It is licensed, not sold. By installing or using the
-Software you agree to these terms.
+Restaurant ("the Software") is owned by Matthew Neil Louis Marinier, operating
+as Brigade Kitchen Tools, of Calgary, Alberta ("the Owner"). It is licensed,
+not sold. By installing or using the Software you agree to these terms.
 
 1. Ownership. The Owner keeps all rights, title and copyright in the Software,
    including its code, design, installer and documentation. Nothing in this
    licence transfers ownership to you.
 
-2. Licence. You may install and use the Software at one business (one restaurant,
-   café, food truck or catering company), on as many of that business's own
-   computers as you need. Each additional business needs its own copy.
+2. Licence types. Your receipt states which licence you bought. In each case
+   you may install the Software on as many computers as the licensed business
+   or businesses own.
+
+   a. Single Business Licence: one business (one restaurant, café, food truck,
+      catering company or private chef) at one location.
+
+   b. Multi-Location Licence: up to three locations or businesses owned or
+      controlled by the same person or company.
+
+   c. Group Licence: any number of locations or businesses owned or controlled
+      by the same person or company, including franchise groups and
+      culinary schools (for teaching and student use within that school).
+
+   If you need more locations than your licence covers, you may upgrade by
+   paying the difference in the then-current prices.
 
 3. Restrictions. You may not resell, rent, share, publish or give away the
-   Software or its installer, copy or reverse-engineer it to make a competing
-   product, or offer it as part of another product or service, except as
-   section 4 allows.
+   Software or its installer, use it for businesses your licence does not
+   cover, copy or reverse-engineer it to make a competing product, or offer it
+   as part of another product or service, except as section 4 allows.
 
-4. Transferring your licence. If you sell or hand over your business, you may
-   transfer this licence once to the new owner of that business, provided you
-   give them the installer and these terms and you stop using the Software.
+4. Transferring your licence. If you sell or hand over a licensed business, you
+   may transfer the licence for that business once to its new owner, provided
+   you give them the installer and these terms and you stop using the Software
+   for that business.
 
 5. Transfer by the Owner. The Owner may assign or transfer the Software, this
    licence agreement and all of the Owner's rights under it to any person or
@@ -29,26 +44,32 @@ Software you agree to these terms.
    without your consent. Your licence continues on the same terms with the new
    owner.
 
-6. Your data. Everything you enter (ingredients, prices, recipes, menus) is saved
+6. Refunds. If the Software does not work for you, you may ask for a full
+   refund within 14 days of purchase by contacting the Owner through the store
+   where you bought it. After a refund you must uninstall the Software and stop
+   using it.
+
+7. Your data. Everything you enter (ingredients, prices, recipes, menus) is saved
    only on your own computer and belongs to you. The Owner never receives, sees or
    stores it. You are responsible for keeping your own backups
    (File & settings > Export backup).
 
-7. Updates and support. Updates and support are provided as described on the
+8. Updates and support. Updates and support are provided as described on the
    product page at the time of purchase, if at all.
 
-8. No warranty. The Software is provided "as is", without warranty of any kind.
-   Food cost figures depend on the prices and quantities you enter; check important
-   numbers before relying on them for pricing, purchasing or financial decisions.
+9. No warranty. Apart from the refund in section 6, the Software is provided
+   "as is", without warranty of any kind. Food cost figures depend on the prices
+   and quantities you enter; check important numbers before relying on them for
+   pricing, purchasing or financial decisions.
 
-9. Limitation of liability. To the extent the law allows, the Owner's total
-   liability for any claim relating to the Software is limited to the amount you
-   paid for it, and the Owner is not liable for lost profits, lost data or
-   indirect losses.
+10. Limitation of liability. To the extent the law allows, the Owner's total
+    liability for any claim relating to the Software is limited to the amount
+    you paid for it, and the Owner is not liable for lost profits, lost data or
+    indirect losses.
 
-10. Third-party components. The Windows version is built on Electron and
+11. Third-party components. The Windows version is built on Electron and
     Chromium, which are distributed under their own open-source licences (see
     LICENSE and LICENSES.chromium.html in the program folder). Those components
     are not owned by the Owner.
 
-11. These terms are governed by the laws of the Province of Alberta, Canada.
+12. These terms are governed by the laws of the Province of Alberta, Canada.
