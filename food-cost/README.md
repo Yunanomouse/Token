@@ -13,6 +13,18 @@ Menu and recipe costing software for restaurants. It is a single web page that r
 
 Every number recalculates the moment you change a price or an amount. Recipe cards print from any dish or prep recipe.
 
+## Editions
+
+One codebase builds three editions. `python3 build.py --edition <name> --out file.html` picks one; plain `python3 build.py` builds `index.html` as Kitchen Manager.
+
+| Edition | Adds |
+|---|---|
+| `essentials` | Menu costing, Ingredients, recipe cards, backups |
+| `professional` | Prep recipes, Order planner, waste buffer, CSV exports |
+| `manager` (Kitchen Manager) | Chef's-cost column, import recipes from a file, and the tools in `src/tools/`: menu engineering, yield test, price-change impact, allergens |
+
+Features are gated with `has(PRO)` / `has(MGR)` in `src/app.js.html`. Kitchen Manager tools are plain JavaScript files in `src/tools/`, inserted inside the app's closure at `/*TOOLS*/`; each registers a tab with `addTool({ id, label, render })` and can add Ingredients columns, editor blocks or recipe-card lines through `HOOKS`. `--tools name` builds with only matching tool files, for testing one tool.
+
 ## Running it
 
 **On one computer (simplest):** double-click `index.html`. It opens in your browser and saves as you work.
@@ -32,11 +44,10 @@ Every number recalculates the moment you change a price or an amount. Recipe car
 Build the installer (on Linux or Windows, with Node, NSIS `makensis`, and the npm packages `electron-builder` and `resedit`):
 
 ```bash
-python3 build.py                       # refresh index.html
 cd desktop
 node make-icons.js                     # only if icon.svg changed (needs Playwright)
-node build-win.js --seed my-backup.json  # optional: starting workbook for first run
-# -> dist/Restaurant Setup <version>.exe
+node build-win.js --edition professional  # essentials, professional or manager; --seed backup.json for a starting workbook
+# -> dist/Restaurant Professional Setup <version>.exe
 ```
 
 ## Backups
@@ -73,7 +84,7 @@ If you host it as an installable app, also bump `VERSION` in `sw.js` so devices 
 
 What a buyer gets:
 
-- `Restaurant Setup <version>.exe`: built **without** `--seed`, so it starts with an empty workbook. Pass `--publisher "Your full legal name"` to put your name in the program's file details and the installer's copyright line.
+- `Restaurant <Edition> Setup <version>.exe`, one per edition: built **without** `--seed`, so it starts with an empty workbook. Pass `--publisher "Your full legal name"` to put your name in the program's file details and the installer's copyright line.
 - `LICENSE.txt`: the end-user licence.
 - `sample/sample-workbook.json`: a fictional restaurant ("Maple Street Kitchen") buyers can load with **Load a backup** to try the app.
 - A quick-start guide.
