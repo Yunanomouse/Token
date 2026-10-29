@@ -1,9 +1,12 @@
 ; Food Cost installer (per-user, no admin rights needed).
-; Built by build-win.js: makensis -DAPPDIR=<win-unpacked> -DOUTFILE=<setup.exe> -DVERSION=<x.y.z> installer.nsi
+; Built by build-win.js: makensis -DAPPDIR=<win-unpacked> -DOUTFILE=<setup.exe> -DVERSION=<x.y.z> -DPUBLISHER=<name> installer.nsi
 Unicode true
 !include "MUI2.nsh"
 
 !define APPNAME "Food Cost"
+!ifndef PUBLISHER
+  !define PUBLISHER "Food Cost"
+!endif
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoodCost"
 
 Name "${APPNAME}"
@@ -17,7 +20,8 @@ VIAddVersionKey "ProductName" "${APPNAME}"
 VIAddVersionKey "FileDescription" "${APPNAME} installer"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
-VIAddVersionKey "LegalCopyright" "Lutador"
+VIAddVersionKey "CompanyName" "${PUBLISHER}"
+VIAddVersionKey "LegalCopyright" "${PUBLISHER}"
 
 !define MUI_ICON "icon.ico"
 !define MUI_UNICON "icon.ico"
@@ -44,6 +48,7 @@ Section "Install"
   WriteUninstaller "$INSTDIR\Uninstall ${APPNAME}.exe"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayName" "${APPNAME}"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKCU "${UNINSTKEY}" "Publisher" "${PUBLISHER}"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayIcon" "$INSTDIR\${APPNAME}.exe"
   WriteRegStr HKCU "${UNINSTKEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTKEY}" "UninstallString" '"$INSTDIR\Uninstall ${APPNAME}.exe"'

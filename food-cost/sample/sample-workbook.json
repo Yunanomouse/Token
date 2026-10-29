@@ -1,0 +1,1161 @@
+{
+ "app": "food-cost",
+ "version": 1,
+ "exported": "2026-10-29T12:00:00.000Z",
+ "ingredients": {
+  "ground_beef_8020_a1": {
+   "code": "4100231",
+   "name": "Ground beef 80/20",
+   "brand": "",
+   "supplier": "Butcher Shop",
+   "buyAs": "Case",
+   "perCase": 2,
+   "packQty": 5,
+   "unit": "lb",
+   "price": 64.5,
+   "yield": 100,
+   "cat": "Beef"
+  },
+  "striploin_aaa_a2": {
+   "code": "4100518",
+   "name": "Beef striploin AAA, trimmed",
+   "brand": "",
+   "supplier": "Butcher Shop",
+   "buyAs": "Case",
+   "perCase": 1,
+   "packQty": 5,
+   "unit": "kg",
+   "price": 180.0,
+   "yield": 90,
+   "cat": "Beef"
+  },
+  "chicken_breast_a3": {
+   "code": "4200114",
+   "name": "Chicken breast, boneless skinless",
+   "brand": "",
+   "supplier": "Butcher Shop",
+   "buyAs": "Case",
+   "perCase": 4,
+   "packQty": 2,
+   "unit": "kg",
+   "price": 88.0,
+   "yield": 95,
+   "cat": "Chicken"
+  },
+  "bacon_sliced_a4": {
+   "code": "4100902",
+   "name": "Bacon, sliced",
+   "brand": "",
+   "supplier": "Butcher Shop",
+   "buyAs": "Case",
+   "perCase": 1,
+   "packQty": 5,
+   "unit": "kg",
+   "price": 74.0,
+   "yield": 40,
+   "cat": "Other"
+  },
+  "cod_fillet_a5": {
+   "code": "5300427",
+   "name": "Cod fillet, skinless 6-8 oz",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Case",
+   "perCase": 1,
+   "packQty": 10,
+   "unit": "lb",
+   "price": 125.0,
+   "yield": 95,
+   "cat": "Seafood"
+  },
+  "fries_38_a6": {
+   "code": "7100320",
+   "name": "French fries 3/8\" frozen",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Case",
+   "perCase": 6,
+   "packQty": 2.5,
+   "unit": "kg",
+   "price": 46.8,
+   "yield": 100,
+   "cat": "Frozen"
+  },
+  "batter_mix_a7": {
+   "code": "6400118",
+   "name": "Fish batter mix",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Bag",
+   "perCase": 1,
+   "packQty": 10,
+   "unit": "kg",
+   "price": 38.0,
+   "yield": 100,
+   "cat": "Dry goods"
+  },
+  "brioche_bun_a8": {
+   "code": "8200045",
+   "name": "Brioche burger buns 4.5\"",
+   "brand": "",
+   "supplier": "Local Bakery",
+   "buyAs": "Case",
+   "perCase": 4,
+   "packQty": 12,
+   "unit": "each",
+   "price": 31.2,
+   "yield": 100,
+   "cat": "Bread"
+  },
+  "croutons_a9": {
+   "code": "8200210",
+   "name": "Croutons, garlic",
+   "brand": "",
+   "supplier": "Local Bakery",
+   "buyAs": "Bag",
+   "perCase": 1,
+   "packQty": 2.27,
+   "unit": "kg",
+   "price": 28.0,
+   "yield": 100,
+   "cat": "Bread"
+  },
+  "cheddar_slice_b1": {
+   "code": "3100652",
+   "name": "Aged cheddar, sliced",
+   "brand": "",
+   "supplier": "Dairy Co-op",
+   "buyAs": "Case",
+   "perCase": 4,
+   "packQty": 1,
+   "unit": "kg",
+   "price": 62.0,
+   "yield": 100,
+   "cat": "Dairy"
+  },
+  "mozzarella_b2": {
+   "code": "3100470",
+   "name": "Mozzarella, fior di latte",
+   "brand": "",
+   "supplier": "Dairy Co-op",
+   "buyAs": "Case",
+   "perCase": 2,
+   "packQty": 2.5,
+   "unit": "kg",
+   "price": 90.0,
+   "yield": 100,
+   "cat": "Dairy"
+  },
+  "parmesan_b3": {
+   "code": "3100815",
+   "name": "Parmesan, grated",
+   "brand": "",
+   "supplier": "Dairy Co-op",
+   "buyAs": "Bag",
+   "perCase": 1,
+   "packQty": 2.5,
+   "unit": "kg",
+   "price": 72.0,
+   "yield": 100,
+   "cat": "Dairy"
+  },
+  "cheese_curds_b4": {
+   "code": "3100733",
+   "name": "Cheese curds, fresh",
+   "brand": "",
+   "supplier": "Dairy Co-op",
+   "buyAs": "Case",
+   "perCase": 4,
+   "packQty": 2.27,
+   "unit": "kg",
+   "price": 118.0,
+   "yield": 100,
+   "cat": "Dairy"
+  },
+  "butter_unsalted_b5": {
+   "code": "3100102",
+   "name": "Butter, unsalted",
+   "brand": "",
+   "supplier": "Dairy Co-op",
+   "buyAs": "Case",
+   "perCase": 36,
+   "packQty": 454,
+   "unit": "g",
+   "price": 216.0,
+   "yield": 100,
+   "cat": "Dairy"
+  },
+  "eggs_large_b6": {
+   "code": "3200015",
+   "name": "Eggs, large",
+   "brand": "",
+   "supplier": "Dairy Co-op",
+   "buyAs": "Case",
+   "perCase": 1,
+   "packQty": 15,
+   "unit": "dozen",
+   "price": 66.0,
+   "yield": 100,
+   "cat": "Dairy"
+  },
+  "ice_cream_vanilla_b7": {
+   "code": "7100611",
+   "name": "Vanilla ice cream",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Tub",
+   "perCase": 1,
+   "packQty": 11.4,
+   "unit": "L",
+   "price": 46.0,
+   "yield": 100,
+   "cat": "Frozen"
+  },
+  "romaine_hearts_c1": {
+   "code": "1100208",
+   "name": "Romaine hearts",
+   "brand": "",
+   "supplier": "Produce Market",
+   "buyAs": "Case",
+   "perCase": 1,
+   "packQty": 12,
+   "unit": "each",
+   "price": 38.0,
+   "yield": 85,
+   "cat": "Produce",
+   "eachG": 300
+  },
+  "spring_mix_c2": {
+   "code": "1100344",
+   "name": "Spring mix",
+   "brand": "",
+   "supplier": "Produce Market",
+   "buyAs": "Case",
+   "perCase": 1,
+   "packQty": 3,
+   "unit": "lb",
+   "price": 24.0,
+   "yield": 90,
+   "cat": "Produce"
+  },
+  "roma_tomatoes_c3": {
+   "code": "1100119",
+   "name": "Roma tomatoes",
+   "brand": "",
+   "supplier": "Produce Market",
+   "buyAs": "Case",
+   "perCase": 1,
+   "packQty": 25,
+   "unit": "lb",
+   "price": 34.0,
+   "yield": 92,
+   "cat": "Produce"
+  },
+  "red_onion_c4": {
+   "code": "1100150",
+   "name": "Red onions",
+   "brand": "",
+   "supplier": "Produce Market",
+   "buyAs": "Bag",
+   "perCase": 1,
+   "packQty": 25,
+   "unit": "lb",
+   "price": 22.0,
+   "yield": 90,
+   "cat": "Produce"
+  },
+  "lemons_c6": {
+   "code": "1100402",
+   "name": "Lemons 115 ct",
+   "brand": "",
+   "supplier": "Produce Market",
+   "buyAs": "Case",
+   "perCase": 1,
+   "packQty": 115,
+   "unit": "each",
+   "price": 52.0,
+   "yield": 100,
+   "cat": "Produce",
+   "eachG": 100
+  },
+  "garlic_peeled_c7": {
+   "code": "1100510",
+   "name": "Garlic, peeled",
+   "brand": "",
+   "supplier": "Produce Market",
+   "buyAs": "Tub",
+   "perCase": 1,
+   "packQty": 1.36,
+   "unit": "kg",
+   "price": 13.0,
+   "yield": 95,
+   "cat": "Produce"
+  },
+  "basil_c8": {
+   "code": "1100620",
+   "name": "Basil, fresh",
+   "brand": "",
+   "supplier": "Produce Market",
+   "buyAs": "Bag",
+   "perCase": 1,
+   "packQty": 454,
+   "unit": "g",
+   "price": 14.0,
+   "yield": 70,
+   "cat": "Produce"
+  },
+  "crushed_tomatoes_d1": {
+   "code": "6100244",
+   "name": "Crushed tomatoes, tin",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Case",
+   "perCase": 6,
+   "packQty": 2.84,
+   "unit": "L",
+   "price": 27.0,
+   "yield": 100,
+   "cat": "Grocery"
+  },
+  "flour_ap_d2": {
+   "code": "6200010",
+   "name": "All-purpose flour",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Bag",
+   "perCase": 1,
+   "packQty": 20,
+   "unit": "kg",
+   "price": 26.0,
+   "yield": 100,
+   "cat": "Dry goods"
+  },
+  "yeast_instant_d3": {
+   "code": "6200310",
+   "name": "Instant dry yeast",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Box",
+   "perCase": 1,
+   "packQty": 454,
+   "unit": "g",
+   "price": 6.5,
+   "yield": 100,
+   "cat": "Dry goods"
+  },
+  "sugar_d4": {
+   "code": "6200050",
+   "name": "Granulated sugar",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Bag",
+   "perCase": 1,
+   "packQty": 20,
+   "unit": "kg",
+   "price": 32.0,
+   "yield": 100,
+   "cat": "Dry goods"
+  },
+  "kosher_salt_d5": {
+   "code": "6200071",
+   "name": "Kosher salt",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Box",
+   "perCase": 1,
+   "packQty": 1.36,
+   "unit": "kg",
+   "price": 5.2,
+   "yield": 100,
+   "cat": "Dry goods"
+  },
+  "black_pepper_d6": {
+   "code": "6300112",
+   "name": "Black pepper, ground",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Tub",
+   "perCase": 1,
+   "packQty": 500,
+   "unit": "g",
+   "price": 14.0,
+   "yield": 100,
+   "cat": "Dry goods"
+  },
+  "dark_chocolate_d7": {
+   "code": "6500204",
+   "name": "Dark chocolate callets 54%",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Bag",
+   "perCase": 1,
+   "packQty": 5,
+   "unit": "kg",
+   "price": 95.0,
+   "yield": 100,
+   "cat": "Dry goods"
+  },
+  "beef_base_d9": {
+   "code": "6100801",
+   "name": "Beef base paste",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Tub",
+   "perCase": 1,
+   "packQty": 1,
+   "unit": "kg",
+   "price": 24.0,
+   "yield": 100,
+   "cat": "Grocery"
+  },
+  "olive_oil_e1": {
+   "code": "6600120",
+   "name": "Extra virgin olive oil",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Case",
+   "perCase": 4,
+   "packQty": 3,
+   "unit": "L",
+   "price": 96.0,
+   "yield": 100,
+   "cat": "Oils & sauces"
+  },
+  "canola_oil_e2": {
+   "code": "6600101",
+   "name": "Canola oil",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Jug",
+   "perCase": 1,
+   "packQty": 16,
+   "unit": "L",
+   "price": 44.0,
+   "yield": 100,
+   "cat": "Oils & sauces"
+  },
+  "mayonnaise_e3": {
+   "code": "6600410",
+   "name": "Mayonnaise",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Case",
+   "perCase": 4,
+   "packQty": 3.78,
+   "unit": "L",
+   "price": 58.0,
+   "yield": 100,
+   "cat": "Oils & sauces"
+  },
+  "ketchup_e4": {
+   "code": "6600430",
+   "name": "Ketchup",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Case",
+   "perCase": 6,
+   "packQty": 2.84,
+   "unit": "L",
+   "price": 38.0,
+   "yield": 100,
+   "cat": "Oils & sauces"
+  },
+  "dijon_e5": {
+   "code": "6600455",
+   "name": "Dijon mustard",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Tub",
+   "perCase": 1,
+   "packQty": 2,
+   "unit": "kg",
+   "price": 18.0,
+   "yield": 100,
+   "cat": "Oils & sauces"
+  },
+  "red_wine_vinegar_e6": {
+   "code": "6600510",
+   "name": "Red wine vinegar",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Jug",
+   "perCase": 1,
+   "packQty": 4,
+   "unit": "L",
+   "price": 12.0,
+   "yield": 100,
+   "cat": "Oils & sauces"
+  },
+  "dill_pickles_e7": {
+   "code": "6100560",
+   "name": "Dill pickles, sliced",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Jug",
+   "perCase": 1,
+   "packQty": 4,
+   "unit": "L",
+   "price": 16.0,
+   "yield": 100,
+   "cat": "Grocery"
+  },
+  "caesar_dressing_e8": {
+   "code": "6600470",
+   "name": "Caesar dressing",
+   "brand": "",
+   "supplier": "Broadline Distributor",
+   "buyAs": "Case",
+   "perCase": 2,
+   "packQty": 3.78,
+   "unit": "L",
+   "price": 52.0,
+   "yield": 100,
+   "cat": "Oils & sauces"
+  }
+ },
+ "items": {
+  "prep_house_vinaigrette_v1": {
+   "name": "House vinaigrette",
+   "section": "Prep recipes",
+   "yieldQty": 1,
+   "yieldUnit": "L",
+   "portionQty": 2,
+   "portionUnit": "fl oz",
+   "portionPrice": null,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "olive_oil_e1",
+     "qty": 450,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "canola_oil_e2",
+     "qty": 200,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "red_wine_vinegar_e6",
+     "qty": 250,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "dijon_e5",
+     "qty": 40,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "garlic_peeled_c7",
+     "qty": 15,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "sugar_d4",
+     "qty": 15,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "kosher_salt_d5",
+     "qty": 10,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "black_pepper_d6",
+     "qty": 3,
+     "unit": "g"
+    }
+   ],
+   "method": "Mince the garlic very fine.\nWhisk vinegar, dijon, garlic, sugar, salt and pepper until the sugar dissolves.\nStream in canola then olive oil while whisking (or use a stick blender) until emulsified.\nLabel and date. Keeps 7 days refrigerated; shake before use."
+  },
+  "prep_burger_sauce_s2": {
+   "name": "Burger sauce",
+   "section": "Prep recipes",
+   "yieldQty": 1,
+   "yieldUnit": "L",
+   "portionQty": 1,
+   "portionUnit": "fl oz",
+   "portionPrice": null,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "mayonnaise_e3",
+     "qty": 600,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "ketchup_e4",
+     "qty": 200,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "dill_pickles_e7",
+     "qty": 150,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "dijon_e5",
+     "qty": 30,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "garlic_peeled_c7",
+     "qty": 10,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "black_pepper_d6",
+     "qty": 2,
+     "unit": "g"
+    }
+   ],
+   "method": "Finely chop the pickles and garlic.\nMix all ingredients in a stainless bowl until smooth.\nRest 1 hour in the fridge before service so the flavours come together.\nLabel and date. Keeps 5 days refrigerated."
+  },
+  "prep_pizza_dough_d3": {
+   "name": "Pizza dough (250 g balls)",
+   "section": "Prep recipes",
+   "yieldQty": 10,
+   "yieldUnit": "each",
+   "portionQty": 1,
+   "portionUnit": "each",
+   "portionPrice": null,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "flour_ap_d2",
+     "qty": 1.5,
+     "unit": "kg"
+    },
+    {
+     "kind": "ing",
+     "ing": "yeast_instant_d3",
+     "qty": 8,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "kosher_salt_d5",
+     "qty": 35,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "sugar_d4",
+     "qty": 15,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "olive_oil_e1",
+     "qty": 50,
+     "unit": "ml"
+    }
+   ],
+   "method": "Combine flour, yeast and sugar in the mixer with the dough hook.\nAdd 950 ml cool water and the olive oil; mix on low 3 minutes.\nAdd the salt and mix on medium 6 minutes until smooth.\nRest covered 20 minutes, then divide into 250 g balls.\nTray, cover and cold-proof 24 to 48 hours. Pull 1 hour before stretching."
+  },
+  "prep_brown_gravy_g4": {
+   "name": "Brown gravy",
+   "section": "Prep recipes",
+   "yieldQty": 2,
+   "yieldUnit": "L",
+   "portionQty": 4,
+   "portionUnit": "fl oz",
+   "portionPrice": 3.0,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "butter_unsalted_b5",
+     "qty": 100,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "flour_ap_d2",
+     "qty": 100,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "red_onion_c4",
+     "qty": 150,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "beef_base_d9",
+     "qty": 50,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "black_pepper_d6",
+     "qty": 3,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "kosher_salt_d5",
+     "qty": 5,
+     "unit": "g"
+    }
+   ],
+   "method": "Sweat the finely diced onion in butter until soft, about 5 minutes.\nAdd flour and cook, stirring, until it smells nutty and turns light brown.\nWhisk beef base into 2 L hot water, then whisk into the roux a little at a time.\nSimmer 15 minutes, season with pepper and salt, and strain.\nHold hot at 74 C or above. Cool quickly and use within 3 days."
+  },
+  "starter_green_salad_m1": {
+   "name": "House green salad",
+   "section": "Starters",
+   "price": 11,
+   "buffer": 0,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "spring_mix_c2",
+     "qty": 90,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "roma_tomatoes_c3",
+     "qty": 40,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "red_onion_c4",
+     "qty": 10,
+     "unit": "g"
+    },
+    {
+     "kind": "prep",
+     "prep": "prep_house_vinaigrette_v1",
+     "qty": 45,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "parmesan_b3",
+     "qty": 10,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "croutons_a9",
+     "qty": 15,
+     "unit": "g"
+    }
+   ],
+   "method": "Toss greens, tomato and onion with the vinaigrette.\nPlate high, finish with croutons and parmesan."
+  },
+  "main_cheeseburger_m2": {
+   "name": "Classic cheeseburger",
+   "section": "Mains",
+   "price": 19,
+   "buffer": 3,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "brioche_bun_a8",
+     "qty": 1,
+     "unit": "each"
+    },
+    {
+     "kind": "ing",
+     "ing": "ground_beef_8020_a1",
+     "qty": 170,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "cheddar_slice_b1",
+     "qty": 40,
+     "unit": "g"
+    },
+    {
+     "kind": "prep",
+     "prep": "prep_burger_sauce_s2",
+     "qty": 30,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "romaine_hearts_c1",
+     "qty": 20,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "roma_tomatoes_c3",
+     "qty": 40,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "red_onion_c4",
+     "qty": 15,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "dill_pickles_e7",
+     "qty": 20,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "fries_38_a6",
+     "qty": 200,
+     "unit": "g"
+    },
+    {
+     "kind": "other",
+     "label": "Fryer oil",
+     "amount": 0.2
+    }
+   ],
+   "method": "Season the patty and grill to 71 C internal.\nMelt cheddar on the patty for the last minute.\nToast the bun; sauce both halves.\nBuild: lettuce, tomato, patty, onion, pickles.\nServe with fries."
+  },
+  "main_fish_chips_m3": {
+   "name": "Fish and chips",
+   "section": "Mains",
+   "price": 22,
+   "buffer": 3,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "cod_fillet_a5",
+     "qty": 180,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "batter_mix_a7",
+     "qty": 60,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "fries_38_a6",
+     "qty": 250,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "lemons_c6",
+     "qty": 0.25,
+     "unit": "each"
+    },
+    {
+     "kind": "ing",
+     "ing": "mayonnaise_e3",
+     "qty": 40,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "dill_pickles_e7",
+     "qty": 15,
+     "unit": "g"
+    },
+    {
+     "kind": "other",
+     "label": "Fryer oil",
+     "amount": 0.3
+    }
+   ],
+   "method": "Pat the cod dry and dust in batter mix.\nDip in batter and fry at 180 C for 5 to 6 minutes until golden.\nTartar: mayo with chopped pickles and a squeeze of lemon.\nServe on fries with a lemon wedge and tartar."
+  },
+  "main_chicken_caesar_m4": {
+   "name": "Chicken caesar",
+   "section": "Mains",
+   "price": 19,
+   "buffer": 0,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "chicken_breast_a3",
+     "qty": 150,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "romaine_hearts_c1",
+     "qty": 130,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "caesar_dressing_e8",
+     "qty": 60,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "parmesan_b3",
+     "qty": 15,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "bacon_sliced_a4",
+     "qty": 20,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "croutons_a9",
+     "qty": 25,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "lemons_c6",
+     "qty": 0.25,
+     "unit": "each"
+    }
+   ],
+   "method": "Grill the chicken to 74 C internal, rest and slice.\nToss chopped romaine with dressing, half the parmesan and the croutons.\nTop with chicken, crisp bacon and the rest of the parmesan.\nLemon wedge on the side."
+  },
+  "main_steak_frites_m5": {
+   "name": "Steak frites",
+   "section": "Mains",
+   "price": 34,
+   "buffer": 3,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "striploin_aaa_a2",
+     "qty": 227,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "fries_38_a6",
+     "qty": 200,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "butter_unsalted_b5",
+     "qty": 20,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "garlic_peeled_c7",
+     "qty": 5,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "spring_mix_c2",
+     "qty": 30,
+     "unit": "g"
+    },
+    {
+     "kind": "prep",
+     "prep": "prep_house_vinaigrette_v1",
+     "qty": 15,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "kosher_salt_d5",
+     "qty": 3,
+     "unit": "g"
+    },
+    {
+     "kind": "other",
+     "label": "Fryer oil",
+     "amount": 0.2
+    }
+   ],
+   "method": "Season the striploin and sear hard; cook to order.\nBaste with butter and crushed garlic, rest 5 minutes.\nSlice against the grain.\nServe with fries and a small dressed green salad."
+  },
+  "main_margherita_m6": {
+   "name": "Margherita pizza",
+   "section": "Mains",
+   "price": 16,
+   "buffer": 0,
+   "lines": [
+    {
+     "kind": "prep",
+     "prep": "prep_pizza_dough_d3",
+     "qty": 1,
+     "unit": "each"
+    },
+    {
+     "kind": "ing",
+     "ing": "crushed_tomatoes_d1",
+     "qty": 90,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "mozzarella_b2",
+     "qty": 150,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "basil_c8",
+     "qty": 5,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "olive_oil_e1",
+     "qty": 10,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "parmesan_b3",
+     "qty": 5,
+     "unit": "g"
+    }
+   ],
+   "method": "Stretch one dough ball to 12 inches.\nSpread the crushed tomato, leaving a 2 cm rim.\nTear the mozzarella over and bake at 290 C until the crust is blistered.\nFinish with basil, olive oil and parmesan."
+  },
+  "side_fries_m7": {
+   "name": "Fries with garlic mayo",
+   "section": "Sides",
+   "price": 5.5,
+   "buffer": 0,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "fries_38_a6",
+     "qty": 300,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "kosher_salt_d5",
+     "qty": 2,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "mayonnaise_e3",
+     "qty": 30,
+     "unit": "ml"
+    },
+    {
+     "kind": "ing",
+     "ing": "garlic_peeled_c7",
+     "qty": 2,
+     "unit": "g"
+    },
+    {
+     "kind": "other",
+     "label": "Fryer oil",
+     "amount": 0.25
+    }
+   ],
+   "method": "Fry at 175 C until crisp, about 4 minutes.\nSalt straight out of the fryer.\nServe with garlic mayo on the side."
+  },
+  "side_poutine_m8": {
+   "name": "Poutine",
+   "section": "Sides",
+   "price": 12,
+   "buffer": 0,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "fries_38_a6",
+     "qty": 300,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "cheese_curds_b4",
+     "qty": 100,
+     "unit": "g"
+    },
+    {
+     "kind": "prep",
+     "prep": "prep_brown_gravy_g4",
+     "qty": 150,
+     "unit": "ml"
+    },
+    {
+     "kind": "other",
+     "label": "Fryer oil",
+     "amount": 0.25
+    }
+   ],
+   "method": "Fry the fries until crisp and salt lightly.\nTop with room-temperature cheese curds.\nLadle over very hot gravy so the curds just start to melt."
+  },
+  "dessert_brownie_m9": {
+   "name": "Brownie with vanilla ice cream",
+   "section": "Desserts",
+   "price": 9.5,
+   "buffer": 0,
+   "lines": [
+    {
+     "kind": "ing",
+     "ing": "dark_chocolate_d7",
+     "qty": 50,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "butter_unsalted_b5",
+     "qty": 30,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "sugar_d4",
+     "qty": 40,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "eggs_large_b6",
+     "qty": 0.5,
+     "unit": "each"
+    },
+    {
+     "kind": "ing",
+     "ing": "flour_ap_d2",
+     "qty": 15,
+     "unit": "g"
+    },
+    {
+     "kind": "ing",
+     "ing": "ice_cream_vanilla_b7",
+     "qty": 90,
+     "unit": "ml"
+    },
+    {
+     "kind": "other",
+     "label": "Chocolate sauce",
+     "amount": 0.2
+    }
+   ],
+   "method": "Warm a brownie portion for 30 seconds.\nTop with a 90 ml scoop of vanilla ice cream.\nDrizzle chocolate sauce and serve right away."
+  }
+ },
+ "settings": {
+  "target": 30,
+  "name": "Maple Street Kitchen",
+  "sections": [
+   "Starters",
+   "Mains",
+   "Sides",
+   "Desserts"
+  ]
+ }
+}
