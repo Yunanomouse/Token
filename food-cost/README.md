@@ -73,7 +73,7 @@ If you host it as an installable app, also bump `VERSION` in `sw.js` so devices 
 
 What a buyer gets:
 
-- `Restaurant Setup <version>.exe`: built **without** `--seed`, so it starts with an empty workbook. Pass `--publisher "Your name"` to put your name in the program's file details and the installer's copyright line.
+- `Restaurant Setup <version>.exe`: built **without** `--seed`, so it starts with an empty workbook. Pass `--publisher "Your full legal name"` to put your name in the program's file details and the installer's copyright line.
 - `LICENSE.txt`: the end-user licence.
 - `sample/sample-workbook.json`: a fictional restaurant ("Maple Street Kitchen") buyers can load with **Load a backup** to try the app.
 - A quick-start guide.
