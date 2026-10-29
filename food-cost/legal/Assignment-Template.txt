@@ -1,0 +1,38 @@
+SOFTWARE ASSIGNMENT AGREEMENT (template)
+
+Use this if you ever sell the whole Food Cost program, not just copies of it.
+Fill in the brackets, and have both parties sign and date it.
+
+Date: [DATE]
+
+Assignor: [OWNER NAME], of [ADDRESS] ("Assignor")
+Assignee: [BUYER NAME OR COMPANY], of [ADDRESS] ("Assignee")
+
+1. Assignment. For the payment of $[AMOUNT] CAD, received in full, the Assignor
+   transfers to the Assignee all of the Assignor's right, title and interest,
+   including copyright, in the software known as "Food Cost": its source code,
+   installers, icons, documentation, sample data, product name, and any store
+   listings, customer lists and licence agreements with existing customers
+   ("the Software").
+
+2. Delivery. The Assignor will deliver a complete copy of the source code
+   repository and build instructions within [7] days of signing.
+
+3. Existing customers. Licences already sold remain valid. From the date of this
+   agreement the Assignee takes over the Owner's role under those licences.
+
+4. Moral rights. To the extent permitted by law, the Assignor waives their moral
+   rights in the Software in favour of the Assignee and its successors.
+
+5. Assignor's statement. The Assignor states that they wrote the Software, that
+   they have not already transferred or licensed it exclusively to anyone else,
+   and that no former employer or client holds rights in it.
+
+6. Third-party components. Open-source components (Electron, Chromium) remain
+   under their own licences and are not part of this assignment.
+
+7. Governing law. This agreement is governed by the laws of the Province of
+   Alberta, Canada.
+
+Assignor signature: ______________________   Date: __________
+Assignee signature: ______________________   Date: __________
