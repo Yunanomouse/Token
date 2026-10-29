@@ -1,0 +1,32 @@
+FOOD COST - END-USER LICENCE
+
+By installing or using Food Cost ("the Software") you agree to these terms.
+
+1. Licence. You may install and use the Software at one business (one restaurant,
+   café, food truck or catering company), on as many of that business's own
+   computers as you need. Each additional business needs its own copy.
+
+2. You may not resell, rent, share, publish or give away the Software or its
+   installer, or offer it as part of another product or service.
+
+3. Your data. Everything you enter (ingredients, prices, recipes, menus) is saved
+   only on your own computer. The seller never receives, sees or stores it. You are
+   responsible for keeping your own backups (File & settings > Export backup).
+
+4. Updates and support. Updates and support are provided as described on the
+   product page at the time of purchase, if at all.
+
+5. No warranty. The Software is provided "as is", without warranty of any kind.
+   Food cost figures depend on the prices and quantities you enter; check important
+   numbers before relying on them for pricing, purchasing or financial decisions.
+
+6. Limitation of liability. To the extent the law allows, the seller's total
+   liability for any claim relating to the Software is limited to the amount you
+   paid for it, and the seller is not liable for lost profits, lost data or
+   indirect losses.
+
+7. Third-party components. The Windows version is built on Electron and Chromium,
+   which are distributed under their own open-source licences (see LICENSE and
+   LICENSES.chromium.html in the program folder).
+
+8. These terms are governed by the laws of the Province of Alberta, Canada.
