@@ -1,6 +1,13 @@
 <script>
 (function () {
   "use strict";
+  // edition: build.py writes essentials, professional or manager here (manager when run unbuilt)
+  var EDITION = "{{EDITION}}", EDITIONS = { essentials: ["Essentials", 1], professional: ["Professional", 2], manager: ["Kitchen Manager", 3] };
+  if (!EDITIONS[EDITION]) EDITION = "manager";
+  var PRO = 2, MGR = 3, PRODUCT = "Restaurant " + EDITIONS[EDITION][0];
+  function has(level) { return EDITIONS[EDITION][1] >= level; }
+  // plug-in points for the Kitchen Manager tools (src/tools/*.js)
+  var TOOLS = [], HOOKS = { ingCols: [], editor: [], card: [] };
   var U = { mg: ["m", 0.001], g: ["m", 1], kg: ["m", 1000], oz: ["m", 28.3495], lb: ["m", 453.592],
     ml: ["v", 1], L: ["v", 1000], tsp: ["v", 4.929], tbsp: ["v", 14.787], "fl oz": ["v", 29.5735], cup: ["v", 236.588], pt: ["v", 473.176], qt: ["v", 946.353], gal: ["v", 3785.41], pinch: ["v", 0.31],
     each: ["e", 1], dozen: ["e", 12] };
@@ -219,10 +226,19 @@
   document.querySelectorAll("nav.tabs button").forEach(function (b) { b.addEventListener("click", function () { showView(b.dataset.view); }); });
   function welcome() {
     var empty = S.loaded.items && S.loaded.ing && !Object.keys(S.items).length && !Object.keys(S.ing).length;
-    if (empty) { S.welcomed = true; $("notices").replaceChildren(el("div", { class: "notice" }, ["New workbook. Start on the Ingredients tab: add what you buy, the way your invoice reads. Then build dishes on Menu costing and sauces or doughs on Prep recipes. Already have a backup? Open ", el("b", { text: "File & settings" }), " and load it."])); }
+    if (empty) { S.welcomed = true; $("notices").replaceChildren(el("div", { class: "notice" }, ["New workbook. Start on the Ingredients tab: add what you buy, the way your invoice reads. Then build dishes on Menu costing" + (has(PRO) ? " and sauces or doughs on Prep recipes" : "") + ". Already have a backup? Open ", el("b", { text: "File & settings" }), " and load it."])); }
     else if (S.welcomed) { S.welcomed = false; notice(""); }
   }
-  function render() { welcome(); if (S.view === "menu" || S.view === "prep") renderMenu(); else { if (S.view === "ing") renderIng(); else renderPlan(); renderSum(); } }
+  function render() { welcome(); if (S.view === "menu" || S.view === "prep") renderMenu(); else { var t = toolOf(S.view); if (t) t.render($("view-" + t.id)); else if (S.view === "ing") renderIng(); else renderPlan(); renderSum(); } }
+  function toolOf(v) { return TOOLS.filter(function (t) { return t.id === v; })[0]; }
+  // a Kitchen Manager tool: its own tab and sheet, re-rendered whenever data changes
+  function addTool(t) {
+    if (!has(MGR)) return;
+    TOOLS.push(t);
+    var b = el("button", { role: "tab", id: "tab-" + t.id, "aria-selected": "false", "data-view": t.id, text: t.label, onclick: function () { showView(t.id); } });
+    document.querySelector("nav.tabs").appendChild(b);
+    document.querySelector(".wrap").appendChild(el("section", { class: "view", id: "view-" + t.id, role: "tabpanel", "aria-labelledby": "tab-" + t.id, hidden: true }));
+  }
 
   // ---------- menu list ----------
   function fcChip(fc) { return el("span", { class: "chip " + (!isFinite(fc) ? "" : fc <= target() ? "good" : "bad"), text: pct(fc) }); }
@@ -242,13 +258,13 @@
     });
     var body = [], last = null;
     rows.forEach(function (r) {
-      if (k === "section" && r.it.section !== last) { last = r.it.section; body.push(el("tr", { class: "cat" }, [el("td", { colspan: "6", text: r.it.section || "Other" })])); }
+      if (k === "section" && r.it.section !== last) { last = r.it.section; body.push(el("tr", { class: "cat" }, [el("td", { colspan: has(MGR) ? "6" : "5", text: r.it.section || "Other" })])); }
       var cls = !isFinite(r.c.fc) ? "" : r.c.fc <= t ? "good" : "over";
       body.push(el("tr", { class: r.it.id === S.sel ? "sel" : "", tabindex: "0", onclick: function () { select(r.it.id); }, onkeydown: function (e) { if (e.key === "Enter") select(r.it.id); } }, [
         el("td", { text: r.it.name || "Unnamed" }),
         el("td", { class: "n", text: r.prep ? (num(r.it.yieldQty) ? trimN(num(r.it.yieldQty), 2) + " " + r.it.yieldUnit : "") : money(num(r.it.price)) }),
         el("td", { class: "n", text: money(r.c.cost) }),
-        el("td", { class: "n muted", text: !r.prep && num(r.it.chefCost) > 0 ? money(num(r.it.chefCost)) : "" }),
+        has(MGR) ? el("td", { class: "n muted", text: !r.prep && num(r.it.chefCost) > 0 ? money(num(r.it.chefCost)) : "" }) : null,
         el("td", { class: "n " + cls, text: r.prep ? "prep" : pct(r.c.fc) }),
         el("td", { class: "n", text: r.prep ? prepPerText(r.it).split(" · ")[0] : money(r.c.gp) })
       ]));
@@ -259,7 +275,7 @@
         S.sort = S.sort.k === key ? { k: key, d: -S.sort.d } : { k: key, d: key === "name" ? 1 : -1 }; lsSet("fc-sort", JSON.stringify(S.sort)); renderList();
       } }, [label + arrow]);
     }
-    var head = el("tr", null, [th("name", "Item"), th("price", "Price", 1), th("cost", "Cost", 1), el("th", { class: "n", scope: "col", title: "Cost your chef or supplier quoted, for comparison" }, ["Chef"]), th("fc", "Food cost", 1), th("gp", "Profit", 1)]);
+    var head = el("tr", null, [th("name", "Item"), th("price", "Price", 1), th("cost", "Cost", 1), has(MGR) ? el("th", { class: "n", scope: "col", title: "Cost your chef or supplier quoted, for comparison" }, ["Chef"]) : null, th("fc", "Food cost", 1), th("gp", "Profit", 1)]);
     var tools = k !== "section" ? el("caption", { style: "caption-side:top;text-align:left;padding:4px 8px" }, [el("button", { class: "btn", type: "button", text: "Group by section", onclick: function () { S.sort = { k: "section", d: 1 }; lsSet("fc-sort", JSON.stringify(S.sort)); renderList(); } })]) : null;
     $("m-list").replaceChildren(body.length ? el("table", { class: "sheet" }, [tools, el("thead", null, [head]), el("tbody", null, body)]) : el("div", { class: "empty", text: S.loaded.items ? "No menu items yet." : "Loading…" }));
     renderSum();
@@ -354,7 +370,7 @@
         tile("Food cost", pct(c.fc), "target " + t + "%", isFinite(c.fc) ? (c.fc <= t ? "good" : "over") : ""),
         tile("Profit per sale", money(c.gp), pct(c.gpp) + " gross margin"),
         tile("Price for " + t + "% target", money(c.need), ""),
-        num(S.draft.chefCost) > 0 ? tile("Chef's cost", money(num(S.draft.chefCost)), (c.cost - num(S.draft.chefCost) >= 0 ? "program is " + money(c.cost - num(S.draft.chefCost)) + " higher" : "program is " + money(num(S.draft.chefCost) - c.cost) + " lower")) : null
+        has(MGR) && num(S.draft.chefCost) > 0 ? tile("Chef's cost", money(num(S.draft.chefCost)), (c.cost - num(S.draft.chefCost) >= 0 ? "program is " + money(c.cost - num(S.draft.chefCost)) + " higher" : "program is " + money(num(S.draft.chefCost) - c.cost) + " lower")) : null
       ].filter(Boolean));
     }
     document.querySelectorAll("[data-line]").forEach(function (td) { var l = S.draft.lines[+td.dataset.line]; if (!l) return; var v = lineCost(l); td.textContent = isFinite(v) ? money(v) : "–"; });
@@ -382,8 +398,8 @@
     } else {
       top = [fld("Menu item", name), fld("Section", sec),
         fld("Menu price ($)", el("input", { type: "number", min: "0", step: "0.01", value: d.price != null ? d.price : "", oninput: function (e) { d.price = num(e.target.value); changed(); } })),
-        fld("Waste buffer (%)", el("input", { type: "number", min: "0", step: "1", value: d.buffer != null ? d.buffer : 0, oninput: function (e) { d.buffer = num(e.target.value); changed(); } })),
-        fld("Chef's cost ($)", el("input", { type: "number", min: "0", step: "0.01", value: num(d.chefCost) > 0 ? d.chefCost : "", placeholder: "optional", oninput: function (e) { d.chefCost = e.target.value === "" ? null : num(e.target.value); changed(); } }))];
+        !has(PRO) ? null : fld("Waste buffer (%)", el("input", { type: "number", min: "0", step: "1", value: d.buffer != null ? d.buffer : 0, oninput: function (e) { d.buffer = num(e.target.value); changed(); } })),
+        !has(MGR) ? null : fld("Chef's cost ($)", el("input", { type: "number", min: "0", step: "0.01", value: num(d.chefCost) > 0 ? d.chefCost : "", placeholder: "optional", oninput: function (e) { d.chefCost = e.target.value === "" ? null : num(e.target.value); changed(); } }))].filter(Boolean);
     }
     var ings = ingList(), preps = itemList().filter(function (p) { return isPrep(p) && p.id !== S.sel; });
     var rows = (d.lines || []).map(function (l, i) {
@@ -402,7 +418,7 @@
           changed(); renderEditor();
         } }, [el("option", { value: "ing:", text: "Pick an ingredient" }),
           el("optgroup", { label: "Ingredients" }, ings.map(function (n) { return el("option", { value: "ing:" + n.id, text: n.name + (n.supplier ? " (" + n.supplier + ")" : "") }); })),
-          preps.length ? el("optgroup", { label: "Prep recipes (sauces, doughs)" }, preps.map(function (p) { return el("option", { value: "prep:" + p.id, text: p.name }); })) : null]);
+          preps.length && (has(PRO) || l.kind === "prep") ? el("optgroup", { label: "Prep recipes (sauces, doughs)" }, preps.filter(function (p) { return has(PRO) || p.id === l.prep; }).map(function (p) { return el("option", { value: "prep:" + p.id, text: p.name }); })) : null]);
         sel.value = l.kind === "prep" ? "prep:" + l.prep : "ing:" + (l.ing || "");
         sel.style.minWidth = "170px"; sel.style.width = "100%";
         cells = [
@@ -438,6 +454,7 @@
         el("button", { class: "btn", type: "button", text: "Add ingredient", onclick: function () { d.lines = d.lines || []; d.lines.push({ kind: "ing", ing: "", qty: "", unit: "g" }); changed(); renderEditor(); } }),
         el("button", { class: "btn", type: "button", text: "Add extra cost", onclick: function () { d.lines = d.lines || []; d.lines.push({ kind: "other", label: "", amount: "" }); changed(); renderEditor(); } })
       ]),
+      HOOKS.editor.length ? el("div", null, HOOKS.editor.map(function (h) { return h(Object.assign({ id: S.sel }, d)); })) : null,
       el("label", { class: "method" }, [el("h3", { text: "Method" }), el("textarea", { rows: "7", placeholder: "One step per line. Prints on the recipe card.", oninput: function (e) { d.method = e.target.value; saveSoon("item", flushItem); S.dirty = true; } }, [d.method || ""])]),
       el("div", { class: "row" }, [del])
     ].filter(Boolean));
@@ -459,6 +476,7 @@
         el("div", { class: "ch" }, [el("span", { class: "cb", text: (bizName() || "Recipe card").toUpperCase() }), el("span", { class: "cs", text: it.section || "" })]),
         el("h2", { text: it.name || "Unnamed" }), el("p", { text: sum }),
         el("table", null, [el("thead", null, [el("tr", null, [el("th", { text: prep ? "Ingredient (one batch)" : "Ingredient (one serving)" }), el("th", { class: "n", text: "Amount" }), el("th", { class: "n", text: "Weigh" }), el("th", { class: "n", text: "Cost" }), el("th", { class: "chk", text: "✓" })])]), el("tbody", null, rows)]),
+        HOOKS.card.length ? el("div", null, HOOKS.card.map(function (h) { return h(it); })) : null,
         steps(it.method).length ? el("h3", { class: "msteps", text: "Method" }) : null,
         steps(it.method).length ? el("ol", { class: "msteps" }, steps(it.method).map(function (s) { return el("li", { text: s }); })) : null,
         el("p", { class: "foot", text: "Weighed by ________   Date ________   Actual weight ________" })
@@ -486,7 +504,7 @@
     var q = $("i-search").value.trim().toLowerCase(), tbody = [], last = null;
     ingList().filter(function (i) { return !q || ((i.name || "") + " " + (i.supplier || "") + " " + (i.cat || "") + " " + (i.code || "") + " " + (i.brand || "")).toLowerCase().indexOf(q) >= 0; }).forEach(function (i) {
       var letter = (i.name || "?").normalize("NFD").charAt(0).toUpperCase();
-      if (letter !== last) { last = letter; tbody.push(el("tr", { class: "cat" }, [el("td", { colspan: "13", text: letter })])); }
+      if (letter !== last) { last = letter; tbody.push(el("tr", { class: "cat" }, [el("td", { colspan: String(13 + HOOKS.ingCols.length), text: letter })])); }
       var x = S.ing[i.id], out = el("td", { class: "n", text: perText(x) });
       var used = itemList().filter(function (it) { return (it.lines || []).some(function (l) { return l.ing === i.id; }); }).length;
       function upd() { out.textContent = perText(x); saveIng(i.id); renderList(); }
@@ -502,14 +520,14 @@
         el("td", null, [el("input", { type: "number", min: "1", step: "1", value: x.yield != null ? x.yield : 100, "aria-label": "Usable percent", oninput: function (e) { x.yield = num(e.target.value, 100); upd(); } })]),
         el("td", null, [el("input", { type: "number", min: "0", step: "1", value: num(x.density, 0) > 0 ? Math.round(x.density * 236.588) : "", placeholder: isFinite(densOf(x, i.id)) ? String(Math.round(densOf(x, i.id) * 236.588)) : "–", "aria-label": "Grams per cup", title: "Grams in one cup. Lets recipes use cups and spoons for things priced by weight, and grams for things priced by volume.", oninput: function (e) { var v = num(e.target.value, 0); if (v > 0) x.density = v / 236.588; else delete x.density; upd(); } })]),
         el("td", null, [el("input", { type: "number", min: "0", step: "1", value: num(x.eachG, 0) > 0 ? x.eachG : "", placeholder: EACH[i.id] ? String(EACH[i.id]) : "–", "aria-label": "Grams each", title: "Weight of one (one egg, one lime, one bunch). Lets recipes count items priced by weight, or weigh items priced each.", oninput: function (e) { var v = num(e.target.value, 0); if (v > 0) x.eachG = v; else delete x.eachG; upd(); } })]),
-        out, el("td", null, [cat]),
+        out, el("td", null, [cat])].concat(HOOKS.ingCols.map(function (h) { return el("td", null, [h.cell(x, i.id, function () { saveIng(i.id); })]); })).concat([
         el("td", null, [el("button", { class: "btn danger", type: "button", text: S.confirmDel === i.id ? (used ? "Used in " + used + ". Tap again" : "Tap again") : "Delete", onclick: function () {
           if (S.confirmDel !== i.id) { S.confirmDel = i.id; renderIng(); return; }
           remove("ingredients/" + i.id).then(function () { toast("Deleted"); }, function () {});
         } })])
-      ]));
+      ])));
     });
-    $("i-table").replaceChildren(tbody.length ? el("table", null, [el("thead", null, [el("tr", null, ["Item code", "Ingredient", "Brand", "Supplier", "Unit", "Pack size", "Unit price ($)", "Usable %", "g per cup", "g each", "Real cost", "Group", ""].map(function (h, k) { return el("th", { class: k === 10 ? "n" : "", text: h }); }))]), el("tbody", null, tbody)]) : el("div", { class: "empty", text: S.loaded.ing ? (q ? "Nothing matches." : "No ingredients yet.") : "Loading…" }));
+    $("i-table").replaceChildren(tbody.length ? el("table", null, [el("thead", null, [el("tr", null, ["Item code", "Ingredient", "Brand", "Supplier", "Unit", "Pack size", "Unit price ($)", "Usable %", "g per cup", "g each", "Real cost", "Group"].concat(HOOKS.ingCols.map(function (h) { return h.label; })).concat([""]).map(function (h, k) { return el("th", { class: k === 10 ? "n" : "", text: h }); }))]), el("tbody", null, tbody)]) : el("div", { class: "empty", text: S.loaded.ing ? (q ? "Nothing matches." : "No ingredients yet.") : "Loading…" }));
   }
   $("i-search").addEventListener("input", function () { var a = $("i-search"); a.blur(); renderIng(); a.focus(); });
   // re-sort and jump to an ingredient, highlighted for a few seconds
@@ -619,9 +637,9 @@
   // ---------- branding ----------
   function applyBrand() {
     var n = bizName();
-    $("t-name").textContent = n ? n + " · Restaurant" : "Restaurant";
+    $("t-name").textContent = n ? n + " · " + PRODUCT : PRODUCT;
     $("t-logo").textContent = (n || "R").charAt(0).toUpperCase();
-    document.title = n ? n + " · Restaurant" : "Restaurant";
+    document.title = n ? n + " · " + PRODUCT : PRODUCT;
   }
 
   // ---------- file: backup, restore, export, settings ----------
@@ -678,6 +696,9 @@
     r.readAsText(file);
   }
   function initFile() {
+    if (!has(PRO)) { $("f-menu").parentNode.remove(); }
+    if (!has(MGR)) { $("f-add").parentNode.remove(); $("f-addfile").remove(); }
+    $("f-title").textContent = "File & settings · " + PRODUCT;
     $("t-file").addEventListener("click", function () {
       $("s-name").value = S.settings.name || ""; $("s-target").value = target();
       $("s-sections").value = sections().filter(function (x) { return x !== PREP && x !== "Other"; }).join("\n");
@@ -687,12 +708,13 @@
     });
     $("f-close").addEventListener("click", function () { $("file-dlg").close(); });
     $("f-backup").addEventListener("click", exportBackup);
-    $("f-menu").addEventListener("click", exportMenuCsv);
-    $("f-ing").addEventListener("click", exportIngCsv);
+    if (has(PRO)) { $("f-menu").addEventListener("click", exportMenuCsv); $("f-ing").addEventListener("click", exportIngCsv); }
     $("f-restore").addEventListener("click", function () { $("f-file").click(); });
     $("f-file").addEventListener("change", function () { var f = $("f-file").files[0]; $("f-file").value = ""; if (f) importBackup(f); });
-    $("f-add").addEventListener("click", function () { $("f-addfile").click(); });
-    $("f-addfile").addEventListener("change", function () { var f = $("f-addfile").files[0]; $("f-addfile").value = ""; if (f) importRecipes(f); });
+    if (has(MGR)) {
+      $("f-add").addEventListener("click", function () { $("f-addfile").click(); });
+      $("f-addfile").addEventListener("change", function () { var f = $("f-addfile").files[0]; $("f-addfile").value = ""; if (f) importRecipes(f); });
+    }
     $("f-erase").addEventListener("click", function () {
       if (!confirm("Erase every ingredient, menu item and prep recipe in this workbook? This can't be undone unless you have a backup.")) return;
       clearTimeout(timers.item); S.sel = null; S.draft = null; S.dirty = false; LocalDB.load({ app: "food-cost", version: 1, ingredients: {}, items: {}, settings: { target: target(), name: S.settings.name || "", sections: S.settings.sections } });
@@ -708,7 +730,11 @@
   }
   function backupAge() { var last = num(lsGet("fc-last-backup"), 0); return last ? Math.floor((Date.now() - last) / 864e5) : null; }
 
+  /*TOOLS*/
+
   // ---------- boot ----------
+  if (!has(PRO)) ["prep", "plan"].forEach(function (v) { $("tab-" + v).remove(); $("view-" + v).remove(); });
+  applyBrand();
   var sv = lsGet("fc-view"); showView(sv && $("view-" + sv) ? sv : "menu");
   var db = LocalDB.open();
   if (!db) { S.canWrite = false; setStatus("No storage"); notice("This browser is blocking storage (private window or site data turned off), so nothing can be saved. Open the app in a normal window.", true); return; }
