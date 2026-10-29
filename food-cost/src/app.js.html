@@ -6,7 +6,7 @@
     each: ["e", 1], dozen: ["e", 12] };
   var UGROUPS = [["Weight", "m"], ["Volume", "v"], ["Count", "e"]];
   // grams per ml, used to switch between weight and volume (served form: cooked rice, fries, shredded cheese)
-  var DENS = { flour: 0.53, sugar: 0.85, salt: 1.2, sal_grosso: 1.1, rice: 0.75, potato: 0.45, honey: 1.42, olive_oil: 0.91, canola: 0.92, mayo: 0.95, butter: 0.96, milk: 1.03, buttermilk: 1.03, cream: 1.0, whipped_cream: 0.5, bbq_sauce: 1.1, pizza_sauce: 1.05, soy: 1.15, vinegar: 1.0, passion_pulp: 1.05, dulce: 1.3, mozzarella: 0.45, parmesan: 0.4, canastra: 0.45, minas: 0.5, cottage_cheese: 1.0, corn: 0.6, white_beans: 0.75, coconut: 0.3, oregano: 0.25, chili_flakes: 0.45, smoked_paprika: 0.45, cayenne: 0.45, cajun: 0.5, yeast: 0.6, tapioca: 0.55, macaroni: 0.45, garlic: 0.6, jalapeno: 0.6, roasted_pepper: 0.6, chocolate: 0.6, bell_peppers: 0.5, onion: 0.6, red_onion: 0.6, cabbage: 0.3, carrot: 0.5, tomatoes: 0.7, strawberries: 0.6, spring_mix: 0.1, ladyfingers: 0.2, cassava_chips: 0.2 };
+  var DENS = { flour: 0.53, sugar: 0.85, salt: 1.2, rice: 0.75, potato: 0.45, honey: 1.42, olive_oil: 0.91, canola: 0.92, mayo: 0.95, butter: 0.96, milk: 1.03, buttermilk: 1.03, cream: 1.0, whipped_cream: 0.5, bbq_sauce: 1.1, pizza_sauce: 1.05, soy: 1.15, vinegar: 1.0, mozzarella: 0.45, parmesan: 0.4, cottage_cheese: 1.0, corn: 0.6, white_beans: 0.75, coconut: 0.3, oregano: 0.25, chili_flakes: 0.45, smoked_paprika: 0.45, cayenne: 0.45, cajun: 0.5, yeast: 0.6, macaroni: 0.45, garlic: 0.6, jalapeno: 0.6, roasted_pepper: 0.6, chocolate: 0.6, bell_peppers: 0.5, onion: 0.6, red_onion: 0.6, cabbage: 0.3, carrot: 0.5, tomatoes: 0.7, strawberries: 0.6, spring_mix: 0.1 };
   // grams for one "each"
   var EACH = { eggs: 50, limes: 67, lemons: 100, cucumber: 300, mango: 200, pineapple: 1500, parsley: 60, cilantro: 60, scallions: 100, brioche: 80, hoagie: 110, flatbread: 90 };
   var UNITS = Object.keys(U);
@@ -14,7 +14,7 @@
   var CATCODE = { Seafood: "SF", Produce: "PR", Dairy: "DY", Frozen: "FR", Grocery: "GR", Disposables: "DS", Chemicals: "CP" };
   function catOpts() { return CATS.map(function (c) { return el("option", { value: c, text: CATCODE[c] ? c + " (" + CATCODE[c] + ")" : c }); }); }
   var PREP = "Prep recipes";
-  var DEFAULT_SECTIONS = ["Starters", "Mains", "Shares", "Salads", "Sides", "Desserts", "Drinks", "Events"];
+  var DEFAULT_SECTIONS = ["Starters", "Mains", "Salads", "Sides", "Desserts", "Drinks"];
   var S = { db: null, canWrite: true, ing: {}, items: {}, settings: { target: 32 }, loaded: {}, view: "menu", sel: null, draft: null, confirmDel: null, everWrote: false };
   // menu sections come from Settings; prep recipes and Other are always there
   function sections() {

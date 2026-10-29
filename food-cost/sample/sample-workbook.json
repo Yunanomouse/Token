@@ -671,7 +671,7 @@
    "yieldUnit": "L",
    "portionQty": 4,
    "portionUnit": "fl oz",
-   "portionPrice": 3.0,
+   "portionPrice": null,
    "lines": [
     {
      "kind": "ing",

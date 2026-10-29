@@ -71,4 +71,13 @@ If you host it as an installable app, also bump `VERSION` in `sw.js` so devices 
 
 ## Selling or sharing a copy
 
-The files to distribute are `index.html`, `manifest.webmanifest`, `sw.js`, `icon.svg`, `icon-192.png`, `icon-512.png` and this README. Zip them and upload the zip. The app ships empty; each buyer starts with a blank workbook and sets their own business name under **File & settings**. Never include your own backup `.json` in a copy you sell or share, because it holds your supplier prices and recipes.
+What a buyer gets:
+
+- `Food Cost Setup <version>.exe`: built **without** `--seed`, so it starts with an empty workbook. Pass `--publisher "Your name"` to put your name in the program's file details and the installer's copyright line.
+- `LICENSE.txt`: the end-user licence. Fill in `[OWNER NAME]` first.
+- `sample/sample-workbook.json`: a fictional restaurant ("Maple Street Kitchen") buyers can load with **Load a backup** to try the app.
+- A quick-start guide.
+
+For the browser version, distribute `index.html`, `manifest.webmanifest`, `sw.js`, `icon.svg`, `icon-192.png` and `icon-512.png`.
+
+Never include your own backup `.json` in a copy you sell or share, because it holds your supplier prices and recipes. `legal/Assignment-Template.txt` is for transferring the whole program to a new owner.
