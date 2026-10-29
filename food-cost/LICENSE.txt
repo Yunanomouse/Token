@@ -11,9 +11,10 @@ not sold. By installing or using the Software you agree to these terms.
    including its code, design, installer and documentation. Nothing in this
    licence transfers ownership to you.
 
-2. Licence types. Your receipt states which licence you bought. In each case
-   you may install the Software on as many computers as the licensed business
-   or businesses own.
+2. Editions and licence types. Your receipt states the edition you bought
+   (Essentials, Professional or Kitchen Manager) and the licence type below.
+   You may use only the features of the edition you paid for, and you may
+   install it on as many computers as the licensed business or businesses own.
 
    a. Single Business Licence: one business (one restaurant, café, food truck,
       catering company or private chef) at one location.
@@ -25,8 +26,8 @@ not sold. By installing or using the Software you agree to these terms.
       by the same person or company, including franchise groups and
       culinary schools (for teaching and student use within that school).
 
-   If you need more locations than your licence covers, you may upgrade by
-   paying the difference in the then-current prices.
+   You may upgrade to a higher edition, or to a licence type that covers more
+   locations, by paying the difference in the then-current prices.
 
 3. Restrictions. You may not resell, rent, share, publish or give away the
    Software or its installer, use it for businesses your licence does not

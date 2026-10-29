@@ -1,8 +1,9 @@
-// Builds the Windows installer: dist/Restaurant Setup <version>.exe
-// Usage: node build-win.js [--seed path/to/backup.json] [--electron-dist path/to/unzipped/electron-win32-x64] [--out dir] [--publisher "Name"]
+// Builds the Windows installer for one edition: dist/Restaurant <Edition> Setup <version>.exe
+// Usage: node build-win.js [--seed path/to/backup.json] [--electron-dist path/to/unzipped/electron-win32-x64] [--out dir] [--publisher "Name"] [--edition essentials|professional|manager]
 // --publisher sets the company name and copyright in the file details (default: author in package.json).
+// --edition picks the feature set (default manager). Every edition installs as "Restaurant" and shares the same workbook, so upgrading keeps the data.
 // Needs: npm packages electron-builder and resedit, and NSIS (makensis) on the PATH.
-// Run `python3 ../build.py` first so ../index.html is current.
+// Needs python3: the edition's page is built from ../src by ../build.py.
 const fs = require("fs"), path = require("path");
 const builder = require("electron-builder");
 const { execFileSync } = require("child_process");
@@ -13,13 +14,17 @@ const here = __dirname, stage = path.join(here, "stage"), out = path.resolve(opt
 
 fs.rmSync(stage, { recursive: true, force: true });
 fs.mkdirSync(path.join(stage, "app"), { recursive: true });
-for (const f of ["main.js", "preload.js", "package.json", "icon.png"]) fs.copyFileSync(path.join(here, f), path.join(stage, f));
-fs.copyFileSync(path.join(here, "..", "index.html"), path.join(stage, "app", "index.html"));
+for (const f of ["main.js", "preload.js", "icon.png"]) fs.copyFileSync(path.join(here, f), path.join(stage, f));
+const EDITIONS = { essentials: "Essentials", professional: "Professional", manager: "Kitchen Manager" }, edition = opt("--edition") || "manager";
+if (!EDITIONS[edition]) { console.error("unknown edition", edition); process.exit(1); }
+const display = "Restaurant " + EDITIONS[edition];
+execFileSync("python3", [path.join(here, "..", "build.py"), "--edition", edition, "--out", path.join(stage, "app", "index.html")], { stdio: "inherit" });
 for (const f of ["icon.svg"]) fs.copyFileSync(path.join(here, "..", f), path.join(stage, "app", f));
 const seed = opt("--seed");
 if (seed) { JSON.parse(fs.readFileSync(seed, "utf8")); fs.copyFileSync(seed, path.join(stage, "seed.json")); console.log("bundling starting workbook", seed); }
 
 const pkg = require("./package.json"), publisher = opt("--publisher") || pkg.author;
+fs.writeFileSync(path.join(stage, "package.json"), JSON.stringify(Object.assign({}, pkg, { displayName: display, edition: edition }), null, 2));
 builder.build({
   targets: builder.Platform.WINDOWS.createTarget(["dir"], builder.Arch.x64),
   projectDir: stage,
@@ -40,7 +45,7 @@ builder.build({
       const ico = ResEdit.Data.IconFile.from(fs.readFileSync(path.join(here, "icon.ico")));
       ResEdit.Resource.IconGroupEntry.replaceIconsForResource(res.entries, 1, 1033, ico.icons.map((i) => i.data));
       const vi = ResEdit.Resource.VersionInfo.fromEntries(res.entries)[0];
-      vi.setStringValues({ lang: 1033, codepage: 1200 }, { ProductName: "Restaurant", FileDescription: "Restaurant", CompanyName: publisher, LegalCopyright: "© 2026 " + publisher, OriginalFilename: "Restaurant.exe", InternalName: "Restaurant" });
+      vi.setStringValues({ lang: 1033, codepage: 1200 }, { ProductName: display, FileDescription: display, CompanyName: publisher, LegalCopyright: "© 2026 " + publisher, OriginalFilename: "Restaurant.exe", InternalName: "Restaurant" });
       const [a, b, c] = pkg.version.split(".").map(Number);
       vi.setFileVersion(a, b, c, 0, 1033); vi.setProductVersion(a, b, c, 0, 1033);
       vi.outputToResourceEntries(res.entries);
@@ -51,7 +56,7 @@ builder.build({
   }
 }).then(() => {
   // installer made with NSIS directly (per-user install, desktop and Start menu shortcuts)
-  const setup = path.join(out, "Restaurant Setup " + pkg.version + ".exe");
-  execFileSync("makensis", ["-V2", "-DAPPDIR=" + path.join(out, "win-unpacked"), "-DOUTFILE=" + setup, "-DVERSION=" + pkg.version, "-DPUBLISHER=" + publisher, path.join(here, "installer.nsi")], { stdio: "inherit", cwd: here });
+  const setup = path.join(out, display + " Setup " + pkg.version + ".exe");
+  execFileSync("makensis", ["-V2", "-DAPPDIR=" + path.join(out, "win-unpacked"), "-DOUTFILE=" + setup, "-DVERSION=" + pkg.version, "-DPUBLISHER=" + publisher, "-DDISPLAYNAME=" + display, path.join(here, "installer.nsi")], { stdio: "inherit", cwd: here });
   console.log("built:\n" + setup);
 }).catch((e) => { console.error(e); process.exit(1); });
