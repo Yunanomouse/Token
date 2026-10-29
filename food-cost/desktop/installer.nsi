@@ -1,13 +1,13 @@
-; Food Cost installer (per-user, no admin rights needed).
+; Restaurant installer (per-user, no admin rights needed).
 ; Built by build-win.js: makensis -DAPPDIR=<win-unpacked> -DOUTFILE=<setup.exe> -DVERSION=<x.y.z> -DPUBLISHER=<name> installer.nsi
 Unicode true
 !include "MUI2.nsh"
 
-!define APPNAME "Food Cost"
+!define APPNAME "Restaurant"
 !ifndef PUBLISHER
-  !define PUBLISHER "Food Cost"
+  !define PUBLISHER "Restaurant"
 !endif
-!define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoodCost"
+!define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\RestaurantCosting"
 
 Name "${APPNAME}"
 OutFile "${OUTFILE}"
@@ -26,7 +26,7 @@ VIAddVersionKey "LegalCopyright" "${PUBLISHER}"
 !define MUI_ICON "icon.ico"
 !define MUI_UNICON "icon.ico"
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TEXT "This installs ${APPNAME} on this computer.$\r$\n$\r$\nIt runs without the internet. Your workbook is saved in Documents\Food Cost, with a dated copy kept every day in its backups folder.$\r$\n$\r$\nUninstalling the program never deletes your workbook."
+!define MUI_WELCOMEPAGE_TEXT "This installs ${APPNAME} on this computer.$\r$\n$\r$\nIt runs without the internet. Your workbook is saved in Documents\Restaurant, with a dated copy kept every day in its backups folder.$\r$\n$\r$\nUninstalling the program never deletes your workbook."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APPNAME}.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Open ${APPNAME} now"
 
@@ -57,7 +57,7 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
-  ; program files only: the workbook in Documents\Food Cost stays
+  ; program files only: the workbook in Documents\Restaurant stays
   Delete "$DESKTOP\${APPNAME}.lnk"
   RMDir /r "$SMPROGRAMS\${APPNAME}"
   RMDir /r "$INSTDIR"

@@ -1,10 +1,10 @@
 {
   "name": "food-cost",
-  "productName": "Food Cost",
+  "productName": "Restaurant",
   "version": "1.2.0",
   "description": "Menu and recipe costing for restaurants. Runs offline on this computer.",
   "main": "main.js",
-  "author": "Food Cost",
+  "author": "Restaurant",
   "license": "UNLICENSED",
   "private": true
 }

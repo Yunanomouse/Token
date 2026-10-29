@@ -619,9 +619,9 @@
   // ---------- branding ----------
   function applyBrand() {
     var n = bizName();
-    $("t-name").textContent = n ? n + " Food Cost" : "Food Cost";
-    $("t-logo").textContent = (n || "F").charAt(0).toUpperCase();
-    document.title = n ? n + " Food Cost" : "Food Cost";
+    $("t-name").textContent = n ? n + " · Restaurant" : "Restaurant";
+    $("t-logo").textContent = (n || "R").charAt(0).toUpperCase();
+    document.title = n ? n + " · Restaurant" : "Restaurant";
   }
 
   // ---------- file: backup, restore, export, settings ----------
@@ -654,7 +654,7 @@
     var r = new FileReader();
     r.onload = function () {
       var data; try { data = JSON.parse(r.result); } catch (e) { toast("That file isn't a backup."); return; }
-      var n = LocalDB.count(data); if (n < 0) { toast("That file isn't a Food Cost backup."); return; }
+      var n = LocalDB.count(data); if (n < 0) { toast("That file isn't a Restaurant backup."); return; }
       if (!confirm("Replace everything in this workbook with the backup (" + n.ingredients + " ingredients, " + n.items + " menu items and prep recipes)? Export a backup first if you want to keep what's here.")) return;
       clearTimeout(timers.item); S.sel = null; S.draft = null; S.dirty = false;
       try { LocalDB.load(data); toast("Backup loaded"); $("file-dlg").close(); } catch (e) { notice("Could not load the backup: " + (e && e.message || e), true); }

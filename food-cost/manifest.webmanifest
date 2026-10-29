@@ -1,6 +1,6 @@
 {
-  "name": "Food Cost",
-  "short_name": "Food Cost",
+  "name": "Restaurant",
+  "short_name": "Restaurant",
   "description": "Menu and recipe costing for restaurants. Works offline; data stays on your device.",
   "start_url": "./index.html",
   "scope": "./",

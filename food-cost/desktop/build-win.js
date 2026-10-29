@@ -1,4 +1,4 @@
-// Builds the Windows installer: dist/Food Cost Setup <version>.exe
+// Builds the Windows installer: dist/Restaurant Setup <version>.exe
 // Usage: node build-win.js [--seed path/to/backup.json] [--electron-dist path/to/unzipped/electron-win32-x64] [--out dir] [--publisher "Name"]
 // --publisher sets the company name and copyright in the file details (default: author in package.json).
 // Needs: npm packages electron-builder and resedit, and NSIS (makensis) on the PATH.
@@ -24,8 +24,8 @@ builder.build({
   targets: builder.Platform.WINDOWS.createTarget(["dir"], builder.Arch.x64),
   projectDir: stage,
   config: {
-    appId: "app.foodcost.desktop",
-    productName: "Food Cost",
+    appId: "app.restaurant.costing",
+    productName: "Restaurant",
     directories: { output: out, buildResources: here },
     electronVersion: "38.8.6",
     electronDist: opt("--electron-dist") || undefined,
@@ -34,13 +34,13 @@ builder.build({
     win: { icon: path.join(here, "icon.ico"), signAndEditExecutable: false },
     // set the program icon and file details without Wine
     afterPack: async (ctx) => {
-      const ResEdit = require("resedit"), exe = path.join(ctx.appOutDir, "Food Cost.exe");
+      const ResEdit = require("resedit"), exe = path.join(ctx.appOutDir, "Restaurant.exe");
       const file = ResEdit.NtExecutable.from(fs.readFileSync(exe), { ignoreCert: true });
       const res = ResEdit.NtExecutableResource.from(file);
       const ico = ResEdit.Data.IconFile.from(fs.readFileSync(path.join(here, "icon.ico")));
       ResEdit.Resource.IconGroupEntry.replaceIconsForResource(res.entries, 1, 1033, ico.icons.map((i) => i.data));
       const vi = ResEdit.Resource.VersionInfo.fromEntries(res.entries)[0];
-      vi.setStringValues({ lang: 1033, codepage: 1200 }, { ProductName: "Food Cost", FileDescription: "Food Cost", CompanyName: publisher, LegalCopyright: "© 2026 " + publisher, OriginalFilename: "Food Cost.exe", InternalName: "Food Cost" });
+      vi.setStringValues({ lang: 1033, codepage: 1200 }, { ProductName: "Restaurant", FileDescription: "Restaurant", CompanyName: publisher, LegalCopyright: "© 2026 " + publisher, OriginalFilename: "Restaurant.exe", InternalName: "Restaurant" });
       const [a, b, c] = pkg.version.split(".").map(Number);
       vi.setFileVersion(a, b, c, 0, 1033); vi.setProductVersion(a, b, c, 0, 1033);
       vi.outputToResourceEntries(res.entries);
@@ -51,7 +51,7 @@ builder.build({
   }
 }).then(() => {
   // installer made with NSIS directly (per-user install, desktop and Start menu shortcuts)
-  const setup = path.join(out, "Food Cost Setup " + pkg.version + ".exe");
+  const setup = path.join(out, "Restaurant Setup " + pkg.version + ".exe");
   execFileSync("makensis", ["-V2", "-DAPPDIR=" + path.join(out, "win-unpacked"), "-DOUTFILE=" + setup, "-DVERSION=" + pkg.version, "-DPUBLISHER=" + publisher, path.join(here, "installer.nsi")], { stdio: "inherit", cwd: here });
   console.log("built:\n" + setup);
 }).catch((e) => { console.error(e); process.exit(1); });

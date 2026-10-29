@@ -1,9 +1,9 @@
-// Food Cost desktop app: a window around ../index.html with the workbook kept in a file on this computer.
+// Restaurant desktop app: a window around ../index.html with the workbook kept in a file on this computer.
 const { app, BrowserWindow, ipcMain, Menu, shell, session, dialog } = require("electron");
 const fs = require("fs");
 const path = require("path");
 
-const DATA_DIR = path.join(app.getPath("documents"), "Food Cost");
+const DATA_DIR = path.join(app.getPath("documents"), "Restaurant");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const DATA_FILE = path.join(DATA_DIR, "workbook.json");
 const SEED_FILE = path.join(__dirname, "seed.json");
@@ -37,17 +37,17 @@ function dailyBackup(text) {
 }
 
 ipcMain.on("fc-load", (e) => {
-  try { e.returnValue = loadWorkbook(); } catch (err) { e.returnValue = ""; dialog.showErrorBox("Food Cost", "Could not read the workbook file:\n" + err.message); }
+  try { e.returnValue = loadWorkbook(); } catch (err) { e.returnValue = ""; dialog.showErrorBox("Restaurant", "Could not read the workbook file:\n" + err.message); }
 });
 ipcMain.on("fc-save", (e, text) => {
   try { ensureDirs(); writeAtomic(DATA_FILE, text); dailyBackup(text); e.returnValue = true; }
-  catch (err) { e.returnValue = false; dialog.showErrorBox("Food Cost", "Could not save the workbook file:\n" + err.message); }
+  catch (err) { e.returnValue = false; dialog.showErrorBox("Restaurant", "Could not save the workbook file:\n" + err.message); }
 });
 ipcMain.on("fc-datadir", (e) => { e.returnValue = DATA_DIR; });
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1400, height: 900, minWidth: 900, minHeight: 600, title: "Food Cost", backgroundColor: "#f3f3f3",
+    width: 1400, height: 900, minWidth: 900, minHeight: 600, title: "Restaurant", backgroundColor: "#f3f3f3",
     icon: path.join(__dirname, "icon.png"),
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false }
   });
@@ -66,7 +66,7 @@ const menu = Menu.buildFromTemplate([
   ] },
   { label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] },
   { label: "View", submenu: [{ role: "reload" }, { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" }] },
-  { label: "Help", submenu: [{ label: "About Food Cost", click: () => dialog.showMessageBox({ type: "info", title: "Food Cost", message: "Food Cost " + app.getVersion(), detail: "Runs entirely on this computer. Your workbook is saved in:\n" + DATA_FILE + "\n\nDaily copies are kept in the backups folder next to it." }) }] }
+  { label: "Help", submenu: [{ label: "About Restaurant", click: () => dialog.showMessageBox({ type: "info", title: "Restaurant", message: "Restaurant " + app.getVersion(), detail: "Runs entirely on this computer. Your workbook is saved in:\n" + DATA_FILE + "\n\nDaily copies are kept in the backups folder next to it." }) }] }
 ]);
 
 if (!app.requestSingleInstanceLock()) app.quit();

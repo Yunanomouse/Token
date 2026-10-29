@@ -1,6 +1,6 @@
 SOFTWARE ASSIGNMENT AGREEMENT (template)
 
-Use this if you ever sell the whole Food Cost program, not just copies of it.
+Use this if you ever sell the whole Restaurant program, not just copies of it.
 Fill in the brackets, and have both parties sign and date it.
 
 Date: [DATE]
@@ -10,7 +10,7 @@ Assignee: [BUYER NAME OR COMPANY], of [ADDRESS] ("Assignee")
 
 1. Assignment. For the payment of $[AMOUNT] CAD, received in full, the Assignor
    transfers to the Assignee all of the Assignor's right, title and interest,
-   including copyright, in the software known as "Food Cost": its source code,
+   including copyright, in the software known as "Restaurant": its source code,
    installers, icons, documentation, sample data, product name, and any store
    listings, customer lists and licence agreements with existing customers
    ("the Software").

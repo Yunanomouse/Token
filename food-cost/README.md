@@ -1,4 +1,4 @@
-# Food Cost
+# Restaurant
 
 Menu and recipe costing software for restaurants. It is a single web page that runs entirely in your browser: no account, no server, no internet connection needed after it's on your device. Your data never leaves the computer or phone you use it on.
 
@@ -25,7 +25,7 @@ Every number recalculates the moment you change a price or an amount. Recipe car
 
 `desktop/` wraps the same page in a Windows program (Electron) that never touches the internet:
 
-- The workbook is a real file, `Documents\Food Cost\workbook.json`, written on every change; a dated copy goes to `Documents\Food Cost\backups` once a day (60 kept).
+- The workbook is a real file, `Documents\Restaurant\workbook.json`, written on every change; a dated copy goes to `Documents\Restaurant\backups` once a day (60 kept).
 - All network requests are blocked; only the app's own files load.
 - The installer is per-user (no admin rights), adds desktop and Start menu shortcuts, and uninstalling leaves the workbook alone.
 
@@ -36,7 +36,7 @@ python3 build.py                       # refresh index.html
 cd desktop
 node make-icons.js                     # only if icon.svg changed (needs Playwright)
 node build-win.js --seed my-backup.json  # optional: starting workbook for first run
-# -> dist/Food Cost Setup <version>.exe
+# -> dist/Restaurant Setup <version>.exe
 ```
 
 ## Backups
@@ -73,8 +73,8 @@ If you host it as an installable app, also bump `VERSION` in `sw.js` so devices 
 
 What a buyer gets:
 
-- `Food Cost Setup <version>.exe`: built **without** `--seed`, so it starts with an empty workbook. Pass `--publisher "Your name"` to put your name in the program's file details and the installer's copyright line.
-- `LICENSE.txt`: the end-user licence. Fill in `[OWNER NAME]` first.
+- `Restaurant Setup <version>.exe`: built **without** `--seed`, so it starts with an empty workbook. Pass `--publisher "Your name"` to put your name in the program's file details and the installer's copyright line.
+- `LICENSE.txt`: the end-user licence.
 - `sample/sample-workbook.json`: a fictional restaurant ("Maple Street Kitchen") buyers can load with **Load a backup** to try the app.
 - A quick-start guide.
 
