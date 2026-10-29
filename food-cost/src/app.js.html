@@ -757,7 +757,7 @@
       else if (!m[S.sel]) { if (!timers.item) { S.sel = null; S.draft = null; } }
       render();
     }, onErr);
-    db.doc("settings/main").onSnapshot(function (d) { S.settings = Object.assign({ target: 32 }, d.exists ? d.data() : {}); applyBrand(); renderSum(); if (S.view === "menu" || S.view === "prep") renderMenu(); }, onErr);
+    db.doc("settings/main").onSnapshot(function (d) { S.settings = Object.assign({ target: 32 }, d.exists ? d.data() : {}); applyBrand(); renderSum(); if (S.view === "menu" || S.view === "prep") renderMenu(); else if (toolOf(S.view)) render(); }, onErr);
   })();
   initFile();
   // installable app when served from a web address (works offline after the first visit)
