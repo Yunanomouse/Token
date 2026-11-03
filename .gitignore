@@ -16,3 +16,7 @@ live_state.json
 # Standalone app builds (packaging/build.py)
 /build/
 /dist/
+
+# Local notes and reports
+research_notes/
+reports/
