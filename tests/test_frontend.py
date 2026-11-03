@@ -854,7 +854,9 @@ class TestDesktopPage(_DesktopCase):
 
     def test_replay_updates_then_stops_then_resumes(self):
         page = self.load()
-        self.fill_form(page, speed="25")
+        # 5 bars a second: the 80-bar file takes 16 s, so Stop lands mid-replay even on a slow
+        # runner (at 25 a second the replay could finish before the page's checks below did).
+        self.fill_form(page, speed="5")
         page.click("#btnStart")
         expect(page.locator("#status")).to_have_text("RUNNING")
         expect(page.locator("#btnStart")).to_be_disabled()
