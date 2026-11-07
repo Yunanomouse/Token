@@ -1,38 +1,419 @@
-SOFTWARE ASSIGNMENT AGREEMENT (template)
+TEMPLATE - HAVE THIS AGREEMENT REVIEWED BY ALBERTA COUNSEL BEFORE USE - NOT
+LEGAL ADVICE
 
-Use this if you ever sell the whole Restaurant program, not just copies of it.
-Fill in the brackets, and have both parties sign and date it.
+Use this template only for a sale of the whole "Restaurant" program and its
+intellectual property, not for the sale of individual licences. Complete
+every bracketed blank, complete Schedule A, and have each party obtain
+independent legal advice before signing.
 
-Date: [DATE]
+==============================================================================
 
-Assignor: Matthew Neil Louis Marinier, of [ADDRESS], Calgary, Alberta ("Assignor")
-Assignee: [BUYER NAME OR COMPANY], of [ADDRESS] ("Assignee")
+SOFTWARE AND COPYRIGHT ASSIGNMENT AGREEMENT
 
-1. Assignment. For the payment of $[AMOUNT] CAD, received in full, the Assignor
-   transfers to the Assignee all of the Assignor's right, title and interest,
-   including copyright, in the software known as "Restaurant": its source code,
-   installers, icons, documentation, sample data, product name, and any store
-   listings, customer lists and licence agreements with existing customers
-   ("the Software").
+THIS AGREEMENT is made as of [DATE] (the "Effective Date").
 
-2. Delivery. The Assignor will deliver a complete copy of the source code
-   repository and build instructions within [7] days of signing.
+BETWEEN:
 
-3. Existing customers. Licences already sold remain valid. From the date of this
-   agreement the Assignee takes over the Owner's role under those licences.
+    MATTHEW NEIL LOUIS MARINIER, an individual residing at [ADDRESS],
+    Calgary, Alberta, operating as Brigade Kitchen Software
+    (the "Assignor")
 
-4. Moral rights. To the extent permitted by law, the Assignor waives their moral
-   rights in the Software in favour of the Assignee and its successors.
+AND:
 
-5. Assignor's statement. The Assignor states that they wrote the Software, that
-   they have not already transferred or licensed it exclusively to anyone else,
-   and that no former employer or client holds rights in it.
+    [LEGAL NAME OF ASSIGNEE], [an individual residing at / a corporation
+    incorporated under the laws of [JURISDICTION] with its registered office
+    at] [ADDRESS]
+    (the "Assignee")
 
-6. Third-party components. Open-source components (Electron, Chromium) remain
-   under their own licences and are not part of this assignment.
+RECITALS
 
-7. Governing law. This agreement is governed by the laws of the Province of
-   Alberta, Canada.
+A. The Assignor is the author and owner of the computer program known as
+   "Restaurant", menu and recipe costing software, together with its
+   related materials.
 
-Assignor signature: ______________________   Date: __________
-Assignee signature: ______________________   Date: __________
+B. The Assignor wishes to sell and assign, and the Assignee wishes to
+   purchase and accept, all of the Assignor's right, title and interest in
+   and to the Assigned Assets, on the terms of this Agreement.
+
+NOW THEREFORE, in consideration of the mutual covenants in this Agreement
+and the payment of the Purchase Price, the receipt and sufficiency of which
+the Assignor acknowledges, the parties agree as follows:
+
+1. DEFINITIONS AND INTERPRETATION
+
+1.1 In this Agreement:
+
+    (a) "Assigned Assets" means all of the following, in every version and
+        form, whether existing on or created before the Effective Date, but
+        excluding the Excluded Components:
+
+        (i)    the Software, including its source code and object code;
+
+        (ii)   all installers, build scripts, build instructions and
+               configuration files for the Software;
+
+        (iii)  all documentation, user guides, help text, icons, graphics,
+               user interface designs and sample data for the Software;
+
+        (iv)   the product name "Restaurant" and any other name or mark used
+               exclusively in connection with the Software, and the goodwill
+               associated with them;
+
+        (v)    the domain names listed in Schedule B;
+
+        (vi)   the online store listings, product pages and accounts listed
+               in Schedule B, to the extent transferable under the terms of
+               the relevant store or platform;
+
+        (vii)  the Customer Licences; and
+
+        (viii) the Customer List, subject to section 6;
+
+    (b) "Agreement" means this Software and Copyright Assignment Agreement,
+        including its Schedules;
+
+    (c) "Closing" means the completion of the assignment under this
+        Agreement on the Effective Date, or on such other date as the
+        parties agree in writing;
+
+    (d) "Copyright Act" means the Copyright Act, RSC 1985, c C-42;
+
+    (e) "Customer Licences" means all end-user licence agreements granted by
+        the Assignor for the Software before the Closing;
+
+    (f) "Customer List" means the Assignor's records of purchasers of
+        Customer Licences;
+
+    (g) "Disclosed Matters" means the matters set out in Schedule A;
+
+    (h) "Excluded Components" means Electron, Chromium and all other
+        third-party or open-source software, libraries, fonts and other
+        materials incorporated in or distributed with the Software that are
+        owned by third parties and licensed under their own terms;
+
+    (i) "Intellectual Property Rights" means all copyright (including
+        copyright in the Software as a "computer program" and "literary
+        work" within the meaning of section 2 of the Copyright Act), rights
+        in trade names and unregistered trademarks, goodwill, rights in
+        confidential information and know-how, and all other intellectual
+        property rights, whether registered or unregistered, anywhere in
+        the world, together with all applications and registrations for
+        them;
+
+    (j) "Purchase Price" has the meaning given in section 3.1; and
+
+    (k) "Software" means the computer program known as "Restaurant",
+        including its Essentials, Professional and Kitchen Manager
+        editions, its Windows (Electron) version and its browser version,
+        and all prior versions, modifications and derivative works of it
+        made by or for the Assignor.
+
+1.2 Headings are for convenience only. "Including" means "including without
+    limitation". Words in the singular include the plural and vice versa.
+    All amounts are in Canadian dollars.
+
+1.3 The following Schedules form part of this Agreement:
+
+    Schedule A - Disclosed Matters
+    Schedule B - Domain Names, Store Listings and Accounts
+
+2. ASSIGNMENT
+
+2.1 Effective at the Closing, the Assignor assigns, transfers and sets over
+    to the Assignee, absolutely and without reservation, all of the
+    Assignor's right, title and interest in and to the Assigned Assets,
+    including all Intellectual Property Rights in them, the copyright in
+    the Software and its documentation for the full term of that copyright,
+    and all rights of action and remedies for any past, present or future
+    infringement of those rights.
+
+2.2 This Agreement is an assignment of copyright under subsection 13(4) of
+    the Copyright Act. The Assignor's signature on this Agreement is
+    intended to satisfy the requirement in that subsection that an
+    assignment be in writing signed by the owner of the right.
+
+2.3 The Assignee accepts the assignment of the Assigned Assets.
+
+3. CONSIDERATION AND PAYMENT
+
+3.1 The purchase price for the Assigned Assets is $[AMOUNT] (the "Purchase
+    Price"), exclusive of GST/HST, payable as follows:
+
+    (a) $[AMOUNT] on signing of this Agreement; and
+
+    (b) $[AMOUNT] on [DATE / DELIVERY UNDER SECTION 4],
+
+    by [BANK TRANSFER / CERTIFIED CHEQUE / OTHER METHOD] to the account or
+    address designated by the Assignor in writing.
+
+3.2 [If any part of the Purchase Price is payable after Closing: Title to
+    the Assigned Assets passes at Closing. If the Assignee fails to pay any
+    amount when due, the Assignor may, in addition to its other remedies,
+    recover the unpaid amount with interest at [RATE]% per year.]
+
+4. DELIVERY
+
+4.1 Within [7] days after the Closing, the Assignor will deliver to the
+    Assignee:
+
+    (a) a complete copy of the source code repository for the Software,
+        including its version history;
+
+    (b) all build instructions, scripts and configuration needed to build
+        the installers and the browser version from the source code;
+
+    (c) copies of the documentation and other Assigned Assets in the
+        Assignor's possession; and
+
+    (d) such account transfers, authorisation codes and access credentials
+        as are needed to transfer the domain names and store listings in
+        Schedule B, to the extent transferable.
+
+4.2 After delivery and confirmation of receipt by the Assignee, the Assignor
+    will not retain or use any copy of the source code, except one archival
+    copy kept solely for legal, tax and evidentiary purposes, which the
+    Assignor will keep confidential and will not use for any other purpose.
+
+5. EXISTING CUSTOMER LICENCES
+
+5.1 The Customer Licences remain valid in accordance with their terms. With
+    effect from the Closing, the Assignee assumes and will perform all of
+    the obligations of the licensor under the Customer Licences arising
+    after the Closing, including any update, support and refund obligations
+    described in them.
+
+5.2 The Assignor remains responsible for any refund or other obligation
+    under a Customer Licence that arose before the Closing, unless the
+    parties agree otherwise in writing.
+
+6. CUSTOMER LIST AND PERSONAL INFORMATION
+
+6.1 The Assignor will transfer the Customer List only to the extent
+    permitted by the Personal Information Protection Act, SA 2003,
+    c P-6.5, the Personal Information Protection and Electronic Documents
+    Act, SC 2000, c 5, and any other applicable privacy law, and by the
+    terms of the store through which sales were made.
+
+6.2 The Assignee will use and protect any personal information in the
+    Customer List only for the purposes for which it was collected, in
+    compliance with applicable privacy law, and will comply with Canada's
+    Anti-Spam Legislation, SC 2010, c 23, in any commercial electronic
+    message it sends to customers.
+
+6.3 Nothing in this Agreement obliges the Assignor to transfer personal
+    information in breach of any law or store terms.
+
+7. WAIVER OF MORAL RIGHTS
+
+7.1 The Assignor acknowledges that moral rights in the Software are not
+    assignable but may be waived under subsection 14.1(2) of the Copyright
+    Act. The Assignor irrevocably waives, in favour of the Assignee and its
+    successors, assigns and licensees, all of the Assignor's moral rights
+    in the Assigned Assets, including the right to the integrity of the
+    work and the right to be associated with it by name or under a
+    pseudonym or to remain anonymous.
+
+8. REPRESENTATIONS AND WARRANTIES OF THE ASSIGNOR
+
+8.1 Except as disclosed in Schedule A, the Assignor represents and warrants
+    to the Assignee that, as of the Effective Date:
+
+    (a) the Assignor is the sole author and sole owner of the copyright in
+        the Software (other than the Excluded Components), and has the
+        right to enter into this Agreement;
+
+    (b) the Assignor has not assigned, transferred, mortgaged or granted an
+        exclusive licence of any interest in the Assigned Assets to any
+        other person;
+
+    (c) the Software was not created in the course of employment with, or
+        under a contract that vests ownership in, any other person, and no
+        employer, former employer or client of the Assignor holds any right,
+        title or interest in the Assigned Assets;
+
+    (d) the Assignor has not received any notice of, and has no actual
+        knowledge of, any claim that the Software infringes the
+        intellectual property rights of any other person, or of any claim
+        by any other person to ownership of the Assigned Assets; and
+
+    (e) the Assigned Assets are free of liens, charges and encumbrances,
+        other than the Customer Licences and the licences of the Excluded
+        Components.
+
+8.2 The Assignor discloses that parts of the Software and its related
+    materials were developed with the assistance of AI-assisted software
+    development tools, used under the Assignor's direction, with the
+    Assignor directing, selecting, reviewing, correcting and arranging the
+    resulting work. The Assignee acknowledges this disclosure and that the
+    effect of such assistance on authorship and copyright has not been
+    settled by Canadian courts. The representations in section 8.1 are
+    given subject to this disclosure.
+
+8.3 Except as expressly set out in this section 8, the Assigned Assets are
+    assigned "as is", and the Assignor gives no other representation,
+    warranty or condition, express or implied, including as to
+    merchantable quality, fitness for a particular purpose or future
+    revenue.
+
+8.4 The representations and warranties in this section 8 survive the
+    Closing for a period of [24] months.
+
+9. EXCLUDED COMPONENTS
+
+9.1 The Excluded Components are not assigned by this Agreement. They remain
+    the property of their respective owners and are licensed under their
+    own terms, which the Assignee must comply with. The Assignor makes no
+    representation or warranty concerning the Excluded Components.
+
+10. FURTHER ASSURANCES AND LIMITED POWER OF ATTORNEY
+
+10.1 The Assignor will, at the Assignee's reasonable request and expense,
+     sign such further documents and do such further acts as are
+     reasonably necessary to give effect to this Agreement and to record
+     the Assignee's ownership of the Assigned Assets.
+
+10.2 If the Assignor fails, within [14] days after a written request, to
+     sign a document needed to register or record the assignment of
+     copyright in the Assigned Assets with the Canadian Intellectual
+     Property Office, the Assignor appoints the Assignee as the Assignor's
+     attorney, solely for the limited purpose of signing and filing that
+     document with the Canadian Intellectual Property Office. This power of
+     attorney is coupled with an interest and is irrevocable, but confers
+     no other authority.
+
+11. TAXES
+
+11.1 The Purchase Price does not include goods and services tax or
+     harmonized sales tax ("GST/HST") under the Excise Tax Act, RSC 1985,
+     c E-15. If the Assignor is registered for GST/HST under section 240 of
+     the Excise Tax Act at the time of the supply, the Assignee will pay
+     the applicable GST/HST in addition to the Purchase Price. The Assignor
+     will provide its GST/HST registration number, if any, on its invoice.
+     [If applicable, the parties may consider any available election under
+     the Excise Tax Act with the advice of counsel.]
+
+11.2 Each party is responsible for its own income taxes arising from this
+     Agreement.
+
+12. INDEMNITY AND LIMITATION
+
+12.1 The Assignor will indemnify the Assignee against losses actually
+     incurred by the Assignee as a direct result of a breach of the
+     Assignor's representations and warranties in section 8.1.
+
+12.2 The Assignor's total liability under or in connection with this
+     Agreement, including under section 12.1, whether in contract, tort
+     (including negligence) or otherwise, will not exceed the Purchase
+     Price actually received by the Assignor. The Assignor is not liable
+     for indirect, consequential or special damages or for lost profits.
+     This section does not limit liability for fraud.
+
+12.3 The Assignee will indemnify the Assignor against claims arising from
+     the Assignee's use or exploitation of the Assigned Assets, and the
+     Assignee's performance or non-performance of the Customer Licences,
+     after the Closing.
+
+13. CONFIDENTIALITY
+
+13.1 Each party will keep the terms of this Agreement confidential, except
+     as required by law, for the purpose of registration with the Canadian
+     Intellectual Property Office, or for disclosure to its professional
+     advisers.
+
+14. INDEPENDENT LEGAL ADVICE
+
+14.1 Each party acknowledges that it has read and understands this
+     Agreement, that it has been advised to obtain independent legal advice
+     before signing it, and that it has either obtained that advice or
+     freely chosen not to do so. Each party is signing voluntarily.
+
+15. GENERAL
+
+15.1 Entire agreement. This Agreement is the entire agreement between the
+     parties concerning its subject matter and supersedes all prior
+     negotiations, representations and agreements concerning it.
+
+15.2 Amendment and waiver. This Agreement may be amended only in writing
+     signed by both parties. No waiver is effective unless in writing, and
+     no failure or delay in exercising a right is a waiver of it.
+
+15.3 Severability. If any provision of this Agreement is held invalid or
+     unenforceable, the remaining provisions remain in full force and
+     effect.
+
+15.4 Successors and assigns. This Agreement enures to the benefit of and
+     binds the parties and their respective heirs, executors,
+     administrators, successors and permitted assigns. The Assignee may
+     assign this Agreement and the Assigned Assets without the Assignor's
+     consent.
+
+15.5 Notices. Any notice under this Agreement must be in writing and
+     delivered by hand, by courier or by email to the addresses set out
+     above (or to an email address a party designates in writing), and is
+     effective on the business day after it is sent.
+
+15.6 Governing law. This Agreement is governed by the laws of the Province
+     of Alberta and the federal laws of Canada applicable in Alberta. The
+     parties irrevocably attorn to the jurisdiction of the courts of the
+     Province of Alberta sitting in the City of Calgary, without prejudice
+     to the jurisdiction of the Federal Court under the Copyright Act.
+
+15.7 Counterparts and electronic signatures. This Agreement may be signed in
+     counterparts, each of which is an original and all of which together
+     are one agreement. Signatures delivered electronically, including by
+     PDF or by an electronic signature, are effective in accordance with
+     the Electronic Transactions Act, SA 2001, c E-5.5.
+
+15.8 Language. This Agreement is made in the English language.
+
+IN WITNESS WHEREOF the parties have signed this Agreement as of the
+Effective Date.
+
+SIGNED by MATTHEW NEIL LOUIS MARINIER
+in the presence of:
+
+______________________________            ______________________________
+Witness signature                         Matthew Neil Louis Marinier
+                                          (Assignor)
+Name: ________________________
+Address: _____________________            Date: ________________________
+
+
+[LEGAL NAME OF ASSIGNEE]
+
+[If an individual:]
+SIGNED by [NAME OF ASSIGNEE]
+in the presence of:
+
+______________________________            ______________________________
+Witness signature                         [NAME OF ASSIGNEE]
+Name: ________________________
+Address: _____________________            Date: ________________________
+
+[If a corporation:]
+Per: ______________________________
+     Name: [NAME]
+     Title: [TITLE]
+     I have authority to bind the corporation.
+Date: ________________________
+
+==============================================================================
+
+SCHEDULE A - DISCLOSED MATTERS
+
+The representations and warranties in section 8.1 are subject to the
+following matters:
+
+[DISCLOSED MATTERS]
+
+(If there are none, write "None.")
+
+==============================================================================
+
+SCHEDULE B - DOMAIN NAMES, STORE LISTINGS AND ACCOUNTS
+
+Domain names:           [DOMAIN NAMES, OR "NONE"]
+
+Store listings:         [STORE NAME AND PRODUCT LISTING URL]
+
+Other accounts:         [ACCOUNT NAME AND PLATFORM]
