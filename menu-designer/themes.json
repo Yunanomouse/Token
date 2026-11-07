@@ -1,0 +1,241 @@
+{
+  "bistro": {
+    "label": "Bistro",
+    "description": "Cream paper, Playfair Display headings, Lora text, deep green accent.",
+    "scheme": "light",
+    "fonts": [
+      {
+        "family": "Playfair Display",
+        "file": "fonts/playfairdisplay/PlayfairDisplay[wght].ttf",
+        "weight": "400 900",
+        "style": "normal"
+      },
+      {
+        "family": "Playfair Display",
+        "file": "fonts/playfairdisplay/PlayfairDisplay-Italic[wght].ttf",
+        "weight": "400 900",
+        "style": "italic"
+      },
+      {
+        "family": "Lora",
+        "file": "fonts/lora/Lora[wght].ttf",
+        "weight": "400 700",
+        "style": "normal"
+      },
+      {
+        "family": "Lora",
+        "file": "fonts/lora/Lora-Italic[wght].ttf",
+        "weight": "400 700",
+        "style": "italic"
+      }
+    ],
+    "vars": {
+      "--font-display": "'Playfair Display', Georgia, serif",
+      "--font-body": "'Lora', Georgia, serif",
+      "--paper": "#f7f1e3",
+      "--ink": "#26271f",
+      "--muted": "#5d5a4c",
+      "--accent": "#1f4d3a",
+      "--accent-ink": "#f7f1e3",
+      "--rule": "#1f4d3a",
+      "--leader": "#a9a38d",
+      "--badge-bg": "transparent",
+      "--badge-ink": "#1f4d3a",
+      "--badge-border": "#1f4d3a",
+      "--mast-size": "38pt",
+      "--mast-weight": "700",
+      "--mast-case": "none",
+      "--mast-spacing": "0.01em",
+      "--tagline-style": "italic",
+      "--sec-size": "19pt",
+      "--sec-weight": "600",
+      "--sec-style": "italic",
+      "--sec-case": "none",
+      "--sec-spacing": "0",
+      "--name-font": "var(--font-display)",
+      "--name-size": "11.5pt",
+      "--name-weight": "600",
+      "--name-case": "none",
+      "--name-spacing": "0",
+      "--price-font": "var(--font-display)",
+      "--price-weight": "600",
+      "--desc-size": "9.6pt",
+      "--desc-style": "italic",
+      "--base-size": "10pt"
+    },
+    "css": [
+      ".page { box-shadow: inset 0 0 0 0.16in var(--paper), inset 0 0 0 calc(0.16in + 0.75pt) var(--rule), inset 0 0 0 calc(0.16in + 3pt) var(--paper), inset 0 0 0 calc(0.16in + 3.6pt) var(--rule); }",
+      ".mast-ornament { width: 2.4in; height: 9pt; margin: 0 auto 6pt; background: linear-gradient(var(--rule), var(--rule)) center / 100% 0.6pt no-repeat; position: relative; }",
+      ".mast-ornament::after { content: ''; position: absolute; left: 50%; top: 50%; width: 6pt; height: 6pt; background: var(--accent); transform: translate(-50%, -50%) rotate(45deg); box-shadow: 0 0 0 3pt var(--paper); }",
+      ".page-title { font-family: var(--font-body); font-style: italic; letter-spacing: 0.18em; text-transform: lowercase; color: var(--accent); }",
+      ".page-title::before, .page-title::after { content: ''; display: inline-block; width: 0.5in; height: 0.6pt; background: var(--rule); vertical-align: middle; margin: 0 10pt; }",
+      ".sec-title { border-bottom: 0.6pt solid var(--rule); padding-bottom: 2pt; }",
+      ".phone .sec-title { border-bottom-width: 1px; }"
+    ]
+  },
+  "garden": {
+    "label": "Garden",
+    "description": "Off-white paper with a soft sage header band, Alegreya and Alegreya Sans, botanical green and terracotta.",
+    "scheme": "light",
+    "fonts": [
+      {
+        "family": "Alegreya",
+        "file": "fonts/alegreya/Alegreya[wght].ttf",
+        "weight": "400 900",
+        "style": "normal"
+      },
+      {
+        "family": "Alegreya",
+        "file": "fonts/alegreya/Alegreya-Italic[wght].ttf",
+        "weight": "400 900",
+        "style": "italic"
+      },
+      {
+        "family": "Alegreya Sans",
+        "file": "fonts/alegreyasans/AlegreyaSans-Regular.ttf",
+        "weight": "400",
+        "style": "normal"
+      },
+      {
+        "family": "Alegreya Sans",
+        "file": "fonts/alegreyasans/AlegreyaSans-Italic.ttf",
+        "weight": "400",
+        "style": "italic"
+      },
+      {
+        "family": "Alegreya Sans",
+        "file": "fonts/alegreyasans/AlegreyaSans-Medium.ttf",
+        "weight": "500",
+        "style": "normal"
+      },
+      {
+        "family": "Alegreya Sans",
+        "file": "fonts/alegreyasans/AlegreyaSans-Bold.ttf",
+        "weight": "700",
+        "style": "normal"
+      }
+    ],
+    "vars": {
+      "--font-display": "'Alegreya', Georgia, serif",
+      "--font-body": "'Alegreya Sans', 'Segoe UI', Arial, sans-serif",
+      "--paper": "#fbf9f3",
+      "--ink": "#2d332c",
+      "--muted": "#5f675c",
+      "--accent": "#456b4c",
+      "--accent-ink": "#fbf9f3",
+      "--accent-2": "#b65e3c",
+      "--band": "#e9efe3",
+      "--rule": "#9fb39b",
+      "--leader": "#b8c2b2",
+      "--badge-bg": "#e9efe3",
+      "--badge-ink": "#456b4c",
+      "--badge-border": "transparent",
+      "--mast-size": "36pt",
+      "--mast-weight": "500",
+      "--mast-case": "none",
+      "--mast-spacing": "0",
+      "--tagline-style": "normal",
+      "--sec-size": "12pt",
+      "--sec-weight": "700",
+      "--sec-style": "normal",
+      "--sec-case": "uppercase",
+      "--sec-spacing": "0.16em",
+      "--name-font": "var(--font-display)",
+      "--name-size": "12pt",
+      "--name-weight": "600",
+      "--name-case": "none",
+      "--name-spacing": "0",
+      "--price-font": "var(--font-body)",
+      "--price-weight": "500",
+      "--desc-size": "10pt",
+      "--desc-style": "normal",
+      "--base-size": "10.5pt"
+    },
+    "css": [
+      ".page .mast { margin: -0.55in -0.62in 0; padding: 0.42in 0.62in 13pt; background: var(--band); border-bottom: 1pt solid var(--rule); }",
+      ".mast-ornament { display: none; }",
+      ".tagline { font-family: var(--font-body); color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.2em; font-size: 9.5pt; font-weight: 500; }",
+      ".page-title { font-family: var(--font-display); font-style: italic; font-size: 13pt; color: var(--accent); margin-top: 4pt; }",
+      ".sec-title { font-family: var(--font-body); display: flex; align-items: center; gap: 7pt; }",
+      ".sec-title::before { content: ''; flex: none; width: 14pt; height: 1.5pt; background: var(--accent-2); }",
+      ".sec-title::after { content: ''; flex: 1; height: 0.6pt; background: var(--rule); }",
+      ".price { color: var(--accent-2); }",
+      ".sec-intro, .sec-note { font-style: italic; font-family: var(--font-display); }",
+      ".foot { border-top-color: var(--rule); }",
+      ".phone .mast { background: var(--band); border-bottom: 1px solid var(--rule); }"
+    ]
+  },
+  "modern": {
+    "label": "Modern",
+    "description": "Bright white, condensed Oswald headings, Source Sans 3 text, tomato-red accent blocks.",
+    "scheme": "light",
+    "fonts": [
+      {
+        "family": "Oswald",
+        "file": "fonts/oswald/Oswald[wght].ttf",
+        "weight": "200 700",
+        "style": "normal"
+      },
+      {
+        "family": "Source Sans 3",
+        "file": "fonts/sourcesans3/SourceSans3[wght].ttf",
+        "weight": "200 900",
+        "style": "normal"
+      },
+      {
+        "family": "Source Sans 3",
+        "file": "fonts/sourcesans3/SourceSans3-Italic[wght].ttf",
+        "weight": "200 900",
+        "style": "italic"
+      }
+    ],
+    "vars": {
+      "--font-display": "'Oswald', 'Arial Narrow', sans-serif",
+      "--font-body": "'Source Sans 3', 'Helvetica Neue', Arial, sans-serif",
+      "--paper": "#ffffff",
+      "--ink": "#16181d",
+      "--muted": "#5a5f69",
+      "--accent": "#e2482b",
+      "--accent-ink": "#ffffff",
+      "--rule": "#16181d",
+      "--leader": "#c3c6cc",
+      "--badge-bg": "#eef0f3",
+      "--badge-ink": "#16181d",
+      "--badge-border": "transparent",
+      "--mast-size": "40pt",
+      "--mast-weight": "600",
+      "--mast-case": "uppercase",
+      "--mast-spacing": "0.02em",
+      "--tagline-style": "normal",
+      "--sec-size": "15pt",
+      "--sec-weight": "600",
+      "--sec-style": "normal",
+      "--sec-case": "uppercase",
+      "--sec-spacing": "0.08em",
+      "--name-font": "var(--font-body)",
+      "--name-size": "11pt",
+      "--name-weight": "700",
+      "--name-case": "none",
+      "--name-spacing": "0",
+      "--price-font": "var(--font-display)",
+      "--price-weight": "500",
+      "--desc-size": "9.8pt",
+      "--desc-style": "normal",
+      "--base-size": "10pt"
+    },
+    "css": [
+      ".page { border-top: 0.22in solid var(--accent); }",
+      ".mast { text-align: left; display: grid; grid-template-columns: 1fr auto; align-items: end; column-gap: 12pt; border-bottom: 2.5pt solid var(--ink); padding-bottom: 8pt; }",
+      ".mast-ornament { display: none; }",
+      ".mast h1 { line-height: 0.95; }",
+      ".tagline { grid-column: 1; text-transform: uppercase; letter-spacing: 0.14em; font-size: 9.5pt; font-weight: 600; color: var(--muted); }",
+      ".page-title { grid-column: 2; grid-row: 1 / span 2; align-self: end; font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent-ink); background: var(--accent); padding: 3pt 10pt; margin: 0; }",
+      ".sec-title { display: inline-block; color: var(--ink); border-bottom: 3pt solid var(--accent); padding-bottom: 1pt; }",
+      ".price { color: var(--accent); }",
+      ".leader { border-bottom-style: solid; border-bottom-width: 0.5pt; }",
+      ".badge.tag-new { background: var(--accent); color: var(--accent-ink); }",
+      ".phone .mast { display: block; }",
+      ".phone .page-title { display: none; }"
+    ]
+  }
+}
