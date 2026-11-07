@@ -1,0 +1,10 @@
+{
+  "name": "food-cost",
+  "productName": "Restaurant",
+  "version": "1.3.0",
+  "description": "Menu and recipe costing for restaurants. Runs offline on this computer.",
+  "main": "main.js",
+  "author": "Matthew Neil Louis Marinier",
+  "license": "UNLICENSED",
+  "private": true
+}

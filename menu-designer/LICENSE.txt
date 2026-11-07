@@ -1,0 +1,205 @@
+MENU DESIGNER TEMPLATE
+LICENCE AGREEMENT
+
+Copyright (c) 2026 Matthew Neil Louis Marinier, operating as Brigade Kitchen
+Software. All rights reserved.
+
+PLEASE READ THIS AGREEMENT CAREFULLY. BY DOWNLOADING, COPYING, MODIFYING OR
+USING THE TEMPLATE YOU AGREE TO BE BOUND BY IT. IF YOU DO NOT AGREE, DO NOT
+USE THE TEMPLATE.
+
+1. DEFINITIONS
+
+1.1 In this Agreement:
+
+    (a) "Agreement" means this Licence Agreement;
+
+    (b) "Business" means one owner or operating company, including all of
+        the locations that it owns and operates itself;
+
+    (c) "Fonts" means the font files in the fonts/ folder and any other
+        font files distributed with the Template;
+
+    (d) "Menus" means the menus, menu boards, web menus, PDFs and other
+        output that You produce using the Template;
+
+    (e) "Owner" means Matthew Neil Louis Marinier, operating as Brigade
+        Kitchen Software, of Calgary, Alberta, and includes any person to
+        whom the Owner assigns this Agreement;
+
+    (f) "Template" means the Menu Designer template, including build.py,
+        render.js, themes.json, the sample menu.json, the README, the
+        preview images, the themes (including the Bistro, Garden and Modern
+        themes) and the layouts, styles and design system they embody,
+        together with any updates the Owner provides, but excluding the
+        Fonts;
+
+    (g) "Your Content" means the business name, logos, branding, dish and
+        drink names, descriptions, recipes, prices, photographs and other
+        content that You supply and place into the Template; and
+
+    (h) "You" and "Your" mean the person or entity that purchased the
+        licence to the Template and, where that person is acting for a
+        business, that business.
+
+1.2 Headings are for convenience only. "Including" means "including without
+    limitation".
+
+2. ACCEPTANCE
+
+2.1 By downloading, copying, modifying or using the Template You accept this
+    Agreement. If You are accepting on behalf of a business or other entity,
+    You represent that You have authority to bind it.
+
+3. OWNERSHIP
+
+3.1 The Owner retains all right, title and interest, including copyright, in
+    and to the Template, including its code, themes, layouts and design
+    system. The Template is licensed, not sold. All rights not expressly
+    granted to You are reserved by the Owner.
+
+3.2 You own Your Content. Nothing in this Agreement gives the Owner any right
+    in Your Content.
+
+3.3 As between You and the Owner, You own the Menus You produce, and You may
+    use them as permitted by section 4 for as long as You wish, including
+    after this Agreement ends. The Owner's rights in the Template as
+    embodied in the Menus are licensed to You for that purpose under
+    section 4, and do not entitle You to extract or reuse the Template
+    itself except as this Agreement permits.
+
+4. GRANT OF LICENCE
+
+4.1 Subject to Your compliance with this Agreement and payment of the
+    applicable fee, the Owner grants You a non-exclusive, non-transferable,
+    perpetual licence, for one Business per purchase, to:
+
+    (a) install, copy and modify the Template, and create Your own themes
+        from it, to produce Menus for that Business;
+
+    (b) print, publish, post online, display and distribute the Menus, in
+        any quantity and in any medium, with no further fee and no credit
+        or attribution required; and
+
+    (c) allow Your own employees, and a contractor working for You, to use
+        the Template on Your behalf for that Business only.
+
+5. RESTRICTIONS
+
+5.1 Except as expressly permitted by this Agreement, You must not:
+
+    (a) sell, resell, give away, share, sublicense, publish or distribute
+        the Template, or any modified version of it or any theme derived
+        from it, as a template, tool, theme or design product, whether
+        alone or as part of another product;
+
+    (b) use the Template to produce menus for any other business as a
+        service, unless that business has purchased its own licence; or
+
+    (c) remove or alter any copyright notice in the Template files.
+
+5.2 The restrictions in this section 5 apply only to the extent permitted by
+    applicable law, including section 30.6 of the Copyright Act, RSC 1985,
+    c C-42.
+
+6. FONTS
+
+6.1 The Fonts are not part of the Template and are not owned by the Owner.
+    Each Font is licensed by its own copyright holders under the SIL Open
+    Font License, Version 1.1. The licence text is in the OFL.txt file that
+    accompanies each Font. Your use of the Fonts is governed by those
+    licences, and nothing in this Agreement restricts any right You have
+    under them.
+
+6.2 If You add or substitute other fonts, You are responsible for obtaining
+    any licence those fonts require.
+
+7. YOUR RESPONSIBILITY FOR MENU CONTENT
+
+7.1 You are solely responsible for Your Content and for the accuracy and
+    legality of Your Menus, including prices, allergen and dietary
+    information, alcohol notices and any other information required by law.
+    You must check every Menu before printing or publishing it.
+
+7.2 You represent that You have the rights needed to use Your Content in the
+    Menus.
+
+8. NO WARRANTY
+
+8.1 The Template is provided "as is", without warranty or condition of any
+    kind, whether express, implied or statutory. To the extent the Sale of
+    Goods Act, RSA 2000, c S-2, or any similar law applies, and to the
+    fullest extent permitted by law, the Owner excludes all implied
+    conditions and warranties, including merchantable quality and fitness
+    for a particular purpose.
+
+9. LIMITATION OF LIABILITY
+
+9.1 To the fullest extent permitted by law, the Owner's total liability for
+    all claims arising out of or relating to the Template or this Agreement,
+    whether in contract, tort (including negligence) or otherwise, is
+    limited to the amount You paid for the licence, and the Owner is not
+    liable for any lost profits, lost revenue, printing costs, or indirect,
+    incidental, special or consequential damages.
+
+10. CONSUMER RIGHTS
+
+10.1 Nothing in this Agreement excludes, restricts or modifies any right or
+     remedy You have under the Consumer Protection Act, RSA 2000, c C-26.3,
+     the Sale of Goods Act, RSA 2000, c S-2, or any other law, that cannot
+     lawfully be excluded, restricted or modified. Sections 8 and 9 apply
+     only to the extent such a law permits.
+
+11. TERM AND TERMINATION
+
+11.1 This Agreement continues until terminated. It terminates automatically,
+     without notice, if You breach section 4 or 5.
+
+11.2 On termination, You must stop using the Template and delete all copies
+     of it in Your possession or control. Menus You produced before
+     termination may remain in use, and section 3.3 continues to apply to
+     them.
+
+11.3 Sections 1, 3, 6, 7, 8, 9, 10, 11.2 and 12 to 14 survive termination.
+
+12. GENERAL
+
+12.1 Entire agreement. This Agreement is the entire agreement between You
+     and the Owner concerning the Template and supersedes all prior
+     representations and agreements concerning it.
+
+12.2 Severability. If any provision of this Agreement is held invalid or
+     unenforceable, it will be enforced to the maximum extent permitted and
+     the remaining provisions remain in full force and effect.
+
+12.3 No waiver. No failure or delay by the Owner in exercising any right is
+     a waiver of that right, and no waiver is effective unless in writing.
+
+12.4 Assignment. You may not assign this Agreement except, once, to the new
+     owner of the Business on a sale of that Business, provided the new
+     owner agrees to be bound by it and You stop using the Template. The
+     Owner may assign this Agreement and its rights in the Template to any
+     person or entity without Your consent.
+
+12.5 Notices. Notices to the Owner must be given through the store where You
+     purchased the Template, or by any other contact method the Owner
+     publishes for the Template.
+
+12.6 Language. This Agreement is made in the English language. Any
+     translation is provided for convenience only, and if there is a
+     conflict the English version prevails.
+
+13. GOVERNING LAW AND JURISDICTION
+
+13.1 This Agreement is governed by the laws of the Province of Alberta and
+     the federal laws of Canada applicable in Alberta. Each party
+     irrevocably attorns to the jurisdiction of the courts of the Province
+     of Alberta sitting in the City of Calgary, subject to any right You
+     have under section 10 to bring proceedings elsewhere.
+
+14. COPYRIGHT NOTICE
+
+14.1 The Menu Designer Template, including its code, themes and design
+     system, is Copyright (c) 2026 Matthew Neil Louis Marinier, operating as
+     Brigade Kitchen Software. All rights reserved. The Fonts are the
+     property of their respective copyright holders.

@@ -1,0 +1,667 @@
+{
+  "restaurant": {
+    "name": "Maple Street Kitchen",
+    "tagline": "Honest food, made from scratch",
+    "address": "214 Maple Street, Riverton, AB",
+    "phone": "(403) 555-0142",
+    "hours": "Mon–Thu 11–10  ·  Fri–Sat 11–11  ·  Sun brunch 10–9",
+    "website": "maplestreetkitchen.example",
+    "footer_note": "Please tell your server about any allergies or dietary needs; not every ingredient is listed. Prices in Canadian dollars, taxes extra."
+  },
+  "settings": {
+    "currency": "",
+    "decimals": "auto",
+    "language": "en",
+    "autofit_max": 10
+  },
+  "tags": {
+    "V": "Vegetarian",
+    "VG": "Vegan",
+    "GF": "Gluten-free",
+    "spicy": "Spicy",
+    "new": "New"
+  },
+  "pages": [
+    {
+      "title": "Food",
+      "sections": [
+        "starters",
+        "salads",
+        "sides"
+      ]
+    },
+    {
+      "title": "Food",
+      "sections": [
+        "mains",
+        "kids",
+        "burgers"
+      ]
+    },
+    {
+      "title": "Desserts & Coffee",
+      "sections": [
+        "desserts",
+        "dessertwine",
+        "coffee",
+        "specialty"
+      ]
+    },
+    {
+      "title": "Drinks",
+      "sections": [
+        "cold",
+        "cocktails",
+        "beer",
+        "wine"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "starters",
+      "title": "Starters",
+      "items": [
+        {
+          "name": "Soup of the Day",
+          "price": 9,
+          "description": "Made fresh every morning. Ask your server; cup or bowl."
+        },
+        {
+          "name": "Crispy Brussels Sprouts",
+          "price": 13,
+          "description": "Maple-balsamic glaze, toasted pecans, shaved parmesan.",
+          "tags": [
+            "V",
+            "GF"
+          ]
+        },
+        {
+          "name": "Buttermilk Cauliflower",
+          "price": 14,
+          "description": "Fried golden, tossed in hot honey, with herb ranch for dipping.",
+          "tags": [
+            "V",
+            "spicy"
+          ]
+        },
+        {
+          "name": "Smoked Trout Dip",
+          "price": 16,
+          "description": "Horseradish crème fraîche, pickled shallot, rye crisps."
+        },
+        {
+          "name": "Baked Brie",
+          "price": 18,
+          "description": "Fig jam, candied walnuts, warm crostini.",
+          "tags": [
+            "V",
+            "new"
+          ]
+        },
+        {
+          "name": "Short Rib Poutine",
+          "price": 17,
+          "description": "Hand-cut fries, cheese curds, braised short rib, red wine gravy."
+        },
+        {
+          "name": "Steamed Mussels",
+          "price": 19,
+          "description": "One pound of PEI mussels, white wine, garlic, leeks, grilled sourdough."
+        }
+      ]
+    },
+    {
+      "id": "salads",
+      "title": "Salads",
+      "items": [
+        {
+          "name": "Harvest Salad",
+          "price": 16,
+          "description": "Mixed greens, roasted squash, goat cheese, apple, pumpkin seeds, cider vinaigrette.",
+          "tags": [
+            "V",
+            "GF"
+          ]
+        },
+        {
+          "name": "Classic Caesar",
+          "price": 15,
+          "description": "Romaine hearts, garlic croutons, double-smoked bacon, parmesan, lemon."
+        },
+        {
+          "name": "Beet & Citrus",
+          "price": 17,
+          "description": "Roasted beets, orange segments, whipped feta, pistachio, mint.",
+          "tags": [
+            "V",
+            "GF"
+          ]
+        },
+        {
+          "name": "Chicken Cobb Bowl",
+          "price": 22,
+          "description": "Grilled chicken, egg, avocado, blue cheese, tomato, bacon, buttermilk dressing.",
+          "tags": [
+            "GF"
+          ]
+        }
+      ],
+      "note": "Add to any salad: grilled chicken +7 · garlic shrimp +9 · seared salmon +10",
+      "column_break_before": true
+    },
+    {
+      "id": "mains",
+      "title": "Mains",
+      "intro": "From 5 pm daily",
+      "items": [
+        {
+          "name": "Maple-Glazed Salmon",
+          "price": 34,
+          "description": "Wild rice pilaf, charred broccolini, citrus beurre blanc.",
+          "tags": [
+            "GF"
+          ]
+        },
+        {
+          "name": "Braised Short Rib",
+          "price": 38,
+          "description": "Slow-cooked eight hours. Yukon gold mash, glazed carrots, red wine jus.",
+          "tags": [
+            "GF"
+          ]
+        },
+        {
+          "name": "Half Roast Chicken",
+          "price": 29,
+          "description": "Herb-roasted potatoes, seasonal greens, pan gravy."
+        },
+        {
+          "name": "10 oz AAA Striploin",
+          "price": 46,
+          "description": "Alberta beef, peppercorn butter, frites, watercress.",
+          "tags": [
+            "GF"
+          ]
+        },
+        {
+          "name": "Pan-Seared Pickerel",
+          "price": 32,
+          "description": "Lemon-caper butter, crushed new potatoes, green beans.",
+          "tags": [
+            "GF",
+            "new"
+          ]
+        },
+        {
+          "name": "Wild Mushroom Risotto",
+          "price": 26,
+          "description": "Arborio rice, roasted mushrooms, aged parmesan, crispy sage.",
+          "tags": [
+            "V",
+            "GF"
+          ]
+        },
+        {
+          "name": "Cajun Shrimp Linguine",
+          "price": 28,
+          "description": "Blistered cherry tomato, garlic cream, scallion.",
+          "tags": [
+            "spicy"
+          ]
+        },
+        {
+          "name": "Butcher’s Cut",
+          "price": "MP",
+          "description": "Ask about tonight’s cut, sauce and garnish."
+        }
+      ]
+    },
+    {
+      "id": "burgers",
+      "title": "Burgers & Sandwiches",
+      "intro": "Served with fries, soup or green salad.",
+      "items": [
+        {
+          "name": "The Maple Street Burger",
+          "price": 22,
+          "description": "Six-ounce chuck patty, aged cheddar, bacon jam, lettuce, tomato, house sauce."
+        },
+        {
+          "name": "Mushroom Swiss Burger",
+          "price": 21,
+          "description": "Roasted mushrooms, Swiss cheese, caramelized onion, garlic aioli."
+        },
+        {
+          "name": "Black Bean Burger",
+          "price": 19,
+          "description": "Chipotle black bean patty, pepper jack, avocado, pico de gallo.",
+          "tags": [
+            "V",
+            "spicy"
+          ]
+        },
+        {
+          "name": "Crispy Chicken Sandwich",
+          "price": 20,
+          "description": "Buttermilk-fried thigh, cabbage slaw, pickles, chipotle mayo."
+        },
+        {
+          "name": "Smoked Turkey Club",
+          "price": 19,
+          "description": "Triple-decker on toasted sourdough, bacon, avocado, tomato."
+        },
+        {
+          "name": "Smoked Meat on Rye",
+          "price": 20,
+          "description": "Hand-sliced brisket piled high, yellow mustard, dill pickle."
+        }
+      ],
+      "note": "Swap your side for Caesar or poutine +4 · gluten-free bun +2",
+      "column_break_before": true
+    },
+    {
+      "id": "kids",
+      "title": "Kids",
+      "intro": "For guests 12 and under. Includes a drink and a scoop of ice cream.",
+      "choices": [
+        {
+          "name": "Chicken fingers & fries",
+          "price": 12
+        },
+        {
+          "name": "Mini cheeseburger & fries",
+          "price": 12
+        },
+        {
+          "name": "Buttered noodles",
+          "price": 10
+        },
+        {
+          "name": "Grilled cheese & veggie sticks",
+          "price": 10
+        }
+      ]
+    },
+    {
+      "id": "sides",
+      "title": "Sides",
+      "choices": [
+        {
+          "name": "Hand-cut fries",
+          "price": 7
+        },
+        {
+          "name": "Sweet potato fries",
+          "price": 8
+        },
+        {
+          "name": "Beer-battered onion rings",
+          "price": 8
+        },
+        {
+          "name": "Garlic mashed potatoes",
+          "price": 7
+        },
+        {
+          "name": "Seasonal vegetables",
+          "price": 7
+        },
+        {
+          "name": "Side Caesar",
+          "price": 8
+        },
+        {
+          "name": "Baked mac & cheese",
+          "price": 9
+        },
+        {
+          "name": "Classic poutine",
+          "price": 10
+        }
+      ]
+    },
+    {
+      "id": "desserts",
+      "title": "Desserts",
+      "items": [
+        {
+          "name": "Warm Apple Crumble",
+          "price": 11,
+          "description": "Oat and brown sugar streusel, vanilla bean ice cream.",
+          "tags": [
+            "V"
+          ]
+        },
+        {
+          "name": "Butter Tart Cheesecake",
+          "price": 12,
+          "description": "Graham crust, raisin-pecan butter tart topping.",
+          "tags": [
+            "V"
+          ]
+        },
+        {
+          "name": "Chocolate Pot de Crème",
+          "price": 11,
+          "description": "Dark chocolate custard, salted caramel, whipped cream.",
+          "tags": [
+            "V",
+            "GF"
+          ]
+        },
+        {
+          "name": "Maple Crème Brûlée",
+          "price": 11,
+          "description": "Vanilla custard, burnt maple sugar crust, shortbread.",
+          "tags": [
+            "V",
+            "GF"
+          ]
+        },
+        {
+          "name": "Affogato",
+          "price": 8,
+          "description": "Vanilla bean ice cream drowned in a double espresso.",
+          "tags": [
+            "V",
+            "GF"
+          ]
+        },
+        {
+          "name": "Sticky Toffee Pudding",
+          "price": 12,
+          "description": "Date sponge, warm toffee sauce, crème fraîche.",
+          "tags": [
+            "V"
+          ]
+        },
+        {
+          "name": "Seasonal Sorbet",
+          "price": 9,
+          "description": "Two scoops, made in house.",
+          "tags": [
+            "VG",
+            "GF"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dessertwine",
+      "title": "Dessert Wine & Digestifs",
+      "intro": "2 oz pours",
+      "choices": [
+        {
+          "name": "Niagara icewine",
+          "price": 16
+        },
+        {
+          "name": "Tawny port, 10 year",
+          "price": 12
+        },
+        {
+          "name": "Amaro",
+          "price": 11
+        },
+        {
+          "name": "Calvados",
+          "price": 13
+        }
+      ]
+    },
+    {
+      "id": "coffee",
+      "title": "Coffee & Tea",
+      "intro": "Locally roasted beans. Oat or almond milk at no charge.",
+      "choices": [
+        {
+          "name": "Drip coffee",
+          "price": 3.5
+        },
+        {
+          "name": "Espresso",
+          "price": 3.75
+        },
+        {
+          "name": "Americano",
+          "price": 4
+        },
+        {
+          "name": "Cappuccino",
+          "price": 5.25
+        },
+        {
+          "name": "Latte",
+          "price": 5.25
+        },
+        {
+          "name": "Loose-leaf tea",
+          "price": 4
+        },
+        {
+          "name": "Hot chocolate",
+          "price": 4.5
+        }
+      ],
+      "column_break_before": true
+    },
+    {
+      "id": "specialty",
+      "title": "Specialty Coffee",
+      "items": [
+        {
+          "name": "Maple Latte",
+          "price": 6,
+          "description": "Double espresso, steamed milk, a spoon of dark maple syrup."
+        },
+        {
+          "name": "Irish Coffee",
+          "price": 12,
+          "description": "Irish whiskey, brown sugar, drip coffee, softly whipped cream."
+        },
+        {
+          "name": "Espresso Martini",
+          "price": 15,
+          "description": "Vodka, coffee liqueur, fresh espresso."
+        }
+      ]
+    },
+    {
+      "id": "cold",
+      "title": "Cold Drinks",
+      "choices": [
+        {
+          "name": "Fountain pop",
+          "price": 3.75
+        },
+        {
+          "name": "House lemonade",
+          "price": 5
+        },
+        {
+          "name": "Iced tea",
+          "price": 4.5
+        },
+        {
+          "name": "Craft ginger beer",
+          "price": 5
+        },
+        {
+          "name": "Apple or orange juice",
+          "price": 4.5
+        },
+        {
+          "name": "Sparkling water, 750 ml",
+          "price": 7
+        }
+      ]
+    },
+    {
+      "id": "cocktails",
+      "title": "Cocktails",
+      "intro": "2 oz pours",
+      "items": [
+        {
+          "name": "Maple Old Fashioned",
+          "price": 15,
+          "description": "Canadian rye, maple syrup, orange bitters."
+        },
+        {
+          "name": "Classic Caesar",
+          "price": 12,
+          "description": "Vodka, clamato, celery salt rim, pickled bean.",
+          "tags": [
+            "spicy"
+          ]
+        },
+        {
+          "name": "Cucumber Gin Smash",
+          "price": 14,
+          "description": "Gin, cucumber, lime, mint, soda."
+        },
+        {
+          "name": "Spiced Pear Mule",
+          "price": 14,
+          "description": "Vodka, pear, ginger beer, cinnamon.",
+          "tags": [
+            "new"
+          ]
+        },
+        {
+          "name": "Rhubarb Gin Sour",
+          "price": 14,
+          "description": "Gin, rhubarb syrup, lemon, egg white."
+        },
+        {
+          "name": "Honey Bourbon Lemonade",
+          "price": 13,
+          "description": "Bourbon, wildflower honey, house lemonade."
+        }
+      ]
+    },
+    {
+      "id": "beer",
+      "title": "Draught Beer",
+      "price_columns": [
+        "14 oz",
+        "20 oz"
+      ],
+      "choices": [
+        {
+          "name": "Riverton Lager",
+          "price": [
+            7,
+            9
+          ]
+        },
+        {
+          "name": "Prairie Wheat Ale",
+          "price": [
+            7.5,
+            9.5
+          ]
+        },
+        {
+          "name": "Hazy IPA",
+          "price": [
+            8,
+            10
+          ]
+        },
+        {
+          "name": "Oatmeal Stout",
+          "price": [
+            8,
+            10
+          ]
+        },
+        {
+          "name": "Dry Apple Cider",
+          "price": [
+            8,
+            10
+          ]
+        }
+      ],
+      "column_break_before": true
+    },
+    {
+      "id": "wine",
+      "title": "Wine",
+      "intro": "Okanagan and Niagara favourites",
+      "price_columns": [
+        "6 oz",
+        "9 oz",
+        "Btl"
+      ],
+      "choices": [
+        {
+          "name": "Sparkling Brut",
+          "price": [
+            "",
+            "",
+            52
+          ]
+        },
+        {
+          "name": "Pinot Gris",
+          "price": [
+            11,
+            16,
+            42
+          ]
+        },
+        {
+          "name": "Riesling",
+          "price": [
+            11,
+            16,
+            42
+          ]
+        },
+        {
+          "name": "Unoaked Chardonnay",
+          "price": [
+            12,
+            17,
+            46
+          ]
+        },
+        {
+          "name": "Rosé",
+          "price": [
+            11,
+            16,
+            42
+          ]
+        },
+        {
+          "name": "Pinot Noir",
+          "price": [
+            13,
+            19,
+            50
+          ]
+        },
+        {
+          "name": "Merlot",
+          "price": [
+            12,
+            17,
+            46
+          ]
+        },
+        {
+          "name": "Cabernet Franc",
+          "price": [
+            13,
+            19,
+            50
+          ]
+        }
+      ],
+      "note": "Ask about our cellar list and corkage."
+    }
+  ]
+}
