@@ -1,0 +1,5 @@
+# Build output (regenerate with: python3 build.py --theme all && node render.js)
+out/
+*.pdf
+out/**/*.png
+__pycache__/

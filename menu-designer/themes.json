@@ -163,7 +163,20 @@
       ".sec-intro, .sec-note { font-style: italic; font-family: var(--font-display); }",
       ".foot { border-top-color: var(--rule); }",
       ".phone .mast { background: var(--band); border-bottom: 1px solid var(--rule); }"
-    ]
+    ],
+    "phone_dark_vars": {
+      "--paper": "#1c2420",
+      "--band": "#24302a",
+      "--ink": "#eef1ea",
+      "--muted": "#b3bdb0",
+      "--accent": "#9cc2a0",
+      "--accent-ink": "#1c2420",
+      "--accent-2": "#e39a78",
+      "--rule": "#4d5e51",
+      "--leader": "#435047",
+      "--badge-bg": "#2c3a31",
+      "--badge-ink": "#cfe3d1"
+    }
   },
   "modern": {
     "label": "Modern",
@@ -227,7 +240,7 @@
       ".page { border-top: 0.22in solid var(--accent); }",
       ".mast { text-align: left; display: grid; grid-template-columns: 1fr auto; align-items: end; column-gap: 12pt; border-bottom: 2.5pt solid var(--ink); padding-bottom: 8pt; }",
       ".mast-ornament { display: none; }",
-      ".mast h1 { line-height: 0.95; }",
+      ".mast-name { line-height: 0.95; }",
       ".tagline { grid-column: 1; text-transform: uppercase; letter-spacing: 0.14em; font-size: 9.5pt; font-weight: 600; color: var(--muted); }",
       ".page-title { grid-column: 2; grid-row: 1 / span 2; align-self: end; font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent-ink); background: var(--accent); padding: 3pt 10pt; margin: 0; }",
       ".sec-title { display: inline-block; color: var(--ink); border-bottom: 3pt solid var(--accent); padding-bottom: 1pt; }",
@@ -236,6 +249,17 @@
       ".badge.tag-new { background: var(--accent); color: var(--accent-ink); }",
       ".phone .mast { display: block; }",
       ".phone .page-title { display: none; }"
-    ]
+    ],
+    "phone_dark_vars": {
+      "--paper": "#15171b",
+      "--ink": "#f2f3f5",
+      "--muted": "#a9aeb8",
+      "--rule": "#f2f3f5",
+      "--leader": "#3c4049",
+      "--badge-bg": "#262a31",
+      "--badge-ink": "#f2f3f5",
+      "--accent": "#ff6a4a",
+      "--accent-ink": "#15171b"
+    }
   }
 }

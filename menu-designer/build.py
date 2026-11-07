@@ -188,7 +188,7 @@ h1,h2,h3,p{margin:0}
 
 /* masthead */
 .mast{text-align:center}
-.mast h1{font-family:var(--font-display);font-size:var(--mast-size);font-weight:var(--mast-weight);
+.mast-name{font-family:var(--font-display);font-size:var(--mast-size);font-weight:var(--mast-weight);
   text-transform:var(--mast-case);letter-spacing:var(--mast-spacing);line-height:1.05;color:var(--ink)}
 .tagline{font-style:var(--tagline-style);color:var(--muted);font-size:11pt;margin-top:3pt}
 .page-title{font-size:11pt;margin-top:9pt}
@@ -212,7 +212,7 @@ h1,h2,h3,p{margin:0}
 .price{font-family:var(--price-font);font-weight:var(--price-weight);font-size:var(--name-size);
   font-variant-numeric:tabular-nums lining-nums;white-space:nowrap;flex:none;text-align:right}
 .choice .price{font-size:10.5pt}
-.pcol{display:inline-block;width:3.1em;text-align:right;flex:none}
+.pcol{display:inline-block;width:0.46in;white-space:nowrap;text-align:right;flex:none}
 .price-head{display:flex;font-size:8.5pt;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;
   margin:0 0 2pt;font-weight:600}
 .price-head .spacer{flex:1}
@@ -227,11 +227,11 @@ h1,h2,h3,p{margin:0}
 
 /* footer */
 .foot{text-align:center;font-size:9pt;color:var(--muted);line-height:1.4}
-.legend{display:flex;justify-content:center;flex-wrap:wrap;gap:3pt 12pt;margin-bottom:5pt;font-size:8.5pt}
+.legend{display:flex;justify-content:center;flex-wrap:wrap;gap:3pt 12pt;margin-bottom:5pt;font-size:9pt}
 .legend span{display:inline-flex;align-items:center;gap:3pt}
 .info{color:var(--ink);font-size:9.5pt}
 .info .dot{color:var(--accent);padding:0 6pt}
-.footnote{font-style:italic;margin-top:2pt;font-size:8.5pt}
+.footnote{font-style:italic;margin-top:2pt;font-size:9pt}
 """
 
 PRINT_CSS = r"""
@@ -242,12 +242,16 @@ html,body{background:#777}
   background:var(--paper);position:relative;overflow:hidden;break-after:page;page-break-after:always}
 @media screen{.page{margin:0.25in auto}}
 .page:last-child{break-after:auto;page-break-after:auto}
-.page.compact .mast h1{font-size:calc(var(--mast-size) * 0.72)}
+.page.compact .mast-name{font-size:calc(var(--mast-size) * 0.62)}
 .page.compact .tagline{display:none}
 .page-body{flex:1 1 auto;min-height:0;margin:18pt 0 12pt;column-count:2;column-gap:0.42in;column-fill:balance;
   overflow:hidden}
 .page[data-fill="auto"] .page-body{column-fill:auto}
-.sec{margin-bottom:16pt;break-inside:auto}
+.page{--fill:0pt}
+.page .item{margin-bottom:calc(7pt + var(--fill))}
+.page .choice{margin-bottom:calc(2.5pt + var(--fill) * 0.45)}
+.page .sec-title{margin-bottom:calc(5pt + var(--fill) * 0.5)}
+.sec{margin-bottom:calc(16pt + var(--fill) * 2);break-inside:auto}
 .sec.keep{break-inside:avoid;page-break-inside:avoid}
 .sec.colbreak{break-before:column}
 .head-keep,.item,.choice{break-inside:avoid;page-break-inside:avoid}
@@ -260,7 +264,7 @@ html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{font-size:16px;overflow-x:hidden}
 .phone{max-width:720px;margin:0 auto}
 .phone .mast{padding:28px 20px 18px}
-.phone .mast h1{font-size:clamp(30px,9vw,46px);overflow-wrap:anywhere}
+.phone .mast-name{font-size:clamp(30px,9vw,46px);overflow-wrap:anywhere}
 .phone .tagline{font-size:16px}
 .phone .page-title{font-size:15px}
 .tabs{position:sticky;top:0;z-index:5;background:var(--paper);border-bottom:1px solid var(--leader)}
@@ -273,7 +277,7 @@ body{font-size:16px;overflow-x:hidden}
 .tabs a[aria-current="true"]{background:var(--accent);color:var(--accent-ink)}
 .phone main{padding:8px 18px 8px}
 .phone .sec{padding-top:22px;scroll-margin-top:64px}
-.phone .sec-title{font-size:calc(var(--sec-size) * 1.45)}
+.phone .sec-title{font-size:min(calc(var(--sec-size) * 1.3), 30px)}
 .phone .name{font-size:17px;overflow-wrap:anywhere}
 .phone .choice .name{font-size:16px}
 .phone .price,.phone .choice .price{font-size:17px}
@@ -292,6 +296,28 @@ body{font-size:16px;overflow-x:hidden}
 .phone .legend{font-size:13px}
 .phone .footnote{font-size:13px}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+"""
+
+# Spreads spacing on pages that have room to spare, so short pages do not end
+# in a big empty gap. Each page gets the largest extra gap (up to the menu's
+# "autofit_max", in pt) that still fits. Pages that overflow stay at 0 and are
+# reported by render.js.
+AUTOFIT_JS = r"""
+(function(){
+  var MAX=%s;
+  function over(b){return b.scrollWidth>b.clientWidth+1||b.scrollHeight>b.clientHeight+1;}
+  function fit(){
+    [].forEach.call(document.querySelectorAll('.page'),function(pg){
+      var b=pg.querySelector('.page-body');pg.style.setProperty('--fill','0pt');
+      if(MAX<=0||over(b))return;
+      var lo=0,hi=MAX;
+      for(var i=0;i<12;i++){var mid=(lo+hi)/2;pg.style.setProperty('--fill',mid+'pt');if(over(b))hi=mid;else lo=mid;}
+      pg.style.setProperty('--fill',Math.max(0,lo-0.75).toFixed(2)+'pt');
+    });
+    document.documentElement.setAttribute('data-fitted','1');
+  }
+  (document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(fit);
+})();
 """
 
 PHONE_JS = r"""
@@ -316,7 +342,7 @@ PHONE_JS = r"""
 
 def masthead(info, page_title, tag="h1"):
     parts = ['<header class="mast"><div class="mast-ornament" aria-hidden="true"></div>',
-             '<%s>%s</%s>' % (tag, esc(info.get("name", "")), tag)]
+             '<%s class="mast-name">%s</%s>' % (tag, esc(info.get("name", "")), tag)]
     if info.get("tagline"):
         parts.append('<p class="tagline">%s</p>' % esc(info["tagline"]))
     if page_title:
@@ -336,6 +362,8 @@ def used_tags(sections):
 
 
 def footer(info, tags_on_page, tag_names, phone=False):
+    order = list(tag_names)
+    tags_on_page = sorted(tags_on_page, key=lambda t: order.index(t) if t in order else len(order))
     legend = ""
     if tags_on_page:
         legend = '<div class="legend">%s</div>' % "".join(
@@ -392,8 +420,9 @@ def build_print(menu, theme, theme_name):
                       body, footer(info, used_tags(secs), tag_names)))
     css = font_faces(theme) + BASE_CSS + PRINT_CSS + theme_css(theme)
     head = '<meta name="menu-theme" content="%s">\n<meta name="menu-kind" content="print">\n' % esc(theme_name)
+    script = AUTOFIT_JS % float(settings.get("autofit_max", 10) or 0)
     return document("%s – Menu" % info.get("name", "Menu"), settings.get("language", "en"),
-                    css, "\n".join(out), theme.get("scheme", "light"), head)
+                    css, "\n".join(out), theme.get("scheme", "light"), head, script)
 
 
 def build_phone(menu, theme, theme_name):
@@ -418,11 +447,17 @@ def build_phone(menu, theme, theme_name):
                "".join(render_section(s, settings, tag_names, "h2") for s in secs),
                footer(info, used_tags(secs), tag_names, phone=True)))
     css = font_faces(theme) + BASE_CSS + PHONE_CSS + theme_css(theme)
+    scheme = theme.get("scheme", "light")
+    dark = theme.get("phone_dark_vars")
+    if dark:  # optional dark palette, used when the guest's phone is in dark mode
+        css += "\n@media (prefers-color-scheme: dark){:root{%s}}" % "".join(
+            "%s:%s;" % (k, v) for k, v in dark.items())
+        scheme = "light dark"
     head = ('<meta name="menu-theme" content="%s">\n<meta name="menu-kind" content="phone">\n'
             '<meta name="theme-color" content="%s">\n'
             % (esc(theme_name), esc(theme.get("vars", {}).get("--paper", "#ffffff"))))
     return document(info.get("name", "Menu"), settings.get("language", "en"), css, body,
-                    theme.get("scheme", "light"), head, PHONE_JS)
+                    scheme, head, PHONE_JS)
 
 
 def validate(menu):
