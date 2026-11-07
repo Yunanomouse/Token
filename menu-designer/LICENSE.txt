@@ -1,0 +1,39 @@
+MENU DESIGNER TEMPLATE - LICENCE
+
+Copyright (c) 2026 Matthew Neil Louis Marinier, operating as Brigade Kitchen
+Software. All rights reserved.
+
+This licence covers the Menu Designer template: build.py, render.js,
+themes.json, the sample menu.json, the README and the preview images
+(together, "the Template"). It does not cover the fonts; see "Fonts" below.
+
+1. One business per purchase. Each purchase lets one business (one owner or
+   operating company, including all of its own locations) use the Template.
+
+2. What you may do.
+   - Edit the Template and create your own themes for your own menus.
+   - Print, publish, post online and hand out the menus you make with it,
+     in any quantity, with no further fee and no credit required.
+   - Let your own staff or a contractor working for you use it for your
+     business.
+
+3. What you may not do.
+   - Sell, give away, share, sublicense or publish the Template itself, or a
+     modified version of it, as a template, tool or design product.
+   - Use it to make menus for other businesses as a service, unless each of
+     those businesses has its own purchase.
+
+4. Fonts. The font files in fonts/ are not part of the Template. Each is
+   licensed under the SIL Open Font License 1.1; the licence text is in the
+   OFL.txt next to each font. Those licences apply to the fonts.
+
+5. No warranty. The Template is provided "as is", without warranty of any
+   kind. To the extent the law allows, Brigade Kitchen Software is not liable
+   for any loss arising from its use. Always check prices, allergen notices
+   and other menu content before printing or publishing.
+
+6. Ending. This licence ends automatically if you break it. Menus you made
+   before it ended may stay in use.
+
+7. Governing law. This licence is governed by the laws of the Province of
+   Alberta and the federal laws of Canada that apply there.
