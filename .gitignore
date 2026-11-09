@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 examples/market_data/
+research_notes/
+reports/
