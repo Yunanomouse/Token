@@ -1,0 +1,13 @@
+{
+ "fetched_at": "2026-11-13T20:37:40+00:00",
+ "sources": {
+  "AAPL": "yahoo",
+  "XOM": "yahoo",
+  "JPM": "yahoo",
+  "WMT": "yahoo",
+  "PFE": "yahoo",
+  "AMZN": "yahoo",
+  "BAC": "yahoo",
+  "T": "yahoo"
+ }
+}

@@ -1,0 +1,14 @@
+{
+ "schema": 1,
+ "mode": "paper",
+ "date": "2026-11-12",
+ "generated_at": "2026-11-13T20:38:29+00:00",
+ "budget": 40.0,
+ "whole_shares": true,
+ "orders": [],
+ "holdings_after": {
+  "VALE": 1.0,
+  "ITUB": 1.0
+ },
+ "cash_after": 13.944037999999995
+}
