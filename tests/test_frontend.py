@@ -167,8 +167,13 @@ STATION_NOW = datetime(2026, 10, 1, 17, 0, tzinfo=NY)
 
 
 def _main_snapshot():
-    """The repository's own $100k snapshot (equity $99,847.17), read-only."""
+    """The repository's own $100k snapshot, read-only.  The bot rewrites it on
+    every run, so tests take its figures from it rather than hard-coding them."""
     return json.loads((ROOT / "live" / "snapshot.json").read_text(encoding="utf-8"))
+
+
+MAIN_EQUITY = f"${_main_snapshot()['equity']:,.2f}"          # as the station shows it
+MAIN_EQUITY_WHOLE = f"${round(_main_snapshot()['equity']):,}"  # as the web page shows it
 
 
 def _small_snapshot():
@@ -357,7 +362,7 @@ class TestStationPage(_StationCase):
         cards = page.locator("#ovCards > .card")
         expect(cards).to_have_count(3)
         expect(cards.nth(0)).to_contain_text("$100k daily bot")
-        expect(cards.nth(0)).to_contain_text("$99,847.17")
+        expect(cards.nth(0)).to_contain_text(MAIN_EQUITY)
         expect(cards.nth(0)).to_contain_text("started with $100,000.00")
         expect(cards.nth(1)).to_contain_text("$41.25")
         expect(cards.nth(2)).to_contain_text("$50.85")
@@ -372,7 +377,7 @@ class TestStationPage(_StationCase):
         page = self.load()
         self.tab(page, "daily")
         main = page.locator('section.bot[aria-label="main"]')
-        expect(main.locator(".tiles")).to_contain_text("$99,847.17")
+        expect(main.locator(".tiles")).to_contain_text(MAIN_EQUITY)
         rows = _rows(page, 'section.bot[aria-label="main"] .two .card:first-child')
         self.assertEqual(sorted(r[0] for r in rows), sorted(snap["positions"]))
         by = {r[0]: r for r in rows}
@@ -432,7 +437,7 @@ class TestStationPage(_StationCase):
         self.assertEqual(rows[0][4], "1 / 2")
         self.assertEqual(rows[1][0], "broken_indicator.py")
         self.assertIn("SyntaxError", rows[1][1])
-        expect(res.locator(".card", has_text="Backtest: $100k bot")).to_contain_text("$99,847.17")
+        expect(res.locator(".card", has_text="Backtest: $100k bot")).to_contain_text(MAIN_EQUITY)
         expect(res.locator(".card", has_text="Backtest: $40 bot")).to_contain_text("No result yet")
         expect(page.locator("#barsInfo")).to_contain_text("not downloaded")
         self.assert_clean()
@@ -533,7 +538,7 @@ class TestStationPage(_StationCase):
         self.assertIn("Reset the $100k daily bot?", messages[0])
         self.assertEqual(posts, [])
         self.assertTrue((self.home / "main" / "snapshot.json").exists())
-        expect(page.locator('section.bot[aria-label="main"] .tiles')).to_contain_text("$99,847.17")
+        expect(page.locator('section.bot[aria-label="main"] .tiles')).to_contain_text(MAIN_EQUITY)
 
         page.once("dialog", answer(True))
         with page.expect_response(lambda r: r.url.endswith("/api/reset")) as resp:
@@ -574,7 +579,7 @@ class TestStationPage(_StationCase):
     def test_unreachable_station_warns_and_keeps_the_last_data(self):
         page = self.load(clock=True)
         self.tab(page, "daily")
-        expect(page.locator('section.bot[aria-label="main"] .tiles')).to_contain_text("$99,847.17")
+        expect(page.locator('section.bot[aria-label="main"] .tiles')).to_contain_text(MAIN_EQUITY)
         self.stop_server()
         page.clock.run_for(3100)
         expect(page.locator("#conn")).to_have_text("disconnected")
@@ -583,9 +588,9 @@ class TestStationPage(_StationCase):
         expect(err).to_be_visible()
         expect(err).to_contain_text("Cannot reach the station")
         expect(err).to_contain_text("figures below are from the last good update")
-        expect(page.locator('section.bot[aria-label="main"] .tiles')).to_contain_text("$99,847.17")
+        expect(page.locator('section.bot[aria-label="main"] .tiles')).to_contain_text(MAIN_EQUITY)
         self.tab(page, "overview")
-        expect(page.locator("#ovCards")).to_contain_text("$99,847.17")
+        expect(page.locator("#ovCards")).to_contain_text(MAIN_EQUITY)
         # A button pressed now reports the failure instead of throwing.
         page.locator('#ovJobs [data-job="daily"]').click()
         expect(page.locator("#toast")).to_contain_text("could not reach the station")
@@ -1103,7 +1108,7 @@ class TestWebPage(_PageCase):
         snap = docs["bot/status"]
         page = self.load(init_script=_fake_claude(docs))
         expect(page.locator("#liveBody")).to_be_visible()
-        expect(page.locator("#lEquity")).to_have_text("$99,847")
+        expect(page.locator("#lEquity")).to_have_text(MAIN_EQUITY_WHOLE)
         expect(page.locator("#lFills")).to_have_text(str(snap["n_fills"]))
         rows = _rows(page, "#lPositions", " tr")
         self.assertEqual(sorted(r[0] for r in rows), sorted(snap["positions"]))
