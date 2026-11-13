@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Soundtrack for the 2-minute Venture Trader tour (src/venture-2min.html).
+"""Soundtrack for the 2-minute Venture Trader film (film/timeline.js).
 
 128 BPM, 64 bars = 120 s. Sections follow the film so the music changes when
 the picture does (bar numbers; 1 bar = 1.875 s):
 
-     0- 4  hook        soft hits under the three opening lines, riser into the drop
-     4-16  overview    drop: kick, hats, bass, pad, light arp
-    16-28  stock card  adds snare + fuller arp
-    28-40  signals     adds a lead line
-    40-44  AI take     breakdown: drums out, pad + arp, riser back in
-    44-53  analysts    full band again, snare roll into the last scene
-    53-58  auto-refresh
-    58-64  outro       big resolve on C major, shimmer, tail
+     0- 4  hook          soft hits under the three opening lines, riser into the drop
+     4-16  overview      drop: kick, hats, bass, pad, light arp
+    16-28  stock popup   adds snare + fuller arp
+    28-40  search, watchlist, markets   adds a lead line
+    40-44  crypto        breakdown: drums out, pad + arp, riser back in
+    44-53  signals       full band again, snare roll into the montage
+    53-58  fundamentals / news / discover / insiders
+    58-64  outro         big resolve on C major, shimmer, tail
 
-Run:  python3 render/make_audio_tour.py [out.wav]   (default dist/track.wav)
+Run:  python3 render/make_audio_film.py [out.wav]   (default dist/track.wav)
 """
 from synth import *
 
@@ -81,14 +81,18 @@ for i in range(8):  mix(bar(52)+i*H, snare(0.12), 0.16+0.03*i)             # sna
 for i in range(8):  mix(bar(52)+2*BEAT+i*H/2, snare(0.09), 0.26+0.025*i)   # ...then 16ths
 mix(bar(51), riser(2*BAR-0.05,170,1900), 0.24)
 
-# ---- accents on the picture ----
-mix(bar(4), impact(1.1,80), 0.85); sweep(bar(4), 0.6, 0.42)               # the drop / app slams in
-for b in (16, 28, 40, 44, 53):                                            # scene changes
+# ---- accents on the picture (bar numbers match film/timeline.js) ----
+mix(bar(4), impact(1.1,80), 0.85); sweep(bar(4), 0.6, 0.42)               # the drop / the app appears
+for b in (16, 28, 32, 36, 44, 53):                                        # scene changes
     sweep(bar(b)); mix(bar(b), impact(0.9,66), 0.58)
-for b in (6, 8, 12, 21, 23, 25, 30, 33, 36, 46, 48, 50):                  # camera moves inside a scene
+sweep(bar(40), 0.6, 0.30)                                                 # into the crypto breakdown
+for b in (6, 8, 10, 12, 21, 23.5, 25, 46, 48.5, 50.5, 54.25, 55.5, 56.75):  # camera moves / quick tab cuts
     sweep(bar(b), 0.5, 0.13)
-for b, f in ((18,1200), (19,1350), (20,1500)):                            # timeframe pill clicks
-    mix(bar(b), blip(f,0.09), 0.30, 0.4)
+for b, f in ((12.8,1100), (13.7,1000), (18,1200), (19,1350), (20,1500),   # heatmap arrows, timeframe pills,
+             (29.4,1400), (37.3,1250), (38.6,1150), (54.85,1300)):        # suggestion pick, screener + news filters
+    mix(bar(b), blip(f,0.09), 0.28, 0.4)
+for i in range(5):                                                        # typing "tesla" into the search box
+    mix(bar(28)+0.32+i*0.19, hat(0.02,0.9), 0.5, 0.2)
 
 # ---- outro (bars 58-64) ----
 sweep(bar(58), 0.6, 0.36); mix(bar(58), impact(1.7,84), 0.95)

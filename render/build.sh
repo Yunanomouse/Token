@@ -2,8 +2,11 @@
 # Build a film end-to-end: render the silent video, synthesize the soundtrack,
 # mux them (VP8 + Opus .webm), then export a phone-friendly MP4 (H.264 + AAC).
 #
-#   bash render/build.sh            # the 24 s trailer  -> dist/openbb-30s.{webm,mp4}
-#   bash render/build.sh tour       # the 2 min tour    -> dist/venture-2min.{webm,mp4}
+#   bash render/build.sh            # the 24 s trailer (hand-built page)  -> dist/openbb-30s.{webm,mp4}
+#   bash render/build.sh film       # the 2 min film of the real app      -> dist/venture-trader-film.mp4
+#
+# `film` records the real Venture Trader dashboard, which must already be running
+# (see film/README.md); set VT_URL if it is not on http://127.0.0.1:8090.
 #
 # Playwright's bundled ffmpeg has no audio encoder, so muxing uses a full
 # ffmpeg fetched via imageio-ffmpeg (pip install numpy imageio-ffmpeg).
@@ -11,16 +14,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 case "${1:-trailer}" in
-  trailer) PAGE=src/openbb.html;       NAME=openbb-30s;   AUDIO=render/make_audio.py;      CRF=18 ;;
-  tour)    python3 render/make_tour_page.py
-           PAGE=src/venture-2min.html; NAME=venture-2min; AUDIO=render/make_audio_tour.py; CRF=21 ;;
-  *) echo "usage: build.sh [trailer|tour]" >&2; exit 2 ;;
+  trailer) NAME=openbb-30s;          AUDIO=render/make_audio.py;      CRF=18 ;;
+  film)    NAME=venture-trader-film; AUDIO=render/make_audio_film.py; CRF=21 ;;
+  *) echo "usage: build.sh [trailer|film]" >&2; exit 2 ;;
 esac
 WEBM="dist/$NAME.webm"; MP4="dist/$NAME.mp4"; WAV="dist/_$NAME.wav"
 mkdir -p dist
 
 echo "1/4  rendering video…"
-node render/record.mjs --in "$PAGE" --out "$WEBM"          # silent
+if [ "$NAME" = openbb-30s ]; then node render/record.mjs --in src/openbb.html --out "$WEBM"
+else node film/record.mjs --out "$WEBM"; fi                # silent
 
 echo "2/4  synthesizing audio…"
 python3 "$AUDIO" "$WAV"
