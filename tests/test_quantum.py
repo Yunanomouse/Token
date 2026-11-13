@@ -2665,6 +2665,24 @@ class TestLiveBot(unittest.TestCase):
             self.assertEqual(out.read_text().splitlines()[0], "date,AAA,BBB")
             self.assertEqual(len(out.read_text().splitlines()), 3)
 
+    def test_fetch_drops_todays_bar_until_the_close_is_final(self):
+        import importlib.util
+        from datetime import datetime, timezone
+
+        spec = importlib.util.spec_from_file_location("fetch_prices", "scripts/fetch_prices.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        series = {"2026-11-12": 10.0, "2026-11-13": 11.0}
+        # 15:44 New York (20:44 UTC in winter): the market is open, today's bar is not a close
+        open_ = datetime(2026, 11, 13, 20, 44, tzinfo=timezone.utc)
+        self.assertEqual(mod.drop_unfinished(series, open_), {"2026-11-12": 10.0})
+        # 17:07 New York: the scheduled run keeps it
+        closed = datetime(2026, 11, 13, 22, 7, tzinfo=timezone.utc)
+        self.assertEqual(mod.drop_unfinished(series, closed), series)
+        # before the open next morning, yesterday's bar is final
+        early = datetime(2026, 11, 14, 13, 0, tzinfo=timezone.utc)
+        self.assertEqual(mod.drop_unfinished(series, early), series)
+
     def test_fetch_skips_a_source_that_is_unreachable(self):
         import importlib.util
         import urllib.error

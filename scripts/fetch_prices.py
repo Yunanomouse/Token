@@ -34,6 +34,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 UA = {"User-Agent": "Mozilla/5.0 (quantum-trading paper bot)"}
 # Yahoo rate-limits (HTTP 429) by User-Agent string, and which strings it
@@ -187,6 +188,20 @@ def sanity(ticker: str, series: dict[str, float], max_move: float = 0.5) -> None
             raise ValueError(f"{ticker}: {move:+.0%} from {a} to {b}; unadjusted split or bad data")
 
 
+def drop_unfinished(series: dict[str, float], now: datetime | None = None) -> dict[str, float]:
+    """Remove today's bar until 16:30 New York: before then it is not a close.
+
+    A run during market hours (a manual start, or one set off by a push)
+    would otherwise store a mid-session price as the day's close, and the
+    engine never revisits a day it has already seen.
+    """
+    ny = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/New_York"))
+    if (ny.hour, ny.minute) >= (16, 30):
+        return series
+    today = ny.strftime("%Y-%m-%d")
+    return {d: v for d, v in series.items() if d != today}
+
+
 def fetch(ticker: str, days: int) -> tuple[dict[str, float], str]:
     errors = []
     for name, fn in sources(ticker, days):
@@ -223,6 +238,7 @@ def main() -> int:
     series, used = {}, {}
     for t in tickers:
         series[t], used[t] = fetch(t, args.days + 10)
+        series[t] = drop_unfinished(series[t])
         print(f"{t:6} {used[t]:10} {len(series[t]):5} closes, last {max(series[t])}")
 
     lasts = {t: max(s) for t, s in series.items()}
