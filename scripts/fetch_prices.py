@@ -196,6 +196,13 @@ def unfinished_session(now: datetime | None = None) -> str | None:
     return day if ny < close + FINAL_AFTER else None
 
 
+def drop_unfinished(series: dict[str, float], now: datetime | None = None) -> dict[str, float]:
+    """``series`` without the bar of a session that may still be trading
+    (see :func:`unfinished_session`)."""
+    day = unfinished_session(now)
+    return {d: v for d, v in series.items() if d != day} if day else series
+
+
 # Sources that could not be reached at all this run.  A host that resets or
 # times out on every attempt for one ticker will do the same for the next, so
 # the rest of the run skips it instead of paying the retries per ticker.
