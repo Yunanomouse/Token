@@ -546,7 +546,8 @@
   "2026-11-09",
   "2026-11-10",
   "2026-11-11",
-  "2026-11-12"
+  "2026-11-12",
+  "2026-11-13"
  ],
  "prices": [
   [
@@ -5918,6 +5919,16 @@
    12.97,
    15.73,
    21.33
+  ],
+  [
+   11.91,
+   8.07,
+   11.22,
+   7.53,
+   5.26,
+   13.25,
+   15.82,
+   21.459999
   ]
  ],
  "cash": 13.944037999999995,
@@ -6462,7 +6473,8 @@
   33.474038,
   32.914038,
   33.074037999999994,
-  32.59403799999999
+  32.59403799999999,
+  32.694038
  ],
  "peak_equity": 40.599999999999994,
  "last_rebalance_index": 522,
@@ -6506,7 +6518,6 @@
   }
  ],
  "log": [
-  "2024-11-18 equity=40.00 dd=0.0% warmup",
   "2024-11-19 equity=40.00 dd=0.0% warmup",
   "2024-11-20 equity=40.00 dd=0.0% warmup",
   "2024-11-21 equity=40.00 dd=0.0% warmup",
@@ -7005,6 +7016,7 @@
   "2026-11-12 equity=32.59 dd=19.7% hold",
   "2026-11-12 re-based F: the feed's history moved by different amounts or upward (median x0.988019); prices re-based, shares unchanged",
   "2026-11-12 re-based ITUB: the feed's history moved by different amounts or upward (median x0.999220); prices re-based, shares unchanged",
-  "2026-11-12 re-based PCG: the feed's history moved by different amounts or upward (median x0.995895); prices re-based, shares unchanged"
+  "2026-11-12 re-based PCG: the feed's history moved by different amounts or upward (median x0.995895); prices re-based, shares unchanged",
+  "2026-11-13 equity=32.69 dd=19.5% hold"
  ]
 }
