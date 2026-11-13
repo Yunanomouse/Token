@@ -6,8 +6,8 @@
 // its image2pipe/mjpeg path. Result: a frame-perfect 30.0s clip at a fixed fps,
 // independent of how fast the machine renders.
 //
-// Usage:  node render/record.mjs [fps]
-// Output: dist/openbb-30s.webm  (1280x720)
+// Usage:  node render/record.mjs [--in src/page.html] [--out dist/name.webm] [--fps 30]
+// Default: src/openbb.html -> dist/openbb-30s.webm  (1280x720)
 
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
@@ -18,11 +18,12 @@ import { once } from 'node:events';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
-const htmlPath = resolve(root, 'src', 'openbb.html');
+const flag = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
+const htmlPath = resolve(root, flag('in', 'src/openbb.html'));
 const outDir = resolve(root, 'dist');
 
 const W = 1280, H = 720;
-const FPS = Number(process.argv[2]) || 30;
+const FPS = Number(flag('fps', /^\d+$/.test(process.argv[2] || '') ? process.argv[2] : 30));
 
 const ffmpeg = resolve(
   process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers',
@@ -31,7 +32,7 @@ const ffmpeg = resolve(
 if (!existsSync(ffmpeg)) { console.error('ffmpeg not found at ' + ffmpeg); process.exit(1); }
 
 mkdirSync(outDir, { recursive: true });
-const dest = resolve(outDir, 'openbb-30s.webm');
+const dest = resolve(root, flag('out', 'dist/openbb-30s.webm'));
 
 // ---- ffmpeg: read piped MJPEG frames, encode VP8/webm at a fixed frame rate ----
 const enc = spawn(ffmpeg, [

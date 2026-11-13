@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Venture Trader — 2 minute tour</title>
+<style>
+  :root{
+    --bg:#060b14; --surface:#0d1526; --card:#111827; --border:#1e2d45;
+    --accent:#00d4ff; --green:#00e676; --red:#ff3d71; --yellow:#ffb800; --violet:#7e57c2;
+    --text:#e2e8f0; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1280px;height:720px;overflow:hidden;background:var(--bg);}
+  body{font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);
+    position:relative;-webkit-font-smoothing:antialiased;font-size:13px;}
+  .mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+
+  .bg-a{position:absolute;inset:0;z-index:-4;pointer-events:none;background:
+    radial-gradient(1150px 540px at 50% -14%, rgba(0,212,255,.13), transparent 60%),
+    radial-gradient(900px 620px at 12% -8%, rgba(0,212,255,.10), transparent 60%),
+    radial-gradient(820px 600px at 78% 96%, rgba(0,230,118,.06), transparent 60%),
+    radial-gradient(150% 118% at 50% 42%, transparent 60%, rgba(2,5,11,.62) 100%),
+    linear-gradient(175deg,#070d18 0%,#060b14 45%,#050912 100%);}
+  .bg-grid{position:absolute;inset:0;z-index:-2;pointer-events:none;opacity:.5;background-image:
+    radial-gradient(rgba(0,212,255,.20) 1px, transparent 1.8px),
+    linear-gradient(rgba(30,45,69,.10) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(30,45,69,.10) 1px,transparent 1px);
+    background-size:46px 46px,46px 46px,46px 46px;
+    -webkit-mask-image:radial-gradient(circle at 50% 16%,#000 6%,transparent 84%);
+    mask-image:radial-gradient(circle at 50% 16%,#000 6%,transparent 84%);}
+
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;}
+  .anim{will-change:transform,opacity;}
+  .up{color:var(--green)} .dn{color:var(--red)} .ac{color:var(--accent)}
+
+  .mark{position:relative;border-radius:20px;display:grid;place-items:center;overflow:hidden;
+    background:linear-gradient(135deg,#00d4ff,#0070f3);box-shadow:0 0 34px rgba(0,212,255,.5);}
+  .mark svg{width:58%;height:58%}
+  .wordmark{font-weight:800;letter-spacing:-1.5px;} .wordmark span{color:var(--accent);}
+  .sub{color:var(--muted);font-weight:700;letter-spacing:.34em;text-transform:uppercase;}
+
+  /* SCENE 1 */
+  #s1{gap:18px;}
+  .brand{display:flex;align-items:center;gap:20px;}
+  #s1 .mark{width:82px;height:82px;border-radius:22px;}
+  #s1 .wordmark{font-size:64px;}
+  .s1-sub{font-size:14px;}
+  .accentline{height:3px;width:0;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--green));}
+  .tagline{font-size:21px;color:var(--text);opacity:.92;}
+
+  /* SCENE 2 : the app (demo) */
+  #s2{padding:0;perspective:1500px;perspective-origin:50% 44%;}
+  #cam{position:absolute;inset:0;padding:22px 26px;transform-style:preserve-3d;
+    will-change:transform;backface-visibility:hidden;}
+  .scroller{display:flex;flex-direction:column;gap:8px;will-change:transform;}
+  .app{width:100%;height:100%;border-radius:16px;overflow:hidden;border:1px solid var(--border);
+    background:var(--surface);box-shadow:0 30px 80px rgba(0,0,0,.55);display:flex;flex-direction:column;position:relative;}
+  .hd{height:50px;display:flex;align-items:center;gap:13px;padding:0 18px;
+    background:linear-gradient(135deg,rgba(10,22,40,.9),rgba(13,31,60,.9));border-bottom:1px solid var(--border);}
+  .hd .mark{width:28px;height:28px;border-radius:8px;}
+  .hd .logo b{font-size:14px;font-weight:800;display:block;line-height:1.05}
+  .hd .logo small{font-size:8px;color:var(--muted);letter-spacing:.18em;text-transform:uppercase}
+  .tape{margin-left:6px;flex:1;overflow:hidden;height:22px;position:relative;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
+    mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);}
+  .tape .row{position:absolute;white-space:nowrap;display:flex;gap:22px;align-items:center;font-size:11.5px;}
+  .tsym{color:var(--accent);font-weight:700}
+  .live{display:flex;align-items:center;gap:6px;background:rgba(0,230,118,.09);border:1px solid rgba(0,230,118,.3);
+    padding:4px 10px;border-radius:20px;font-size:10.5px;color:var(--green);font-weight:600;}
+  .live i{width:6px;height:6px;border-radius:50%;background:var(--green);display:block;}
+  .ts{font-size:10px;color:var(--muted);white-space:nowrap;}
+  .nav{display:flex;gap:2px;padding:0 15px;background:rgba(13,21,38,.78);border-bottom:1px solid var(--border);overflow:hidden;}
+  .nav span{font-size:11px;color:var(--muted);padding:11px 13px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;border-bottom:2px solid transparent;transition:none;}
+  .nav span.act{color:var(--accent);border-bottom-color:var(--accent);text-shadow:0 0 12px rgba(0,212,255,.5);}
+  .body{flex:1;position:relative;min-height:0;}
+  .panel{position:absolute;inset:0;padding:15px;display:flex;flex-direction:column;gap:11px;opacity:0;}
+
+  .brief{background:linear-gradient(135deg,#0d1b2e,#111827);border:1px solid var(--accent);border-radius:11px;
+    padding:12px 15px;box-shadow:0 0 26px rgba(0,212,255,.07);}
+  .brief b.h{font-size:13px;font-weight:800;} .brief .d{font-size:10px;color:var(--muted);margin:2px 0 7px}
+  .brief p{font-size:12.5px;line-height:1.5} .brief p em{font-style:normal;color:var(--red);font-weight:700} .brief p b{color:var(--red)}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;}
+  .st{background:linear-gradient(160deg,rgba(23,33,53,.7),rgba(14,20,33,.8));border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;position:relative;overflow:hidden;}
+  .st::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,212,255,.35),transparent);}
+  .st .l{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+  .st .v{font-size:24px;font-weight:800;margin-top:7px;line-height:1}
+  .st .s{font-size:10px;color:var(--muted);margin-top:6px}
+  .hm-card{flex:1;background:linear-gradient(160deg,rgba(23,33,53,.7),rgba(14,20,33,.8));border:1px solid var(--border);
+    border-radius:11px;padding:11px 13px;min-height:0;display:flex;flex-direction:column;}
+  .hm-h{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px;display:flex;justify-content:space-between}
+  .hm{position:relative;flex:1;}
+  .blk{position:absolute;border:1px solid rgba(255,255,255,.06);border-radius:4px;overflow:hidden;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .blk b{font-weight:800;color:#fff;line-height:1.1;text-shadow:0 1px 2px rgba(0,0,0,.55);}
+  .blk s{text-decoration:none;color:rgba(255,255,255,.9);line-height:1.1}
+  .blk.hot{border-color:rgba(0,212,255,.7);box-shadow:0 0 16px rgba(0,212,255,.4)}
+
+  /* signals panel */
+  .cols{display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:11px;height:100%}
+  .col{background:linear-gradient(160deg,rgba(23,33,53,.7),rgba(14,20,33,.8));border:1px solid var(--border);border-radius:11px;padding:12px 13px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+  .col h4{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;gap:6px}
+  .sig{background:#0a1628;border-radius:8px;padding:9px 11px;border-left:3px solid var(--border)}
+  .sig.H{border-left-color:var(--red)} .sig.M{border-left-color:var(--yellow)}
+  .sig .r{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+  .sig .sy{font-weight:700;font-size:12.5px;color:var(--accent)}
+  .badge{font-size:8px;font-weight:700;padding:2px 7px;border-radius:9px;text-transform:uppercase;letter-spacing:.4px}
+  .badge.H{background:rgba(255,61,113,.15);color:var(--red);border:1px solid rgba(255,61,113,.3)}
+  .badge.M{background:rgba(255,184,0,.13);color:var(--yellow);border:1px solid rgba(255,184,0,.25)}
+  .sig .ty{font-size:8.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .sig .ms{font-size:11px;color:#94a3b8;margin-top:2px;line-height:1.35}
+  .radar .rr{font-size:11.5px;line-height:1.5;padding:6px 0;border-bottom:1px solid var(--border)}
+  .radar .rr:last-child{border-bottom:0} .radar .rr b{color:var(--accent)}
+
+  /* AI panel */
+  .ai-out{background:#0a1628;border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.75;color:#94a3b8}
+  .ai-out b{color:var(--text)}
+  .analysts{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;flex:1;min-height:0}
+  .an{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--muted);border-radius:10px;padding:12px 13px}
+  .an.m{border-left-color:var(--accent)} .an.r{border-left-color:var(--red)} .an.s{border-left-color:var(--yellow)}
+  .an .ah{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .an .ab{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:14px}
+  .an.m .ab{background:rgba(0,212,255,.12)} .an.r .ab{background:rgba(255,61,113,.12)} .an.s .ab{background:rgba(255,184,0,.12)}
+  .an .nm{font-size:12.5px;font-weight:700} .an p{font-size:11px;color:#94a3b8;line-height:1.55}
+
+  /* stock detail modal */
+  .modal{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:640px;
+    background:linear-gradient(160deg,#141f36,#0e1421);border:1px solid var(--accent);border-radius:15px;
+    padding:20px 22px;box-shadow:0 24px 70px rgba(0,0,0,.65);opacity:0;z-index:20;}
+  .m-hd{display:flex;align-items:baseline;gap:12px}
+  .m-sym{font-size:23px;font-weight:800} .m-px{font-size:19px;font-weight:700}
+  .m-sub{font-size:11px;color:var(--muted);margin:3px 0 10px}
+  .m-tf{display:flex;gap:5px;margin-bottom:8px}
+  .m-tf span{font-size:10px;font-weight:700;padding:4px 11px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--muted)}
+  .m-tf span.on{background:var(--accent);color:#04121a;border-color:var(--accent)}
+  .m-chart{height:150px;background:#0a1220;border:1px solid var(--border);border-radius:9px}
+  .m-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:12px}
+  .m-box{background:rgba(10,18,32,.6);border:1px solid var(--border);border-radius:9px;padding:11px 13px}
+  .m-box h5{font-size:9px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin-bottom:7px}
+  .m-box .row{font-size:12px;line-height:1.7} .m-box .k{color:var(--muted)}
+
+  /* caption bar */
+  .cap{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);z-index:40;
+    display:flex;align-items:center;gap:12px;padding:13px 22px;border-radius:13px;max-width:900px;
+    background:rgba(8,15,28,.9);border:1px solid rgba(0,212,255,.3);backdrop-filter:blur(8px);
+    box-shadow:0 14px 44px rgba(0,0,0,.55);opacity:0;}
+  .cap i{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 12px var(--accent)}
+  .cap span{font-size:17px;font-weight:600;color:#fff;letter-spacing:.1px}
+
+  /* hover affordances (extra action) */
+  .sig,.an{transition:none}
+  .sig.gl{background:#0e2140;box-shadow:0 0 0 1px rgba(0,212,255,.55),0 0 20px rgba(0,212,255,.16)}
+  .an.gl{box-shadow:0 0 0 1px rgba(0,212,255,.55),0 0 24px rgba(0,212,255,.14)}
+  .tip{position:absolute;z-index:46;background:#0a1730;border:1px solid var(--accent);border-radius:9px;
+    padding:8px 12px;font-size:11.5px;color:#cbd5e1;white-space:nowrap;opacity:0;pointer-events:none;
+    box-shadow:0 10px 30px rgba(0,0,0,.55);}
+  .tip b{color:var(--accent)} .tip::after{content:"";position:absolute;left:26px;bottom:-6px;width:11px;height:11px;
+    background:#0a1730;border-right:1px solid var(--accent);border-bottom:1px solid var(--accent);transform:rotate(45deg)}
+  .refresh{position:absolute;top:57px;right:16px;z-index:46;display:flex;align-items:center;gap:7px;
+    background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.4);color:var(--green);
+    padding:6px 12px;border-radius:9px;font-size:11px;font-weight:700;opacity:0;}
+  .app.refreshing{box-shadow:0 0 0 2px rgba(0,230,118,.45),0 30px 80px rgba(0,0,0,.55)}
+
+  /* cursor + click ring */
+  #cursor{position:absolute;z-index:50;width:26px;height:26px;left:0;top:0;pointer-events:none;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.55));opacity:0;}
+  #ring{position:absolute;z-index:49;border:2px solid var(--accent);border-radius:50%;pointer-events:none;opacity:0;
+    left:0;top:0;width:10px;height:10px;margin:-5px 0 0 -5px;}
+
+  /* SCENE 3 outro */
+  #s3{gap:24px;}
+  .o-brand{display:flex;align-items:center;gap:18px}
+  #s3 .mark{width:62px;height:62px;border-radius:16px}
+  #s3 .wordmark{font-size:50px}
+  .o-cta{display:flex;gap:13px}
+  .btn{padding:13px 25px;border-radius:12px;font-weight:700;font-size:15px}
+  .btn.p{background:linear-gradient(135deg,#00d4ff,#0070f3);color:#04121a;box-shadow:0 14px 40px rgba(0,212,255,.4)}
+  .btn.g{background:var(--card);border:1px solid var(--border);color:var(--text)}
+  .o-sub{color:var(--muted);font-size:13px;letter-spacing:.3em;text-transform:uppercase;}
+
+  .prog{position:absolute;left:0;bottom:0;height:3px;width:0;z-index:60;background:linear-gradient(90deg,var(--accent),var(--green));}
+
+  /* ---- 2-minute tour additions ---- */
+  #s1{gap:0;}
+  .s1-stack{display:flex;flex-direction:column;align-items:center;gap:18px;}
+  .hk{position:absolute;left:0;right:0;top:50%;text-align:center;font-size:50px;font-weight:800;
+    letter-spacing:-1.4px;opacity:0;will-change:transform,opacity;}
+  .hk span{color:var(--accent);text-shadow:0 0 34px rgba(0,212,255,.45);}
+  .st .v{transform-origin:left center;}
+  .st.gl{border-color:rgba(0,212,255,.65);box-shadow:0 0 0 1px rgba(0,212,255,.4),0 0 28px rgba(0,212,255,.2);}
+  .brief.gl{box-shadow:0 0 0 1px rgba(0,212,255,.6),0 0 44px rgba(0,212,255,.28);}
+  .m-box.gl{border-color:rgba(0,212,255,.65);box-shadow:0 0 0 1px rgba(0,212,255,.4),0 0 24px rgba(0,212,255,.2);}
+  .m-sub{display:inline-block;padding-bottom:3px;background:linear-gradient(var(--accent),var(--accent)) no-repeat left bottom;background-size:0 2px;}
+  .m-sub.gl{color:#cbd5e1;}
+  .radar .rr{padding:6px 8px;border-radius:6px;}
+  .radar .rr.gl{background:rgba(0,212,255,.08);box-shadow:inset 3px 0 0 var(--accent);color:#e2e8f0;}
+  .nav span.hov{color:#e2e8f0;background:rgba(0,212,255,.12);border-radius:7px 7px 0 0;border-bottom-color:rgba(0,212,255,.45);}
+  .an{position:relative;}
+  .sk{position:absolute;left:13px;right:13px;top:54px;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+  .sk i{display:block;height:9px;border-radius:5px;background:linear-gradient(90deg,#1b2740,#2a3d63);}
+  .sk i:last-child{width:62%;}
+  .cap{white-space:nowrap;max-width:1180px;}
+  .col h4{position:relative;z-index:3;background:#141d30;margin:-12px -13px 0;padding:12px 13px 8px;}
+  .chips{display:flex;gap:10px;}
+  .chips span{padding:8px 15px;border-radius:20px;border:1px solid var(--border);background:rgba(17,24,39,.85);
+    font-size:13px;font-weight:600;color:var(--text);opacity:0;}
+  #s3{gap:22px;transform-origin:50% 50%;}
+</style>
+</head>
+<body>
+  <div class="bg-a"></div><div class="bg-grid"></div>
+
+  <!-- SCENE 1 : intro -->
+  <section class="scene" id="s1">
+    <div class="hk" id="hk0">Markets move <span>fast.</span></div>
+    <div class="hk" id="hk1">The signal gets buried in the <span>noise.</span></div>
+    <div class="hk" id="hk2">What if it was all <span>read for you?</span></div>
+    <div class="s1-stack">
+      <div class="brand anim" data-a="brand"><div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 19V5M4 19h16M8 16V11M12 16V7M16 16v-3M20 16V9" stroke="#04121a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wordmark">Venture <span>Trader</span></div></div>
+      <div class="s1-sub sub anim" data-a="s1sub">Automated Intelligence</div>
+      <div class="accentline anim" data-a="accent"></div>
+      <div class="tagline anim" data-a="s1tag">Here's everything it does — in two minutes.</div>
+    </div>
+  </section>
+
+  <!-- SCENE 2 : the guided demo -->
+  <section class="scene" id="s2">
+   <div id="cam">
+    <div class="app anim" data-a="app">
+      <div class="hd">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 19V5M4 19h16M8 16V11M12 16V7M16 16v-3M20 16V9" stroke="#04121a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="logo"><b>Venture&nbsp;Trader</b><small>Automated Intelligence</small></div>
+        <div class="tape"><div class="row mono" id="tape"></div></div>
+        <div class="live"><i id="livedot"></i> LIVE</div>
+        <div class="ts mono">Auto-refresh 30s</div>
+      </div>
+      <div class="nav" id="nav">
+        <span data-tab="Overview">Overview</span><span data-tab="Watchlist">Watchlist</span>
+        <span data-tab="Markets">🇺🇸 Markets</span><span data-tab="Crypto">Crypto</span>
+        <span data-tab="Signals">Signals (93)</span><span data-tab="Fundamentals">🧾 Fundamentals</span>
+        <span data-tab="News">News</span><span data-tab="Discover">🗞 Discover</span>
+        <span data-tab="Macro">Macro</span><span data-tab="AI">AI Analysis</span><span data-tab="Insiders">Insiders</span>
+      </div>
+
+      <div class="body">
+        <!-- OVERVIEW -->
+        <div class="panel" id="pv-ov">
+          <div class="brief">
+            <b class="h">📋 Today's Briefing</b>
+            <div class="d">Monday, August 17 · plain-English summary of everything below</div>
+            <p><span id="bDot">🔴</span> The market looks <em id="bLean">leaning negative</em> right now — of the 8 stocks we track, <b id="bUp">0 are up</b> and <b id="bDn">8 are down</b> today. Volatility (VIX) is calm at 14.25.</p>
+          </div>
+          <div class="stats">
+            <div class="st"><div class="l">📡 Market Sentiment</div><div class="v dn" id="sentV">Bearish</div><div class="s" id="sentSub">0 up · 10 down of 10</div></div>
+            <div class="st"><div class="l">🔥 High Conviction</div><div class="v dn">29</div><div class="s">signals need attention</div></div>
+            <div class="st"><div class="l">📊 Symbols Tracked</div><div class="v ac">10</div><div class="s">watchlist + crypto</div></div>
+            <div class="st"><div class="l">🏦 Fed Funds Rate</div><div class="v">3.5–3.75%</div><div class="s">current target rate</div></div>
+          </div>
+          <div class="hm-card">
+            <div class="hm-h"><span>🗺 Market Heatmap — 174 US stocks · sector by sector</span><span id="hmUpd">updated 2h ago</span></div>
+            <div class="hm" id="hm"></div>
+          </div>
+        </div>
+
+        <!-- SIGNALS -->
+        <div class="panel" id="pv-sig">
+          <div class="cols">
+            <div class="col">
+              <h4><span style="color:var(--red)">🔥</span> High Conviction (29)</h4>
+              <div class="scroller" id="sc1">
+              <div class="sig H"><div class="r"><span class="sy">FDMT $14.54</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">FDMT top gainer +19.32% — 4D Molecular</div></div>
+              <div class="sig H"><div class="r"><span class="sy">AXTI $95.97</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">AXTI top gainer +17.55% — AXT Inc</div></div>
+              <div class="sig H"><div class="r"><span class="sy">ARGX $987.84</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">ARGX top gainer +16.04% — argenx SE</div></div>
+              <div class="sig H"><div class="r"><span class="sy">NBIS $84.20</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">NBIS top gainer +14.10% — Nebius Group</div></div>
+              <div class="sig H"><div class="r"><span class="sy">SMR $41.88</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">SMR top gainer +12.90% — NuScale Power</div></div>
+              <div class="sig H"><div class="r"><span class="sy">IONQ $52.14</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">IONQ top gainer +11.75% — IonQ Inc</div></div><div class="sig H"><div class="r"><span class="sy">SNDK $1786.85</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">SNDK top gainer +8.88% — Sandisk</div></div><div class="sig H"><div class="r"><span class="sy">AMAT $535.31</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">AMAT top gainer +5.55% — Applied Materials</div></div><div class="sig H"><div class="r"><span class="sy">MU $1011.75</span><span class="badge H">High</span></div><div class="ty">Top Gainer</div><div class="ms">MU top gainer +4.13% — Micron Technology</div></div><div class="sig H"><div class="r"><span class="sy">PFE $25.77</span><span class="badge H">High</span></div><div class="ty">Insider Cluster</div><div class="ms">3 different insiders buying PFE</div></div>
+              </div>
+            </div>
+            <div class="col">
+              <h4><span style="color:var(--yellow)">⚡</span> Medium (64)</h4>
+              <div class="scroller" id="sc2">
+              <div class="sig M"><div class="r"><span class="sy">AAPL $305.59</span><span class="badge M">Med</span></div><div class="ty">RSI Oversold</div><div class="ms">AAPL RSI oversold at 23.13</div></div>
+              <div class="sig M"><div class="r"><span class="sy">NVDA $225.01</span><span class="badge M">Med</span></div><div class="ty">RSI Overbought</div><div class="ms">NVDA RSI overbought at 75.14</div></div>
+              <div class="sig M"><div class="r"><span class="sy">MSFT $480.35</span><span class="badge M">Med</span></div><div class="ty">Price Move</div><div class="ms">MSFT moved -3.04% to $480.35</div></div>
+              <div class="sig M"><div class="r"><span class="sy">TSLA $339.30</span><span class="badge M">Med</span></div><div class="ty">Options Flow</div><div class="ms">TSLA call flow 4.1× normal today</div></div>
+              <div class="sig M"><div class="r"><span class="sy">PLTR $61.20</span><span class="badge M">Med</span></div><div class="ty">RSI Overbought</div><div class="ms">PLTR RSI overbought at 71.8</div></div>
+              <div class="sig M"><div class="r"><span class="sy">COIN $402.50</span><span class="badge M">Med</span></div><div class="ty">Price Move</div><div class="ms">COIN moved +2.90% to $402.50</div></div><div class="sig M"><div class="r"><span class="sy">META $568.97</span><span class="badge M">Med</span></div><div class="ty">Price Move</div><div class="ms">META moved -3.54% to $568.97</div></div><div class="sig M"><div class="r"><span class="sy">ORCL $146.65</span><span class="badge M">Med</span></div><div class="ty">Price Move</div><div class="ms">ORCL moved -2.57% to $146.65</div></div><div class="sig M"><div class="r"><span class="sy">AMD $506.00</span><span class="badge M">Med</span></div><div class="ty">Price Move</div><div class="ms">AMD moved -1.63% to $506.00</div></div><div class="sig M"><div class="r"><span class="sy">TSLA $339.30</span><span class="badge M">Med</span></div><div class="ty">Social Buzz</div><div class="ms">TSLA Reddit buzz 4.1× normal</div></div>
+              </div>
+            </div>
+            <div class="col radar">
+              <h4><span style="color:var(--green)">🛒</span> Buy Radar — 19 setups forming</h4>
+              <div class="rr">🌱 <b>NVDA</b> forming at $225.01 — $789K call-heavy flow; Reddit buzz 3.0× normal.</div>
+              <div class="rr">🌱 <b>TSLA</b> forming at $339.30 — $1,824K call flow; Reddit buzz 4.1× normal.</div>
+              <div class="rr">🌱 <b>AAPL</b> forming at $305.59 — RSI oversold at 23.13.</div>
+              <div class="rr">🌱 <b>PFE</b> forming at $25.77 — 3 different insiders buying.</div>
+              <div class="rr" style="color:var(--muted);font-size:10.5px">…graded daily against real closes.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI -->
+        <div class="panel" id="pv-ai">
+          <div class="ai-out">🤖 <b>AI take:</b> The market appears <b>slightly bullish</b> with a few mixed signals. Nasdaq 100 and S&amp;P 500 futures show slight gains, while NVDA and AMZN carry strong momentum — but tech giants like MSFT and TSLA look stretched (RSI overbought). Watch Wednesday's CPI at ~3.4% YoY.</div>
+          <div class="analysts">
+            <div class="an m"><div class="ah"><div class="ab">📈</div><div class="nm">Markets Analyst</div></div><p>Neutral-to-bullish. NVDA strong-buy into earnings Aug 26; TSLA strong-sell — watch for a squeeze.</p></div>
+            <div class="an r"><div class="ah"><div class="ab">🛡️</div><div class="nm">Risk Sentinel</div></div><p>MSFT &amp; GOOGL overbought. High short interest on AAPL/MSFT/NVDA — squeeze risk. CPI is the catalyst.</p></div>
+            <div class="an s"><div class="ah"><div class="ab">🔬</div><div class="nm">Strategy Researcher</div></div><p>Trim high-conviction gainers — small sample. Set stops on medium signals; wait for more evidence.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- stock detail modal -->
+      <div class="modal" id="modal">
+        <div class="m-hd"><span class="m-sym">NVDA</span><span class="m-px dn">$225.01</span><span class="dn" style="font-size:13px">▼ -0.07%</span></div>
+        <div class="m-sub">above its 20-day avg · 20-day above 50-day (bullish alignment) · above its 200-day avg</div>
+        <div class="m-tf"><span>1D</span><span>1W</span><span class="on">1M</span><span>6M</span><span>1Y</span><span>5Y</span></div>
+        <svg class="m-chart" id="mchart" viewBox="0 0 600 150" preserveAspectRatio="none"></svg>
+        <div class="m-grid">
+          <div class="m-box"><h5>📈 Performance</h5><div class="row"><span class="k">1w</span> <span class="up">+3.8%</span> &nbsp; <span class="k">1m</span> <span class="up">+11.8%</span> &nbsp; <span class="k">1y</span> <span class="up">+24.4%</span></div></div>
+          <div class="m-box"><h5>🧾 Fundamentals</h5><div class="row"><span class="k">P/E</span> 34.5 · <span class="k">margin</span> <span class="up">63%</span> · <span class="k">rev YoY</span> <span class="up">+85%</span></div></div>
+        </div>
+      </div>
+
+      <!-- hover tooltip + auto-refresh toast (extra action) -->
+      <div class="tip" id="tip">🔥 <b>29 high-conviction</b> signals flagged today</div>
+      <div class="refresh" id="refresh">↻ Refreshing live data…</div>
+    </div>
+
+    <div id="ring"></div>
+    <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2l6 16 2.5-6.5L19 9 4 2z" fill="#fff" stroke="#0a1220" stroke-width="1.3" stroke-linejoin="round"/></svg>
+   </div>
+
+    <!-- narrator caption stays fixed (outside the camera) -->
+    <div class="cap" id="cap"><i></i><span id="captxt"></span></div>
+  </section>
+
+  <!-- SCENE 3 : outro -->
+  <section class="scene" id="s3">
+    <div class="o-brand anim" data-a="obrand">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 19V5M4 19h16M8 16V11M12 16V7M16 16v-3M20 16V9" stroke="#04121a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="wordmark">Venture <span>Trader</span></div>
+    </div>
+    <div class="chips" id="chips"><span>📋 Daily briefing</span><span>🗺 Live heatmap</span><span>⚡ 93 signals</span><span>🤖 AI analysis</span><span>↻ Auto-refresh</span></div>
+    <div class="o-cta anim" data-a="octa">
+      <div class="btn p">Open the dashboard</div>
+    </div>
+    <div class="o-sub anim" data-a="osub">Automated market intelligence</div>
+  </section>
+
+  <div class="prog" id="prog"></div>
+
+<script>
+/* Venture Trader — 2 minute guided tour.
+   Timeline source for src/venture-2min.html (inlined by render/make_tour_page.py).
+   128 BPM grid: 1 bar = 1875 ms, 64 bars = 120 s. Every scene change is on a downbeat,
+   and everything on screen is a pure function of the timestamp passed to seek(). */
+(function(){
+  "use strict";
+  const BAR=1875, B=n=>Math.round(n*BAR);
+  const DURATION=B(64);
+  const $=id=>document.getElementById(id);
+  const $$=s=>[...document.querySelectorAll(s)];
+  const A={}; $$(".anim").forEach(el=>A[el.dataset.a]=el);
+  const clamp=x=>x<0?0:x>1?1:x;
+  const outCubic=x=>1-Math.pow(1-x,3);
+  const outBack=x=>{const c=1.9;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);};
+  const inOut=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
+  const seg=(t,s,d)=>clamp((t-s)/d);
+  const bump=(t,c,d)=>{const x=(t-c)/d;return (x>=0&&x<=1)?Math.sin(x*Math.PI):0;};
+  const win=(t,a,b,fi,fo)=>clamp(Math.min(seg(t,a,fi||220),1-seg(t,b-(fo||220),fo||220)));
+  const setT=(k,op,tx,ty,sc)=>{const el=A[k];if(!el)return;el.style.opacity=op;
+    el.style.transform=`translate(${tx||0}px,${ty||0}px)`+(sc!=null?` scale(${sc})`:"");};
+
+  /* ---------------- section times (ms) ---------------- */
+  const T={ app:B(4), brief:B(6), stats:B(8), heat:B(12),
+    nvda:B(16), tf1:B(18), tf2:B(19), tf3:B(20), perf:B(21), fund:B(23), trend:B(25), mclose:B(27),
+    sig:B(28), sigH:B(30), sigM:B(33), radar:B(36), graded:B(39),
+    ai:B(40), an0:B(44), an1:B(46), an2:B(48),
+    tabs:B(50), ov2:B(53), out:B(58) };
+  const XF=260;
+
+  /* ---------------- static content ---------------- */
+  const arrow=u=>u?"▲":"▼";
+  const syms=[["TSLA","339.30",0,"0.87"],["AMD","506.00",0,"1.63"],["NVDA","225.01",0,"0.07"],
+    ["META","568.97",0,"3.54"],["AMZN","261.31",0,"0.51"],["AAPL","305.59",0,"0.11"],
+    ["MSFT","480.35",0,"3.04"],["MU","1011.75",1,"4.13"],["AMAT","535.31",1,"5.55"],
+    ["ARGX","987.84",1,"16.04"],["SNDK","1786.85",1,"8.88"],["ORCL","146.65",0,"2.57"]];
+  const tRow=()=>syms.map(([s,p,u,c])=>`<span><span class="tsym">${s}</span> ${p} <span class="${u?'up':'dn'}">${arrow(u)}${c}%</span></span>`).join("");
+  $("tape").innerHTML=tRow()+tRow();
+  const tapeEl=$("tape"); let tapeW=0;
+
+  // heatmap: two snapshots so the auto-refresh visibly updates values + colours
+  const hm=[["NVDA",-0.07,0,0,44,55],["AAPL",-0.11,0,55,44,45],["MSFT",-3.04,44,0,30,52],
+    ["AVGO",-0.14,74,0,26,52],["MU",4.13,44,52,17,48],["AMD",-1.63,61,52,17,48],
+    ["ORCL",-2.57,78,52,22,24],["PLTR",-0.86,78,76,22,24]];
+  const hm2v=[0.62,0.34,-2.11,0.28,4.88,-0.44,-1.72,0.51];
+  const lerpc=(a,b,e)=>a.map((v,i)=>Math.round(v+(b[i]-v)*e));
+  function hmColorC(n){ const red=[158,61,71],mid=[47,58,77],grn=[11,143,79]; let c,al;
+    if(n<=0){const e=clamp(-n/3.2); c=lerpc(mid,red,e); al=0.4+0.16*e;}
+    else{const e=clamp(n/4.4); c=lerpc(mid,grn,e); al=0.4+0.16*e;}
+    return `rgba(${c[0]},${c[1]},${c[2]},${al.toFixed(2)})`; }
+  const fmtv=v=>(v>=0?"+":"")+v.toFixed(2)+"%";
+  $("hm").innerHTML=hm.map(([s,v,x,y,w,h],i)=>
+    `<a class="blk" id="blk${i}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%;background:${hmColorC(v)}">
+      <b style="font-size:${w>28?13:10}px">${s}</b><s class="hmv" style="font-size:${w>28?10:8}px">${fmtv(v)}</s></a>`).join("");
+  const hmBlk=$$("#hm .blk"), hmVal=hmBlk.map(b=>b.querySelector(".hmv"));
+
+  // stock chart: one candlestick series (+ moving average) per timeframe
+  function genChart(seed,N,base,drift,vol){
+    const c=[]; let p=base, rs=seed*97+3; const rnd=()=>{rs=(rs*9301+49297)%233280;return rs/233280;};
+    for(let i=0;i<N;i++){const o=p, ch=drift+Math.sin(i/4+seed)*vol+(rnd()-0.5)*vol*1.5;
+      const cl=o+ch, hi=Math.max(o,cl)+vol*0.6, lo=Math.min(o,cl)-vol*0.6; c.push([o,hi,lo,cl]); p=cl;}
+    const lo=Math.min(...c.map(x=>x[2])), hi=Math.max(...c.map(x=>x[1])), W=600,H=150,cw=W/N,bw=cw*0.58;
+    const Y=v=>8+(H-16)-(v-lo)/(hi-lo)*(H-16); let s="";
+    c.forEach((k,i)=>{const x=i*cw+cw/2, up=k[3]>=k[0], col=up?"#00e676":"#ff3d71";
+      s+=`<line x1="${x.toFixed(1)}" y1="${Y(k[1]).toFixed(1)}" x2="${x.toFixed(1)}" y2="${Y(k[2]).toFixed(1)}" stroke="${col}" stroke-width="1"/>`;
+      const yt=Y(Math.max(k[0],k[3])), yb=Y(Math.min(k[0],k[3]));
+      s+=`<rect x="${(x-bw/2).toFixed(1)}" y="${yt.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,yb-yt).toFixed(1)}" fill="${col}"/>`;});
+    let pts=""; for(let i=0;i<N;i++){const w0=Math.max(0,i-3);let m=0,ct=0;for(let j=w0;j<=i;j++){m+=c[j][3];ct++;}m/=ct;
+      pts+=`${(i*cw+cw/2).toFixed(1)},${Y(m).toFixed(1)} `;}
+    return s+`<polyline points="${pts.trim()}" fill="none" stroke="#00d4ff" stroke-width="1.7" opacity=".92"/>`;
+  }
+  // [click time, pill index, series]  pills: 1D 1W 1M 6M 1Y 5Y
+  const TF=[[T.nvda,2,genChart(2,22,214,0.35,2.2)],[T.tf1,1,genChart(5,14,221,0.3,1.3)],
+            [T.tf2,3,genChart(7,28,186,1.25,3.0)],[T.tf3,4,genChart(9,34,150,1.7,3.6)]];
+  $("mchart").innerHTML=TF.map((f,i)=>`<g id="tf${i}" style="opacity:0">${f[2]}</g>`).join("");
+  const tfG=TF.map((f,i)=>$("tf"+i));
+
+  // word-by-word reveal for the AI text
+  function wordify(el){ const out=[]; (function walk(n){ [...n.childNodes].forEach(c=>{
+      if(c.nodeType===3){ const f=document.createDocumentFragment();
+        c.textContent.split(/(\s+)/).forEach(p=>{ if(!p) return;
+          if(/^\s+$/.test(p)) f.appendChild(document.createTextNode(p));
+          else{ const s=document.createElement("span"); s.className="w"; s.textContent=p; f.appendChild(s); out.push(s);} });
+        n.replaceChild(f,c);
+      } else if(c.nodeType===1) walk(c); }); })(el); return out; }
+  const reveal=(list,p)=>{ const k=p*list.length; for(let i=0;i<list.length;i++) list[i].style.opacity=i<k?1:0; };
+
+  /* ---------------- element handles ---------------- */
+  const tabs={}; $$("#nav span").forEach(s=>tabs[s.dataset.tab]=s);
+  const panels={ov:$("pv-ov"),sig:$("pv-sig"),ai:$("pv-ai")};
+  const pills=$$("#modal .m-tf span");
+  const stCards=$$("#pv-ov .stats .st"), stVals=stCards.map(c=>c.querySelector(".v"));
+  const brief=document.querySelector("#pv-ov .brief");
+  const mBoxes=$$("#modal .m-box"), mSub=document.querySelector("#modal .m-sub");
+  const mNums=mBoxes.map(b=>[...b.querySelectorAll(".up")]);
+  const rowsH=$$("#sc1 .sig"), rowsM=$$("#sc2 .sig"), rowsR=$$("#pv-sig .radar .rr");
+  const anCards=$$("#pv-ai .an");
+  const aiWords=wordify(document.querySelector("#pv-ai .ai-out"));
+  const anWords=anCards.map(c=>wordify(c.querySelector("p")));
+  anCards.forEach(c=>{ const sk=document.createElement("div"); sk.className="sk"; sk.innerHTML="<i></i><i></i>"; c.appendChild(sk); });
+  const anSk=anCards.map(c=>c.querySelector(".sk"));
+  const chips=$$("#chips span"), hooks=[$("hk0"),$("hk1"),$("hk2")];
+  const appEl=document.querySelector(".app");
+  // tab hit-boxes (measured before any camera transform is applied)
+  const tabBox={}; for(const k in tabs){ const r=tabs[k].getBoundingClientRect(); tabBox[k]=[r.left,r.right]; }
+
+  /* ---------------- timeline data ---------------- */
+  // which panel is on screen: [t0,t1,panel,tab]
+  const VIEWS=[[T.app,T.sig,"ov","Overview"],[T.sig,T.ai,"sig","Signals"],[T.ai,T.ov2,"ai","AI"],[T.ov2,T.out,"ov","Overview"]];
+  const panelOp=(name,t)=>{ let o=0; for(const [a,b,p] of VIEWS) if(p===name)
+      o=Math.max(o,Math.min(a===T.app?1:seg(t,a-200,200),1-seg(t,b-200,200))); return o; };
+
+  const CAPS=[
+    [T.app,   T.brief, "Meet Venture Trader — your whole market on one screen."],
+    [T.brief, T.stats, "It opens with a plain-English briefing of the day."],
+    [T.stats, B(10),   "Market sentiment and high-conviction signals, front and center."],
+    [B(10),   T.heat,  "Everything it tracks — and where the Fed stands."],
+    [T.heat,  B(14),   "The heatmap: 174 US stocks, sized and colored by the day's move."],
+    [B(14),   T.nvda,  "Red is down, green is up. One look shows where the action is."],
+    [T.nvda,  T.tf1,   "Click any ticker — and the full picture opens."],
+    [T.tf1,   T.perf,  "Flip through timeframes. Candles and moving average redraw instantly."],
+    [T.perf,  T.fund,  "Performance over a week, a month, a year."],
+    [T.fund,  T.trend, "Fundamentals right beside it — P/E, margins, revenue growth."],
+    [T.trend, T.sig-250,"Plus a one-line trend read against its key averages."],
+    [T.sig,   T.sigH,  "Signals: 93 live reads on the market, ranked by conviction."],
+    [T.sigH,  T.sigM,  "High conviction — the movers that need attention now."],
+    [T.sigM,  T.radar, "Medium signals: RSI extremes, sharp moves, unusual options flow."],
+    [T.radar, T.graded,"Buy Radar flags setups while they're still forming."],
+    [T.graded,T.ai,    "And every signal is graded daily against real closes."],
+    [T.ai,    B(42),   "Then the AI reads all of it — and tells you what it means."],
+    [B(42),   T.an0,   "A plain-English take. No jargon. No digging."],
+    [T.an0,   T.an1,   "Markets Analyst — where the momentum is."],
+    [T.an1,   T.an2,   "Risk Sentinel — what could go wrong."],
+    [T.an2,   T.tabs,  "Strategy Researcher — what to do about it."],
+    [T.tabs,  T.ov2,   "And there's more: watchlist, markets, crypto, fundamentals, news, macro, insiders."],
+    [T.ov2,   B(55.5), "Best part? You never have to reload."],
+    [B(55.5), T.out-200,"It refreshes itself every 30 seconds — prices, signals, briefing."]
+  ];
+
+  const CLICKS=[T.nvda,T.tf1,T.tf2,T.tf3,T.sig,T.ai,T.ov2];
+  const PUNCH=[[T.app,.022],[T.nvda,.022],[T.tf1,.010],[T.tf2,.010],[T.tf3,.010],[T.sig,.022],[T.ai,.022],[T.ov2,.020]];
+  const punch=t=>{let s=0;for(const[pt,mg]of PUNCH)s+=mg*bump(t,pt,180);return s;};
+
+  // cursor waypoints [t,x,y] in frame px
+  const WP=[
+    [T.app,900,360],[B(5),760,300],
+    [T.brief-300,520,190],[T.brief+900,420,182],[T.stats-200,760,186],
+    [T.stats+500,187,262],[T.stats+BAR+400,490,262],[T.stats+2*BAR+400,790,262],[T.stats+3*BAR+400,1092,262],
+    [T.heat+600,745,426],[B(13)+200,745,440],[B(13)+1100,669,590],[B(14)+900,868,590],
+    [B(15)+300,400,470],[T.nvda-250,372,480],[T.nvda,372,500],
+    [B(17),560,380],
+    [T.tf1-200,408,281],[T.tf1,408,281],[T.tf2-250,500,281],[T.tf2,500,281],[T.tf3-250,545,281],[T.tf3,545,281],
+    [B(20.6),640,380],
+    [T.perf+500,430,516],[T.fund-300,560,516],[T.fund+500,720,516],[T.trend-300,880,516],
+    [T.trend+600,420,258],[B(26.6),800,258],
+    [T.sig-250,458,100],[T.sig,458,100],
+    [B(29),600,300],
+    [T.sigH+500,235,190],[B(31.5),235,262],[T.sigM-300,235,330],
+    [T.sigM+500,620,190],[B(34.5),620,262],[T.radar-300,620,330],
+    [T.radar+500,1000,182],[B(37.3),1000,238],[B(38.1),1000,284],[T.graded-200,1000,322],
+    [T.graded+500,960,362],
+    [T.ai-250,945,100],[T.ai,945,100],
+    [B(41),300,150],[B(43.5),900,178],
+    [T.an0+500,237,285],[T.an1-200,300,300],[T.an1+500,640,285],[T.an2-200,700,300],
+    [T.an2+500,1042,285],[T.tabs-200,1100,300],
+    [T.tabs+350,179,96],[T.ov2-900,1037,96],
+    [T.ov2-250,86,100],[T.ov2,86,100],
+    [B(54),1160,54],[B(55),640,440],[B(56.5),560,470],[B(57),520,216],[T.out-200,700,220]
+  ];
+  // camera keyframes [t, focusX, focusY, zoom, rotX, rotY]
+  const CAM=[
+    [T.app,640,360,1.00,0,0],[T.brief-500,640,360,1.05,0,0],
+    [T.brief+500,510,170,1.30,2,0],[T.stats-300,512,170,1.33,2,0],           // briefing
+    [T.stats+500,440,262,1.50,1,0],[T.heat-500,840,262,1.50,1,0],           // pan along the stat cards
+    [T.heat+500,700,470,1.30,2,0],[B(14.6),700,500,1.36,2,1],               // heatmap
+    [T.nvda-600,330,432,1.58,3,-5],[T.nvda,330,450,1.52,2,-3],              // close on NVDA
+    [T.nvda+520,640,392,1.12,-2,0],                                          // the full stock card
+    [T.tf1-300,600,310,1.36,1,0],[T.tf3+300,640,360,1.48,0,0],[T.perf-200,640,372,1.46,0,0],
+    [T.perf+500,500,470,1.75,1,3],[T.fund-250,500,470,1.75,1,3],            // performance
+    [T.fund+500,780,470,1.75,1,-3],[T.trend-250,780,470,1.75,1,-3],         // fundamentals
+    [T.trend+500,560,262,1.62,2,0],[T.mclose,600,262,1.62,2,0],             // trend line
+    [T.sig-500,640,370,1.08,0,0],[T.sig,640,360,1.00,0,0],[T.sigH-400,640,360,1.06,0,0],
+    [T.sigH+500,240,300,1.32,1,4],[T.sigM-300,240,300,1.34,1,4],            // high conviction
+    [T.sigM+500,620,300,1.34,1,0],[T.radar-300,620,300,1.34,1,0],           // medium
+    [T.radar+500,1030,290,1.36,1,-4],[T.ai-600,1030,290,1.38,1,-4],         // buy radar
+    [T.ai-150,640,360,1.03,0,0],[T.ai,640,360,1.00,0,0],
+    [T.ai+700,524,180,1.25,3,0],[T.ai+2200,524,180,1.25,3,0],[T.ai+4600,756,180,1.25,3,0],[T.an0-300,560,190,1.27,3,0],  // follow the AI take as it types
+    [T.an0+500,320,330,1.50,2,3],[T.an1-250,320,330,1.52,2,3],
+    [T.an1+500,640,330,1.50,2,0],[T.an2-250,640,330,1.52,2,0],
+    [T.an2+500,960,330,1.50,2,-3],[T.tabs-250,960,330,1.52,2,-3],
+    [T.tabs+450,470,100,1.62,-2,2],[T.ov2-800,810,100,1.62,-2,-2],          // ride along the nav bar
+    [T.ov2-150,640,360,1.03,0,0],[T.ov2,640,360,1.00,0,0],
+    [B(54),640,360,1.03,-2,0],[B(54.4),640,468,1.30,2,0],[B(56.3),640,468,1.32,2,0],  // heatmap refreshing
+    [B(56.9),510,170,1.30,2,0],[B(57.7),512,170,1.32,2,0],                  // recomputed briefing
+    [T.out-150,640,360,1.04,0,0],[T.out,640,360,1.00,0,0]
+  ];
+  function track(K,t,n){ // eased interpolation through keyframes K=[t,...n values]
+    if(t<=K[0][0]) return K[0].slice(1);
+    const L=K[K.length-1]; if(t>=L[0]) return L.slice(1);
+    for(let i=0;i<K.length-1;i++){ if(t>=K[i][0]&&t<K[i+1][0]){
+      const e=inOut((t-K[i][0])/(K[i+1][0]-K[i][0])), a=K[i], b=K[i+1], r=[];
+      for(let k=1;k<=n;k++) r.push(a[k]+(b[k]-a[k])*e); return r; }}
+    return L.slice(1);
+  }
+  const lit=(nodes,t,start,step,hold)=>nodes.forEach((n,i)=>{const a=start+i*step; n.classList.toggle("gl",t>=a&&t<a+(hold||step));});
+
+  /* ---------------- the timeline ---------------- */
+  function seek(t){
+    t=clamp(t/DURATION)*DURATION;
+    $("prog").style.width=(t/DURATION*100)+"%";
+    $("s1").style.opacity=(1-seg(t,T.app-XF,XF)).toFixed(3);
+    $("s2").style.opacity=win(t,T.app,T.out,XF,XF).toFixed(3);
+    $("s3").style.opacity=Math.min(seg(t,T.out,XF),1-seg(t,DURATION-700,700)).toFixed(3);
+
+    // ---- hook: three lines, then the logo ----
+    hooks.forEach((h,i)=>{ const a=B(i)+60, b=B(i+1)-30, o=win(t,a,b,260,220), p=outCubic(seg(t,a,420));
+      h.style.opacity=o.toFixed(3);
+      h.style.transform=`translateY(${(-50+ (1-p)*40).toFixed(1)}%) scale(${(0.96+0.04*p+0.03*seg(t,a,BAR)).toFixed(3)})`; });
+    { const s=B(3), p=clamp(outBack(seg(t,s+60,520)));
+      setT("brand",p,0,22*(1-p),0.94+0.06*p);
+      A.accent.style.width=(300*outCubic(seg(t,s+380,620)))+"px"; A.accent.style.opacity=seg(t,s+300,200);
+      A.s1sub.style.opacity=seg(t,s+280,420); A.s1tag.style.opacity=seg(t,s+560,460); }
+
+    // ---- camera ----
+    { const c=track(CAM,t,5); let fx=c[0], fy=c[1]; const z=c[2]+punch(t);
+      if(z>1){ // how close the frame may get to the app's outer edge (relaxed where a shot needs the edge)
+        const ins=42-30*Math.max(win(t,T.brief,T.heat,500,500),win(t,T.ai,T.tabs,500,500),win(t,B(56.5),T.out,400,300));
+        const AL=ins,AR=1280-ins,AT=38-48*win(t,T.tabs,T.ov2,400,400),AB=682, mx=640/z, my=360/z, xa=AL+mx, xb=AR-mx, ya=AT+my, yb=AB-my;
+        fx = xa<=xb ? Math.min(Math.max(fx,xa),xb) : 640;  fy = ya<=yb ? Math.min(Math.max(fy,ya),yb) : 360; }
+      const cam=$("cam");
+      cam.style.transformOrigin=`${fx.toFixed(1)}px ${fy.toFixed(1)}px`;
+      cam.style.transform=`translate(${(640-fx).toFixed(1)}px,${(360-fy).toFixed(1)}px) scale(${z.toFixed(3)}) `+
+        `rotateX(${c[3].toFixed(2)}deg) rotateY(${c[4].toFixed(2)}deg)`; }
+
+    // ---- app shell ----
+    { const p=clamp(outBack(seg(t,T.app,480))); setT("app",p,0,0,0.985+0.015*p); }
+    for(const k in panels) panels[k].style.opacity=panelOp(k,t).toFixed(3);
+    let curTab="Overview"; for(const v of VIEWS) if(t>=v[0]-140&&t<v[1]) curTab=v[3];
+    const [cx,cy]=track(WP,t,2);
+    const ribbon=t>T.tabs+250&&t<T.ov2-650;
+    for(const k in tabs){ tabs[k].classList.toggle("act",k===curTab);
+      tabs[k].classList.toggle("hov",ribbon&&k!==curTab&&cx>=tabBox[k][0]&&cx<tabBox[k][1]); }
+    if(!tapeW) tapeW=tapeEl.scrollWidth/2;
+    tapeEl.style.transform=`translateX(${(-((t/11000)%1)*tapeW).toFixed(1)}px)`;
+    $("livedot").style.opacity=(0.4+0.6*Math.abs(Math.sin(t/(t>T.ov2?320:560)))).toFixed(2);
+
+    // ---- overview ----
+    { const hp=clamp((t-(T.app+200))/1300);
+      const rp=clamp((t-B(54.3))/1300);                       // auto-refresh morph
+      hmBlk.forEach((b,i)=>{ b.style.opacity=clamp(hp*hm.length-i).toFixed(3);
+        const loc=clamp(rp*1.35-i*0.045), v=hm[i][1]+(hm2v[i]-hm[i][1])*inOut(loc);
+        hmVal[i].textContent=fmtv(v); b.style.background=hmColorC(v);
+        b.style.filter=`brightness(${(1+0.5*Math.sin(loc*Math.PI)).toFixed(2)})`; });
+      // tiles the cursor rests on
+      const hot=[[2,T.heat+500,B(13)+900],[4,B(13)+900,B(14)+700],[5,B(14)+700,B(15)],[0,B(15)+400,T.nvda+120]];
+      hmBlk.forEach(b=>b.classList.remove("hot")); for(const [i,a,b] of hot) if(t>=a&&t<b) hmBlk[i].classList.add("hot");
+      // numbers count up as the dashboard loads, then pop when the camera visits them
+      const cu=outCubic(seg(t,T.app+350,1200));
+      stVals[1].textContent=Math.round(29*cu); stVals[2].textContent=Math.round(10*cu);
+      stCards.forEach((c,i)=>{ const a=T.stats+i*BAR+250; c.classList.toggle("gl",t>=a&&t<a+BAR);
+        stVals[i].style.transform=`scale(${(1+0.14*bump(t,a,420)).toFixed(3)})`; });
+      brief.classList.toggle("gl",(t>T.brief+300&&t<T.stats-150)||(t>B(56.8)&&t<T.out-250));
+      // refresh: toast + green pulse, then briefing and sentiment recompute
+      $("refresh").style.opacity=win(t,T.ov2+500,B(54.4),220,260).toFixed(2);
+      appEl.classList.toggle("refreshing",t>T.ov2+550&&t<B(54.4));
+      const g=inOut(clamp((t-B(54.5))/600)), uu=Math.round(5*g);
+      $("bUp").textContent=`${uu} are up`; $("bDn").textContent=`${8-uu} are down`;
+      $("sentSub").textContent=`${uu} up · ${10-uu} down of 10`;
+      $("bDot").textContent=uu>=4?"🟡":"🔴"; $("bLean").textContent=uu>=4?"turning mixed":"leaning negative";
+      $("sentV").textContent=uu>=4?"Mixed":"Bearish"; $("sentV").className=uu>=4?"v":"v dn";
+      $("hmUpd").textContent=g>0.15?"↻ updated just now":"updated 2h ago"; }
+
+    // ---- stock card ----
+    { const openP=clamp(outBack(seg(t,T.nvda,480))), m=$("modal");
+      m.style.opacity=Math.min(openP,1-seg(t,B(27.6),300)).toFixed(3);
+      m.style.transform=`translate(-50%,-50%) scale(${(0.72+0.28*openP).toFixed(3)})`;
+      let cur=0; TF.forEach((f,i)=>{ if(t>=f[0]) cur=i; });
+      pills.forEach((s,i)=>s.classList.toggle("on",i===TF[cur][1]));
+      TF.forEach((f,i)=>{ const st=f[0]+(i?90:0), draw=outCubic(seg(t,st,560));
+        const gone=i<TF.length-1?seg(t,TF[i+1][0],220):0;
+        tfG[i].style.opacity=(clamp(seg(t,st,180))*(1-gone)).toFixed(3);
+        tfG[i].style.clipPath=`inset(0 ${((1-draw)*100).toFixed(1)}% 0 0)`; });
+      mBoxes[0].classList.toggle("gl",t>T.perf+300&&t<T.fund-100);
+      mBoxes[1].classList.toggle("gl",t>T.fund+300&&t<T.trend-100);
+      mNums.forEach((ns,bi)=>ns.forEach((n,i)=>{ const a=(bi?T.fund:T.perf)+550+i*380;
+        n.style.display="inline-block"; n.style.transform=`scale(${(1+0.28*bump(t,a,420)).toFixed(3)})`; }));
+      const tr=outCubic(seg(t,T.trend+350,1500)); mSub.classList.toggle("gl",t>T.trend+300&&t<B(27.6));
+      mSub.style.backgroundSize=`${(tr*100).toFixed(1)}% 2px`; }
+
+    // ---- signals ----
+    { $("sc1").style.transform=`translateY(${(-235*inOut(seg(t,T.sigH+700,4300))).toFixed(1)}px)`;
+      $("sc2").style.transform=`translateY(${(-235*inOut(seg(t,T.sigM+700,4300))).toFixed(1)}px)`;
+      lit(rowsH,t,T.sigH+450,490); lit(rowsM,t,T.sigM+450,490);
+      rowsR.forEach((r,i)=>{ const a=i<4?T.radar+450+i*1250:T.graded+200, b=i<4?a+1250:T.ai-250;
+        r.classList.toggle("gl",t>=a&&t<b); }); }
+
+    // ---- AI analysis ----
+    { reveal(aiWords,seg(t,T.ai+500,5200));
+      [T.an0,T.an1,T.an2].forEach((a,i)=>{ const p=seg(t,a+450,2100);
+        reveal(anWords[i],p); anCards[i].classList.toggle("gl",t>=a+250&&t<a+2*BAR-150);
+        anSk[i].style.opacity=(p>0?0:0.35+0.3*Math.abs(Math.sin(t/420+i))).toFixed(2); }); }
+
+    // ---- caption ----
+    { let cb=null; for(const c of CAPS) if(t>=c[0]&&t<c[1]) cb=c; const cap=$("cap");
+      if(cb){ $("captxt").textContent=cb[2]; cap.style.opacity=win(t,cb[0]+80,cb[1],200,200).toFixed(3); }
+      else cap.style.opacity=0; }
+
+    // ---- cursor + click ring ----
+    { const cur=$("cursor"), ring=$("ring");
+      cur.style.opacity=(t>T.app-100&&t<T.out-100)?1:0; cur.style.transform=`translate(${cx.toFixed(1)}px,${cy.toFixed(1)}px)`;
+      let rr=-1; for(const ct of CLICKS){ const e=seg(t,ct-40,340); if(e>0&&e<1) rr=e; }
+      if(rr>=0){ const sz=8+rr*50; ring.style.opacity=((1-rr)*0.95).toFixed(3); ring.style.width=sz+"px"; ring.style.height=sz+"px";
+        ring.style.transform=`translate(${(cx+2).toFixed(1)}px,${(cy+4).toFixed(1)}px)`; } else ring.style.opacity=0; }
+
+    // ---- outro ----
+    { const p=clamp(outBack(seg(t,T.out+120,560))); setT("obrand",p,0,0,0.9+0.1*p);
+      chips.forEach((c,i)=>{ const q=outCubic(seg(t,T.out+1200+i*560,460));
+        c.style.opacity=q.toFixed(3); c.style.transform=`translateY(${((1-q)*14).toFixed(1)}px)`; });
+      A.octa.style.opacity=seg(t,T.out+4700,560); A.osub.style.opacity=seg(t,T.out+5500,640);
+      $("s3").style.transform=`scale(${(1+0.035*seg(t,T.out,DURATION-T.out)).toFixed(4)})`; }
+  }
+  window.__seek=seek; window.__DURATION=DURATION; window.__T=T; seek(0); window.__READY__=true;
+})();
+</script>
+</body>
+</html>

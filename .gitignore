@@ -3,3 +3,9 @@
 
 # Transient render scratch
 /dist/_frames/
+
+# Intermediate / oversized render outputs (the tour ships as MP4)
+/dist/venture-2min.webm
+/dist/_*.wav
+/dist/_final.webm
+__pycache__/
