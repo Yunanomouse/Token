@@ -8,7 +8,9 @@ Source: Yahoo Finance's chart endpoint (no key).  Standard library only.
 Yahoo caps how far back intraday bars go: 1m about 7-8 days, 2m/5m/15m about
 60 days.  Output columns: datetime,ticker,open,high,low,close,volume, with
 datetime in the exchange's local time (no offset), regular session only
-(bar start 09:30 <= t < 16:00).  Bars with any null OHLC are dropped.
+(bar start 09:30 <= t < 16:00), finished bars on the interval's grid from
+09:30 only (the bar still forming and Yahoo's off-grid last-price point are
+dropped).  Bars with any null OHLC are dropped.
 
 A ticker that fails or returns no bars is reported and skipped; the script
 exits non-zero only if no ticker at all succeeded.
@@ -22,7 +24,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
 UA = {"User-Agent": "Mozilla/5.0 (quantum-trading paper bot)"}
@@ -53,7 +55,8 @@ def _http_detail(exc: urllib.error.HTTPError) -> str:
 
 
 def yahoo_intraday(ticker: str, interval: str, rng: str) -> list[tuple]:
-    """Return [(local datetime, open, high, low, close, volume)] for the regular session."""
+    """Return [(local datetime, open, high, low, close, volume)]: the regular
+    session's finished bars (see :func:`parse_chart`)."""
     url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
            f"?range={rng}&interval={interval}")
     data = None
@@ -71,6 +74,18 @@ def yahoo_intraday(ticker: str, interval: str, rng: str) -> list[tuple]:
                         "1m ~7d, 2m/5m/15m ~60d; try a shorter --range)")
             raise RuntimeError(msg) from None
 
+    return parse_chart(data, interval)
+
+
+def parse_chart(data: dict, interval: str, now: datetime | None = None) -> list[tuple]:
+    """Regular-session bars from a Yahoo chart response.
+
+    Only whole bars on the interval's grid from 09:30 are kept.  Yahoo also
+    returns the bar still forming and, during the session, a last-price
+    point stamped with the time of the last trade (e.g. 14:07:25, volume
+    0); a row off the grid (seconds != 0, or minutes since 09:30 not a
+    multiple of the interval) is dropped, and so is a bar that has not
+    finished by ``now`` (default: the current time)."""
     chart = data.get("chart", {})
     if chart.get("error"):
         desc = chart["error"].get("description", chart["error"])
@@ -82,6 +97,10 @@ def yahoo_intraday(ticker: str, interval: str, rng: str) -> list[tuple]:
     ts = res.get("timestamp") or []
     quote = (res.get("indicators", {}).get("quote") or [{}])[0]
     tz = ZoneInfo(res.get("meta", {}).get("exchangeTimezoneName") or DEFAULT_TZ)
+    step = int(interval[:-1])  # minutes: every interval is "<n>m"
+    now = now if now is not None else datetime.now(tz)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=tz)
 
     cols = [quote.get(k) or [] for k in ("open", "high", "low", "close", "volume")]
     bars = []
@@ -92,6 +111,10 @@ def yahoo_intraday(ticker: str, interval: str, rng: str) -> list[tuple]:
         local = datetime.fromtimestamp(t, tz=tz)
         if not (SESSION_OPEN <= local.time() < SESSION_CLOSE):
             continue
+        if local.second or local.microsecond or (local.hour * 60 + local.minute - 570) % step:
+            continue  # the last-price point, off the bar grid
+        if local + timedelta(minutes=step) > now:
+            continue  # the bar still forming
         bars.append((local.replace(tzinfo=None), o, h, l, c, int(v or 0)))
     if not bars:
         raise ValueError("no regular-session bars in response")

@@ -31,7 +31,6 @@ sell into this use case today.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
 import numpy as np

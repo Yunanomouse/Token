@@ -17,6 +17,9 @@ live_state.json
 /build/
 /dist/
 
+# Quantum Station data (python -m quantum.local): bot state, prices, logs
+/local_data/
+
 # Local notes and reports
 research_notes/
 reports/

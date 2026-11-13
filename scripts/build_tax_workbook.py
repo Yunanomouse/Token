@@ -204,7 +204,7 @@ row(8, "Home office deduction", [f'=-MIN(Inputs!$B$7*12*Inputs!$B$8,{c}7)' for c
 note("B8", "Rent x 12 x office share, capped at trading profit — business-use-of-home expenses cannot create a loss (unused amounts carry forward; carryforward not modelled).")
 row(9, "Other trading expenses", [f'=-MIN(Inputs!$B$9,{c}7+{c}8)' for c in "BCDE"], font=F_LINK)
 row(10, "Net trading income", [f'={c}7+{c}8+{c}9' for c in "BCDE"], font=F_TOTAL)
-row(11, "Employment income", ['=Inputs!$B$4*Inputs!$B$5*Inputs!$B$6'] + [f'=$B$11' for _ in "CDE"], font=F_LINK)
+row(11, "Employment income", ['=Inputs!$B$4*Inputs!$B$5*Inputs!$B$6'] + ['=$B$11' for _ in "CDE"], font=F_LINK)
 row(12, "Total income", [f'={c}10+{c}11' for c in "BCDE"], font=F_TOTAL)
 
 # --- payroll section

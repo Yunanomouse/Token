@@ -681,7 +681,7 @@ const BUILTIN = /*__DATA__*/;
     const fb = $("fills"); fb.textContent = "";
     (L ? L.fills : e.fills).slice(-20).reverse().forEach(f => {
       const tr = document.createElement("tr"), sold = f.quantity < 0 && f.realized_pnl != null;
-      tr.append(td(f.date), td(f.ticker, "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num"),
+      tr.append(td(f.date), td(f.ticker + (f.note ? " · " + f.note : ""), "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num"),
         td(sold ? usd(f.realized_pnl) : "", sold ? gl(f.realized_pnl) : "num"));
       fb.appendChild(tr);
     });
@@ -752,7 +752,9 @@ const BUILTIN = /*__DATA__*/;
   function engineCfg(c, strategy) {
     return { tickers: c.tickers, strategy: strategy || c.strategy, cardinality: c.cardinality, riskAversion: c.risk_aversion,
       window: c.window, rebalanceEvery: c.rebalance_every, initialCash: c.initial_cash, feeRate: c.fee_rate, tradeFrom: c.trade_from || null,
-      limits: { maxWeight: c.limits.max_weight, maxTurnover: c.limits.max_turnover, maxDrawdown: c.limits.max_drawdown, minHistory: c.limits.min_history, rearmAfter: c.limits.rearm_after || 0 } };
+      wholeShares: !!c.whole_shares, fillLeftover: !!c.fill_leftover,
+      limits: { maxWeight: c.limits.max_weight, maxTurnover: c.limits.max_turnover, maxDrawdown: c.limits.max_drawdown, minHistory: c.limits.min_history,
+                rearmAfter: c.limits.rearm_after || 0, minCashFraction: c.limits.min_cash_fraction || 0, deployFromCash: !!c.limits.deploy_from_cash } };
   }
   // Re-run the bot on its own prices, in this browser.  Also runs equal
   // weight from the same first trading day, as the benchmark line.
@@ -770,7 +772,10 @@ const BUILTIN = /*__DATA__*/;
       mine.onBar(bar); bench.onBar(bar);
     });
     live.bench = bench;
-    if (st.mode && st.mode !== "paper") { live.check = { state: "broker" }; return; }
+    if (st.mode && st.mode.startsWith("alpaca")) { live.check = { state: "broker" }; return; }
+    // A split or dividend re-based a whole-share book: share counts depend on the price level,
+    // so replaying the re-based history cannot land on the same cents.
+    if (st.adjusted && c.whole_shares) { live.check = { state: "adjusted" }; return; }
     if (!pr.full_history) { live.check = { state: "partial" }; return; }
     const got = mine.equity[mine.equity.length - 1], want = st.equity;
     const same = Math.abs(got - want) <= Math.max(0.01, 1e-9 * Math.abs(want)) && mine.fills.length === st.n_fills && mine.halted === st.halted;
@@ -845,7 +850,7 @@ const BUILTIN = /*__DATA__*/;
 
     const fb = $("lFillsTable"); fb.textContent = "";
     (st.fills || []).slice(-20).reverse().forEach(f => { const tr = document.createElement("tr"), sold = f.quantity < 0 && f.realized_pnl != null;
-      tr.append(td(f.date), td(f.ticker, "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num"),
+      tr.append(td(f.date), td(f.ticker + (f.note ? " · " + f.note : ""), "t"), td((f.quantity >= 0 ? "+" : "−") + Math.abs(f.quantity).toLocaleString("en-US", { maximumFractionDigits: 1 }), "num"), td(money2(f.price), "num"), td(money2(f.fee), "num"),
         td(sold ? usd(f.realized_pnl) : "", sold ? gl(f.realized_pnl) : "num")); fb.appendChild(tr); });
     if (!(st.fills || []).length) { const tr = document.createElement("tr"); const cc = td("No trades yet.", "muted"); cc.colSpan = 6; tr.appendChild(cc); fb.appendChild(tr); }
     $("lLog").textContent = (st.log || []).slice(-40).reverse().join("\n");
@@ -863,6 +868,7 @@ const BUILTIN = /*__DATA__*/;
     box.className = "check" + (ck && ck.state === "ok" ? " ok" : ck && ck.state === "bad" ? " bad" : "");
     if (!live.prices) { mark.textContent = "…"; txt.textContent = "Waiting for the bot's price history."; }
     else if (ck && ck.state === "broker") { mark.textContent = "–"; txt.textContent = (st.mode === "alpaca-live" ? "REAL MONEY: " : "Alpaca paper account: ") + "orders go to Alpaca and fill at the next open, so this browser's paper re-run cannot match to the cent. The numbers shown are the bot's own."; }
+    else if (ck && ck.state === "adjusted") { mark.textContent = "–"; txt.textContent = "A split or dividend re-based this whole-share bot's history, so this browser's re-run cannot match to the cent. The numbers shown are the bot's own."; }
     else if (!ck || ck.state === "partial") { mark.textContent = "–"; txt.textContent = "The bot's full price history is too long to re-check here; the report is shown as the bot sent it."; }
     else if (ck.state === "ok") { mark.textContent = "✓"; txt.textContent = `This browser re-ran the bot on the same ${live.prices.dates.length} days of prices and reached ${money2(ck.got)} with ${ck.fills} trades: exactly what the bot reported.`; }
     else { mark.textContent = "!"; txt.textContent = `This browser reached ${money2(ck.got)} with ${ck.fills} trades, but the bot reported ${money2(ck.want)} with ${live.status.n_fills}. The two copies disagree; check the bot's run on GitHub.`; }

@@ -1034,7 +1034,7 @@ again.  The API behind the page is covered by tests without a browser.
 python3 -m pytest tests -q        # or: python3 -m unittest discover -s tests -v
 ```
 
-181 tests. The principle throughout: **every quantum routine is checked against
+241 tests. The principle throughout: **every quantum routine is checked against
 an exact classical reference**, never against itself.
 
 - Physics — Bell/GHZ states, unitarity, adjoint identity, QFT against `numpy.fft`,

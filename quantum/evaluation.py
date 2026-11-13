@@ -98,22 +98,28 @@ def deflated_sharpe(returns: Sequence[float], n_trials: int, sr_std: float) -> f
     return probabilistic_sharpe(returns, expected_max_sharpe(n_trials, sr_std))
 
 
-def evaluate_bot(state, trade_from: str | None = None, periods_per_year: int = 252) -> dict:
+def evaluate_bot(state, trade_from: str | None = None, periods_per_year: int = 252,
+                 first_bar: int = 0) -> dict:
     """The bot against equal weight of its own stocks, from its first tradable day.
 
-    ``state`` is an :class:`quantum.live.EngineState`.  Equal weight is
+    ``state`` is an :class:`quantum.live.EngineState`.  The first tradable
+    day is the first date on or after ``trade_from``; without it, bar
+    ``first_bar`` (the first the engine can trade after its warm-up, see
+    :func:`quantum.live.first_tradable_bar`), so equal weight is not
+    credited with a run the bot could not take part in.  Equal weight is
     rebalanced daily, costless -- a generous benchmark, and the one the
     backtests used.  Returns plain numbers and a verdict under
     :data:`STOP_RULE`.
     """
     dates = list(state.dates)
-    start = 0
+    start = min(max(int(first_bar), 0), len(dates))
     if trade_from:
         start = next((i for i, d in enumerate(dates) if d >= trade_from), len(dates))
     equity = np.asarray(state.equity_curve[start:], dtype=np.float64)
     prices = np.asarray(state.prices[start:], dtype=np.float64)
     n = len(equity) - 1
-    out = {"days": max(n, 0), "stop_rule": STOP_RULE["text"]}
+    out = {"days": max(n, 0), "from": dates[start] if start < len(dates) else None,
+           "stop_rule": STOP_RULE["text"]}
     if n < 2:
         out["verdict"] = "too early: fewer than 3 trading days since the first tradable day"
         return out
