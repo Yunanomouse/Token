@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Quantum Trading
+Comment=Paper-trading dashboard for the quantum portfolio optimiser
+Exec=sh -c 'cd "$(dirname "%k")" && python3 launch.py'
+Terminal=true
+Categories=Office;Finance;

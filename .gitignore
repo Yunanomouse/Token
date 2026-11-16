@@ -1,5 +1,28 @@
 __pycache__/
 *.pyc
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Market data CSVs written by examples/openbb_quickstart.py
 examples/market_data/
+
+# Scratch clones from research (reference only, never vendored)
+/quest/
+/QOKit/
+/QTensor/
+*.egg-info/
+live_state.json
+
+# Standalone app builds (packaging/build.py)
+/build/
+/dist/
+
+# Quantum Station data (python -m quantum.local): bot state, prices, logs
+/local_data/
+
+# Local notes and reports
 research_notes/
 reports/

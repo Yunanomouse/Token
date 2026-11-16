@@ -1,0 +1,128 @@
+name: desktop app
+
+# Builds the standalone app (Python and numpy bundled, nothing to install) on
+# each operating system, starts the built program to prove it runs, keeps
+# the zips as run artifacts, and, once every system built, puts them on the
+# "desktop-latest" release: one stable download link.  That happens on every
+# push that changes the app, and on a manual run with "publish" ticked (a
+# manual run needs this file on the default branch).
+on:
+  push:
+    paths:
+      - "quantum/**"
+      - "launch.py"
+      - "packaging/**"
+      - "web/quantum-trading.html"
+      - ".github/workflows/desktop-app.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the zips to the desktop-latest release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, macos-15-intel, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install "pyinstaller>=6.10,<7" -e .
+      - name: Build
+        run: python packaging/build.py
+      - name: Run the built engine
+        run: |
+          cd dist/quantum-trading-*/
+          APP="./Quantum Trading"; [ -f "$APP.exe" ] && APP="$APP.exe"
+          "$APP" live --replay data/prices/us_equities_1989_2018.csv --tickers AAPL,XOM,JPM,WMT \
+            --start 2013-01-01 --end 2013-12-31 --window 60 --state ci_state.json | tee out.txt
+          grep -q "gains/losses" out.txt
+          rm -f ci_state.json out.txt
+      - name: Run the built dashboard
+        run: |
+          cd dist/quantum-trading-*/
+          APP="./Quantum Trading"; [ -f "$APP.exe" ] && APP="$APP.exe"
+          "$APP" desktop --port 8799 --no-browser > server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8799/api/state > state.json && break
+            sleep 1
+          done
+          python -c "import json; s = json.load(open('state.json')); assert 'data/prices/us_equities_1989_2018.csv' in s['files'], s['files']; print('dashboard up; files:', s['files'])"
+          kill $! 2>/dev/null || true
+          [ "$RUNNER_OS" = "Windows" ] && taskkill //F //IM "Quantum Trading.exe" 2>/dev/null || true
+          sleep 2
+          rm -f state.json server.log live_state.json
+      - name: Build the Windows installer
+        if: runner.os == 'Windows'
+        run: |
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          [ -f "$ISCC" ] || choco install innosetup -y --no-progress
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          "$ISCC" //DSourceDir="$(cygpath -w "$PWD"/dist/quantum-trading-windows-x64)" //DAppVersion="$VERSION" \
+            //O"$(cygpath -w "$PWD"/dist)" packaging/windows_installer.iss
+          ls -la dist
+      - name: Install, run and uninstall it
+        if: runner.os == 'Windows'
+        run: |
+          # Silent per-user install, exactly what a double-click and Next would do.
+          "dist/Quantum Trading Setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //CURRENTUSER //NORESTART //TASKS=desktopicon
+          APPDIR="$(cygpath -u "$LOCALAPPDATA")/Programs/Quantum Trading"
+          MENU="$(cygpath -u "$APPDATA")/Microsoft/Windows/Start Menu/Programs/Quantum Trading"
+          ls "$APPDIR" "$MENU"
+          ls "$(cygpath -u "$USERPROFILE")/Desktop/Quantum Trading.lnk" || ls "$(cygpath -u "$PUBLIC")/Desktop/Quantum Trading.lnk"
+          # Use it the way a person does: a replay that saves a paper book in the
+          # folder, and the dashboard left running.
+          (cd "$APPDIR" && ./"Quantum Trading.exe" live --replay data/prices/us_equities_1989_2018.csv --tickers AAPL,XOM,JPM,WMT \
+            --start 2013-01-01 --end 2013-06-30 --window 60 --state live_state.json | grep "gains/losses")
+          ls "$APPDIR/live_state.json"
+          (cd "$APPDIR" && ./"Quantum Trading.exe" desktop --port 8798 --no-browser > /dev/null 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8798/api/state > /dev/null && break; sleep 1; done
+          tasklist | grep -i "Quantum Trading"
+          # Uninstall with all that in place.  The uninstaller hands off to a
+          # temporary copy and returns at once: wait for the folder to go.
+          "$APPDIR/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
+          for i in $(seq 1 90); do [ -e "$APPDIR" ] || break; sleep 1; done
+          if [ -e "$APPDIR" ] || [ -e "$MENU" ]; then echo "left behind:"; find "$APPDIR" "$MENU" 2>/dev/null | head -20; exit 1; fi
+          ! tasklist | grep -i "Quantum Trading"
+          echo "uninstalled cleanly: program stopped, folder and Start menu entries gone"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          path: |
+            dist/*.zip
+            dist/*.exe
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: zips
+          merge-multiple: true
+      - name: Replace the desktop-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la zips
+          gh release delete desktop-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create desktop-latest zips/*.zip zips/*.exe --target "$GITHUB_SHA" --prerelease \
+            --title "Quantum Trading desktop app (paper trading)" \
+            --notes "Windows: download Quantum Trading Setup.exe and double-click it to install (Start menu, optional desktop icon, uninstall from Settings > Apps; no administrator rights needed; if SmartScreen warns, More info > Run anyway). Or use a zip: unzip, then double-click. Python and numpy are included. Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Windows: Quantum Trading.exe. macOS: Open Quantum Trading.command (right-click > Open the first time); macos-latest is Apple Silicon, macos-15-intel is Intel. Linux: Quantum Trading. Paper trading only: it cannot place real orders."

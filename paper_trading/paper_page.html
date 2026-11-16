@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Trading</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0:#f4f4f2; --surface-1:#fcfcfb; --surface-2:#ececea; --border:#dcdbd6;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#686761;
+  --series-1:#2a78d6; --series-2:#eb6834;
+  --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
+  --good-text:#0a7a0a; --critical-text:#b52e2e; --warn-bg:#fff4d6; --warn-border:#e0a000;
+  --good-bg:#e8f6e8; --bad-bg:#fbeaea;
+  --banner-bg:#fab219; --banner-text:#1a1200; --demo-bg:#7a5bd0; --demo-text:#ffffff;
+  --grid:#e6e5e1; --focus:#1f5fbf;
+  --btn-primary-bg:#1f63bd; --btn-primary-text:#ffffff; --link:#1d5fb5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0:#121211; --surface-1:#1a1a19; --surface-2:#242422; --border:#33332f;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#9c9b93;
+    --series-1:#3987e5; --series-2:#d95926; --grid:#2a2a27;
+    --good-text:#55c955; --critical-text:#f07a7a; --warn-bg:#2e2508; --warn-border:#b88400;
+    --good-bg:#132a13; --bad-bg:#2f1616;
+    --banner-bg:#fab219; --banner-text:#1a1200; --demo-bg:#a08ae8; --demo-text:#120a2a; --focus:#8ab8ff;
+    --btn-primary-bg:#2e6bc6; --btn-primary-text:#ffffff; --link:#8ab8ff;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0:#121211; --surface-1:#1a1a19; --surface-2:#242422; --border:#33332f;
+  --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#9c9b93;
+  --series-1:#3987e5; --series-2:#d95926; --grid:#2a2a27;
+  --good-text:#55c955; --critical-text:#f07a7a; --warn-bg:#2e2508; --warn-border:#b88400;
+  --good-bg:#132a13; --bad-bg:#2f1616;
+  --banner-bg:#fab219; --banner-text:#1a1200; --demo-bg:#a08ae8; --demo-text:#120a2a; --focus:#8ab8ff;
+  --btn-primary-bg:#2e6bc6; --btn-primary-text:#ffffff; --link:#8ab8ff;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin:0; background:var(--surface-0); color:var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow-x:hidden; }
+:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.skip { position:absolute; left:-9999px; top:0; }
+.skip:focus { left:8px; top:8px; z-index:10; background:var(--surface-1); padding:6px 10px; border-radius:6px; }
+[hidden] { display:none !important; }
+
+.top { position:sticky; top:0; z-index:5; }
+.banner { background:var(--banner-bg); color:var(--banner-text); text-align:center; font-weight:700;
+  letter-spacing:.04em; padding:7px 16px; font-size:14px; }
+.banner .demo { display:inline-block; margin-left:8px; background:var(--demo-bg); color:var(--demo-text); border-radius:999px;
+  padding:1px 10px; letter-spacing:.03em; }
+header { display:flex; align-items:center; gap:10px 18px; padding:10px 16px; background:var(--surface-1);
+  border-bottom:1px solid var(--border); flex-wrap:wrap; }
+header h1 { font-size:18px; margin:0; font-weight:600; white-space:nowrap; }
+.hgroup { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:13px; min-width:0; }
+.hgroup .k { color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+.path { font:12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--text-secondary);
+  overflow-wrap:anywhere; max-width:46ch; }
+.spacer { flex:1; }
+.badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; letter-spacing:.03em;
+  border:1px solid var(--border); color:var(--text-secondary); white-space:nowrap; }
+.badge.good { border-color:var(--good); color:var(--good-text); }
+.badge.bad { border-color:var(--critical); color:var(--critical-text); }
+.badge.warn { border-color:var(--warn-border); color:var(--text-primary); background:var(--warn-bg); }
+.badge.run { border-color:var(--series-1); color:var(--text-primary); }
+
+.callout { border:1px solid var(--warn-border); background:var(--warn-bg); border-radius:8px; padding:9px 12px; margin:0 0 12px; overflow-wrap:anywhere; }
+.callout.bad { border-color:var(--critical); background:var(--bad-bg); }
+.callout.ok { border-color:var(--good); background:var(--good-bg); }
+.callout.info { border-color:var(--border); background:var(--surface-0); }
+.callout ul { margin:4px 0 0; padding-left:20px; }
+.callout:empty { display:none; }
+
+nav.tabs { display:flex; gap:4px; padding:10px 16px 0; max-width:1300px; margin:0 auto; overflow-x:auto; }
+nav.tabs button { border:1px solid transparent; border-bottom:none; background:transparent; border-radius:8px 8px 0 0;
+  padding:9px 14px; font-weight:600; color:var(--text-secondary); white-space:nowrap; }
+nav.tabs button[aria-selected="true"] { background:var(--surface-1); border-color:var(--border); color:var(--text-primary); }
+.tabline { border-bottom:1px solid var(--border); max-width:1300px; margin:0 auto; }
+main { padding:16px; max-width:1300px; margin:0 auto; }
+.summary { max-width:1300px; margin:0 auto; padding:14px 16px 0; }
+
+.card { background:var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:14px 16px; min-width:0; }
+.card h2 { font-size:13px; font-weight:600; color:var(--text-secondary); margin:0 0 10px; text-transform:uppercase; letter-spacing:.06em; }
+.card h3 { font-size:13px; font-weight:600; color:var(--text-secondary); margin:16px 0 6px; }
+.stack { display:grid; gap:16px; }
+.two { display:grid; grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); gap:16px; align-items:start; }
+@media (max-width: 900px) { .two { grid-template-columns:minmax(0, 1fr); } }
+.tiles { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+.tile { background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:9px 12px; min-width:0; container-type:inline-size; }
+.tile .label { font-size:12px; color:var(--text-secondary); }
+/* One line, never broken inside a number: the size shrinks with the tile and the length of the figure (--n characters). */
+.tile .value { font-size:20px; font-size:clamp(11px, calc(100cqi / (var(--n, 10) * 0.64)), 20px); font-weight:600; margin-top:1px;
+  font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tile .sub { font-size:12px; color:var(--text-muted); margin-top:1px; overflow-wrap:anywhere; }
+.tile.approx { border-color:var(--warn-border); }
+.pos { color:var(--good-text); } .neg { color:var(--critical-text); }
+.muted { color:var(--text-muted); }
+.note { color:var(--text-muted); font-size:12px; margin-top:8px; }
+.tablewrap { overflow-x:auto; max-width:100%; position:relative; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { text-align:left; padding:6px 6px; border-bottom:1px solid var(--grid); vertical-align:middle; }
+th { color:var(--text-secondary); font-weight:600; font-size:12px; white-space:nowrap; }
+td.num, th.num { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+td.empty { color:var(--text-muted); }
+td.wrap { min-width:14ch; overflow-wrap:anywhere; }
+td.time { white-space:nowrap; }
+button { padding:8px 13px; border-radius:7px; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-primary); font:inherit; font-weight:600; cursor:pointer; }
+button.primary { background:var(--btn-primary-bg); border-color:var(--btn-primary-bg); color:var(--btn-primary-text); }
+button.danger { border-color:var(--critical); color:var(--critical-text); background:transparent; }
+button.small { padding:4px 10px; font-size:12px; }
+button.link { background:none; border:none; padding:0; color:var(--link); text-decoration:underline; font-weight:600; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+.buttons { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+
+/* forms */
+.form { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px 14px; }
+.field { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.field > label, .field > .flabel { font-size:12px; font-weight:600; color:var(--text-secondary); }
+.field .hint { font-size:12px; color:var(--text-muted); }
+input[type=text], input[type=number], select { padding:8px 10px; border:1px solid var(--border); border-radius:7px;
+  background:var(--surface-0); color:var(--text-primary); font:inherit; width:100%; min-width:0; }
+.row { display:flex; gap:8px; align-items:stretch; min-width:0; }
+.row > input { flex:1; }
+.check { display:flex; gap:8px; align-items:flex-start; font-size:14px; }
+.check input { margin-top:3px; width:16px; height:16px; flex:none; }
+.check span small { display:block; color:var(--text-muted); font-size:12px; }
+fieldset { border:none; margin:0; padding:0; min-width:0; }
+legend { font-size:12px; font-weight:600; color:var(--text-secondary); padding:0; margin-bottom:4px; }
+.seg { display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.seg label { flex:1; position:relative; }
+.seg input { position:absolute; opacity:0; inset:0; margin:0; cursor:pointer; }
+.seg span { display:block; text-align:center; padding:8px 10px; font-weight:600; color:var(--text-secondary); background:var(--surface-0); }
+.seg label + label span { border-left:1px solid var(--border); }
+.seg input:focus-visible + span { outline:2px solid var(--focus); outline-offset:-3px; }
+.seg input[value=buy]:checked + span { background:var(--good-bg); color:var(--good-text); }
+.seg input[value=sell]:checked + span { background:var(--bad-bg); color:var(--critical-text); }
+.seg input[value=live]:checked + span, .seg input[value=demo]:checked + span { background:var(--surface-2); color:var(--text-primary); }
+.quote { margin-top:10px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-0); }
+.quote .qp { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; }
+.quote .qn { color:var(--text-secondary); overflow-wrap:anywhere; }
+.estimate { margin-top:12px; padding:10px 12px; border-radius:8px; background:var(--surface-0); border:1px dashed var(--border); overflow-wrap:anywhere; }
+.estimate b { font-variant-numeric:tabular-nums; }
+.msg { margin-top:12px; }
+
+/* chart */
+.chart { margin-top:6px; }
+.chart svg { display:block; width:100%; height:auto; }
+.chart text { font: 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill:var(--text-secondary); }
+.legend { display:flex; gap:14px; font-size:12px; color:var(--text-secondary); flex-wrap:wrap; }
+.legend i { display:inline-block; width:16px; height:0; border-top:3px solid var(--series-1); vertical-align:middle; margin-right:5px; }
+.legend i.dash { border-top:2px dashed var(--text-muted); }
+
+dialog { border:1px solid var(--border); border-radius:12px; background:var(--surface-1); color:var(--text-primary);
+  padding:18px 20px; width:min(480px, calc(100vw - 32px)); box-shadow:0 10px 40px rgba(0,0,0,.3); }
+dialog::backdrop { background:rgba(0,0,0,.45); }
+dialog h2 { margin:0 0 10px; font-size:17px; }
+dialog ul { margin:0; padding-left:18px; }
+dialog li { margin:4px 0; overflow-wrap:anywhere; }
+dialog .buttons { justify-content:flex-end; margin-top:16px; }
+.toast { position:fixed; right:16px; bottom:16px; max-width:min(420px, calc(100vw - 32px)); background:var(--surface-1);
+  border:1px solid var(--border); border-radius:8px; padding:10px 14px; box-shadow:0 4px 16px rgba(0,0,0,.18); z-index:20; display:none; overflow-wrap:anywhere; }
+.toast.bad { border-color:var(--critical); }
+.cardhead { display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.cardhead h2 { margin:0; }
+@media (max-width: 600px) {
+  header { padding:8px 16px; gap:8px 12px; }
+  main { padding:12px 16px; }
+  .summary { padding:12px 16px 0; }
+  nav.tabs { padding:8px 16px 0; gap:2px; flex-wrap:wrap; overflow-x:visible; }
+  nav.tabs button { padding:8px 4px; font-size:13px; flex:1 1 auto; }
+  /* Tables marked .cards stack as one card per row, so their buttons need no sideways scroll. */
+  table.cards thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  table.cards, table.cards tbody, table.cards tr, table.cards td { display:block; width:100%; }
+  table.cards tr { border-bottom:1px solid var(--grid); padding:6px 0; }
+  table.cards td { border:none; padding:2px 0; display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+    text-align:right; min-width:0; white-space:normal; }
+  table.cards td::before { content:attr(data-label); color:var(--text-secondary); font-weight:600; font-size:12px; text-align:left; flex:none; }
+  table.cards td.wrap { min-width:0; }
+  table.cards td.act { justify-content:flex-end; padding-top:4px; }
+  table.cards td.empty { display:block; text-align:left; }
+  /* The watchlist: symbol, price and change on one line, the name under them, Remove on the right. */
+  table.cards.compact tr { display:grid; grid-template-columns:auto 1fr auto auto; grid-template-areas:"sym px ch act" "name name name act";
+    column-gap:12px; align-items:center; }
+  table.cards.compact td { display:block; width:auto; padding:1px 0; }
+  table.cards.compact td::before { content:none; }
+  table.cards.compact td:nth-child(1) { grid-area:sym; text-align:left; }
+  table.cards.compact td:nth-child(2) { grid-area:px; }
+  table.cards.compact td:nth-child(3) { grid-area:ch; }
+  table.cards.compact td:nth-child(4) { grid-area:name; text-align:left; font-size:12px; }
+  table.cards.compact td:nth-child(5) { grid-area:act; padding:0; }
+  table.cards.compact td.empty { grid-column:1 / -1; }
+  .tiles { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .tile .value { font-size:17px; font-size:clamp(11px, calc(100cqi / (var(--n, 10) * 0.64)), 17px); }
+  .top { position:static; }
+  .banner { position:sticky; top:0; z-index:5; font-size:13px; padding:6px 12px; }
+  .hpath { max-width:60vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+}
+.foot { max-width:1500px; margin:0 auto; padding:4px 16px 24px; color:var(--text-muted); font-size:12px; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="banner" id="banner" role="note" aria-label="Paper trading only">PAPER TRADING — pretend money. No broker is connected.<span class="demo" id="demoTag" hidden>DEMO PRICES (made up)</span></div>
+<div class="top">
+  <header>
+    <h1>Paper Trading</h1>
+    <span id="conn" class="badge" role="status">connecting…</span>
+    <div class="hgroup" aria-label="Market">
+      <span class="k">Market</span>
+      <span id="mktBadge" class="badge">–</span>
+      <span id="practiceBadge" class="badge warn" hidden>Practice fills ON</span>
+    </div>
+    <span class="spacer"></span>
+    <button id="btnRefresh" class="small" type="button">Refresh prices</button>
+    <div class="hgroup" aria-label="Account folder">
+      <span class="k">Folder</span>
+      <span class="path hpath" id="homePath">–</span>
+      <button id="btnFolder" class="small" type="button">Open folder</button>
+    </div>
+  </header>
+</div>
+
+<div class="summary">
+  <div id="loadErr" class="callout bad" role="alert" hidden></div>
+  <div id="notes" class="callout" role="alert" hidden></div>
+  <div class="tiles" id="summary" aria-label="Account summary"></div>
+</div>
+
+<nav class="tabs" role="tablist" aria-label="Sections" id="tablist">
+  <button role="tab" type="button" id="tab-trade" aria-controls="panel-trade" data-tab="trade">Trade</button>
+  <button role="tab" type="button" id="tab-portfolio" aria-controls="panel-portfolio" data-tab="portfolio">Portfolio</button>
+  <button role="tab" type="button" id="tab-orders" aria-controls="panel-orders" data-tab="orders">Orders</button>
+  <button role="tab" type="button" id="tab-activity" aria-controls="panel-activity" data-tab="activity">Activity</button>
+  <button role="tab" type="button" id="tab-settings" aria-controls="panel-settings" data-tab="settings">Settings</button>
+</nav>
+<div class="tabline"></div>
+
+<main id="main">
+  <!-- Trade -->
+  <section role="tabpanel" id="panel-trade" aria-labelledby="tab-trade" class="two">
+    <div class="card">
+      <h2>Order ticket</h2>
+      <div id="closedNote" class="callout" hidden></div>
+      <form id="ticket" novalidate>
+        <div class="field">
+          <label for="sym">Stock symbol</label>
+          <div class="row">
+            <input type="text" id="sym" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. AAPL">
+            <button type="button" id="btnQuote">Get quote</button>
+          </div>
+        </div>
+        <div id="quoteBox" class="quote" aria-live="polite" hidden></div>
+        <div class="form" style="margin-top:12px">
+          <fieldset class="field">
+            <legend>Buy or sell</legend>
+            <div class="seg">
+              <label><input type="radio" name="side" value="buy" id="sideBuy" checked><span>Buy</span></label>
+              <label><input type="radio" name="side" value="sell" id="sideSell"><span>Sell</span></label>
+            </div>
+          </fieldset>
+          <div class="field">
+            <label for="otype">Order type</label>
+            <select id="otype">
+              <option value="market">Market</option>
+              <option value="limit">Limit</option>
+              <option value="stop">Stop</option>
+            </select>
+            <span class="hint" id="typeHint"></span>
+          </div>
+          <div class="field" id="limitRow" hidden>
+            <label for="limitPx">Limit price ($)</label>
+            <input type="number" id="limitPx" min="0" max="1000000" step="0.01" inputmode="decimal">
+            <span class="hint" id="limitHint"></span>
+          </div>
+          <div class="field" id="stopRow" hidden>
+            <label for="stopPx">Stop price ($)</label>
+            <input type="number" id="stopPx" min="0" max="1000000" step="0.01" inputmode="decimal">
+            <span class="hint" id="stopHint"></span>
+          </div>
+          <div class="field">
+            <label for="qty">Quantity (shares)</label>
+            <input type="number" id="qty" min="0" max="10000000" step="1" value="1" inputmode="numeric">
+            <span class="hint" id="qtyHint">Whole shares</span>
+          </div>
+          <div class="field">
+            <label for="tif">Time in force</label>
+            <select id="tif">
+              <option value="day">Day</option>
+              <option value="gtc">GTC (good till cancelled)</option>
+            </select>
+            <span class="hint" id="tifHint"></span>
+          </div>
+        </div>
+        <div class="estimate" id="estimate" aria-live="polite"></div>
+        <div class="buttons">
+          <button type="submit" class="primary" id="btnReview">Review order</button>
+          <button type="button" id="btnClearTicket">Clear</button>
+        </div>
+      </form>
+      <div id="ticketErr" class="callout bad msg" role="alert" hidden></div>
+      <div id="ticketMsg" class="callout ok msg" role="status" hidden></div>
+    </div>
+    <div class="card">
+      <div class="cardhead"><h2 id="watchHead" tabindex="-1">Watchlist</h2></div>
+      <form id="watchForm" class="row" novalidate>
+        <label for="watchSym" class="sr-only">Symbol to add to the watchlist</label>
+        <input type="text" id="watchSym" autocomplete="off" spellcheck="false" placeholder="Add a symbol">
+        <button type="submit" id="btnWatchAdd">Add</button>
+      </form>
+      <div id="watchErr" class="callout bad msg" role="alert" tabindex="-1" hidden></div>
+      <div class="tablewrap" id="watchTable" style="margin-top:10px"></div>
+      <div class="note">Click a symbol to put it on the order ticket. Prices update every 30 seconds while this program runs.</div>
+    </div>
+  </section>
+
+  <!-- Portfolio -->
+  <section role="tabpanel" id="panel-portfolio" aria-labelledby="tab-portfolio" class="stack" hidden>
+    <div class="card">
+      <h2>Positions</h2>
+      <div class="tablewrap" id="posTable"></div>
+    </div>
+    <div class="card">
+      <div class="cardhead"><h2>Account value over time</h2>
+        <div class="legend"><span><i></i>equity</span><span><i class="dash"></i>starting balance</span></div></div>
+      <div class="chart" id="eqChart"></div>
+      <div class="note" id="eqNote"></div>
+    </div>
+  </section>
+
+  <!-- Orders -->
+  <section role="tabpanel" id="panel-orders" aria-labelledby="tab-orders" class="stack" hidden>
+    <div id="ordErr" class="callout bad" role="alert" tabindex="-1" hidden></div>
+    <div id="ordMsg" class="callout ok" role="status" tabindex="-1" hidden></div>
+    <div class="card">
+      <h2>Open orders</h2>
+      <div class="tablewrap" id="openTable"></div>
+    </div>
+    <div class="card">
+      <h2>Order history</h2>
+      <div class="tablewrap" id="histTable"></div>
+      <div class="note" id="histMore" hidden></div>
+      <div class="note">Newest first. Times are New York time (ET). Day orders that don't fill expire at the close of their session.</div>
+    </div>
+  </section>
+
+  <!-- Activity -->
+  <section role="tabpanel" id="panel-activity" aria-labelledby="tab-activity" class="stack" hidden>
+    <div class="card">
+      <h2>Fills</h2>
+      <div class="tablewrap" id="fillTable"></div>
+      <div class="note" id="fillMore" hidden></div>
+      <div class="note">Realized P/L is shown for sells: what you got (after commission) minus what those shares cost on average.</div>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" class="two" hidden>
+    <div class="card">
+      <h2>Trading costs and rules</h2>
+      <form id="setForm" novalidate>
+        <div class="form">
+          <div class="field">
+            <label for="setCommission">Commission ($ per order)</label>
+            <input type="number" id="setCommission" min="0" max="100" step="0.01" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="setSlip">Slippage (basis points)</label>
+            <input type="number" id="setSlip" min="0" max="500" step="0.5" inputmode="decimal">
+            <span class="hint">1 bp = 0.01%. Buys fill this much above the price, sells below.</span>
+          </div>
+        </div>
+        <div class="stack" style="margin-top:14px; gap:10px">
+          <label class="check"><input type="checkbox" id="setFractional"><span>Fractional shares<small>Allow quantities like 0.5 shares.</small></span></label>
+          <label class="check"><input type="checkbox" id="setPractice"><span>Practice fills<small>Fills at the last price while the market is closed — not realistic, for trying the program.</small></span></label>
+        </div>
+        <div class="buttons"><button type="submit" class="primary" id="btnSaveSettings">Save settings</button></div>
+      </form>
+      <div id="setErr" class="callout bad msg" role="alert" hidden></div>
+      <div id="setMsg" class="callout ok msg" role="status" hidden></div>
+    </div>
+    <div class="card">
+      <h2>New account</h2>
+      <p class="note" style="margin-top:0">Start over with a new balance. Your current account is kept as a backup file in the account folder; your watchlist and settings carry over.</p>
+      <form id="resetForm" novalidate>
+        <div class="stack" style="gap:12px">
+          <div class="field">
+            <label for="newCash">Starting balance ($)</label>
+            <input type="number" id="newCash" min="1" max="100000000" step="0.01" value="100000" inputmode="decimal">
+          </div>
+          <fieldset class="field">
+            <legend>Prices</legend>
+            <div class="seg">
+              <label><input type="radio" name="prices" value="live" id="pricesLive" checked><span>Live</span></label>
+              <label><input type="radio" name="prices" value="demo" id="pricesDemo"><span>Demo</span></label>
+            </div>
+            <span class="hint" id="pricesHint">Live: real Yahoo prices, delayed, during market hours.</span>
+          </fieldset>
+        </div>
+        <div class="buttons"><button type="submit" class="danger" id="btnReset">Start new account</button></div>
+      </form>
+      <div id="resetErr" class="callout bad msg" role="alert" hidden></div>
+      <div id="resetMsg" class="callout ok msg" role="status" hidden></div>
+      <dl class="note" id="acctInfo"></dl>
+    </div>
+  </section>
+</main>
+<footer class="foot" id="foot">Practice only, not financial advice.</footer>
+
+<dialog id="confirmDlg" aria-labelledby="dlgTitle">
+  <h2 id="dlgTitle">Please confirm</h2>
+  <div id="dlgBody"></div>
+  <div class="buttons">
+    <button type="button" id="dlgCancel">Cancel</button>
+    <button type="button" class="primary" id="dlgOk">OK</button>
+  </div>
+</dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const NY = 'America/New_York';
+  const MINUS = '−';
+  const fin = v => typeof v === 'number' && Number.isFinite(v);
+  const usd = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const usdPx = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4});
+  const usd0 = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', maximumFractionDigits: 0});
+  const qtyF = new Intl.NumberFormat('en-US', {maximumFractionDigits: 6});
+  const r2 = v => Math.round(v * 100) / 100;
+  const money = v => !fin(v) ? '–' : (r2(v) < 0 ? MINUS : '') + usd.format(Math.abs(v));
+  const smoney = v => !fin(v) ? '–' : (r2(v) > 0 ? '+' : r2(v) < 0 ? MINUS : '') + usd.format(Math.abs(v));
+  const pxf = v => !fin(v) ? '–' : usdPx.format(v);
+  const spct = v => { if (!fin(v)) return '–'; const p = Math.round(v * 10000) / 100; return (p > 0 ? '+' : p < 0 ? MINUS : '') + Math.abs(p).toFixed(2) + '%'; };
+  const qtyS = v => !fin(v) ? '–' : qtyF.format(v);
+  const signCls = (v, d) => fin(v) ? (Math.round(v * Math.pow(10, d || 2)) > 0 ? 'pos' : Math.round(v * Math.pow(10, d || 2)) < 0 ? 'neg' : '') : '';
+  const dtf = new Intl.DateTimeFormat('en-US', {timeZone: NY, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+  const tf = new Intl.DateTimeFormat('en-US', {timeZone: NY, hour: 'numeric', minute: '2-digit', second: '2-digit'});
+  const dayf = new Intl.DateTimeFormat('en-US', {timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric'});
+  const shortDay = new Intl.DateTimeFormat('en-US', {timeZone: NY, month: 'short', day: 'numeric'});
+  // Only ISO-8601 times with a zone (what the program writes); anything else, such as a hand-edited
+  // "Dec 31, 7:00 PM ET" that Date.parse would guess at, shows as "–".
+  const ISO_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
+  const isoT = v => { if (typeof v !== 'string' || !ISO_RE.test(v)) return NaN; const t = Date.parse(v.replace(' ', 'T')); return isNaN(t) ? NaN : t; };
+  const when = iso => { const t = isoT(iso); return isNaN(t) ? '–' : dtf.format(t) + ' ET'; };
+  const tblTime = new Intl.DateTimeFormat('en-US', {timeZone: NY, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: false});
+  const whenShort = iso => { const t = isoT(iso); return isNaN(t) ? '–' : tblTime.format(t).replace(',', ''); };  // "Sep 29 11:00" (ET, in the header)
+  const day = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? dayf.format(Date.UTC(+m[1], +m[2] - 1, +m[3])) : (s ? String(s) : '–'); };
+  const str = v => v == null ? '' : String(v);
+
+  // ---- DOM helpers: data only ever goes in as text ---------------------
+  function h(tag, props, ...kids) {
+    const el = document.createElement(tag);
+    if (props) for (const [k, v] of Object.entries(props)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? '' : String(v));
+    }
+    for (const c of kids.flat()) {
+      if (c == null || c === false) continue;
+      el.appendChild(typeof c === 'object' ? c : document.createTextNode(String(c)));
+    }
+    return el;
+  }
+  const clear = el => { while (el.firstChild) el.removeChild(el.firstChild); return el; };
+  const fill = (el, ...kids) => { clear(el); kids.flat().forEach(k => k != null && k !== false && el.appendChild(typeof k === 'object' ? k : document.createTextNode(String(k)))); return el; };
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function s(tag, attrs, text) {
+    const el = document.createElementNS(SVGNS, tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) if (v != null) el.setAttribute(k, String(v));
+    if (text != null) el.textContent = text;
+    return el;
+  }
+  // headers: [label | {t, num}]; rows: [[cell]]; cell = text | Node | {t, num, cls, node, title}
+  // cards: on a phone the rows stack as cards (CSS), so the explicit roles keep it a table for screen readers.
+  function table(headers, rows, empty, caption, cards) {
+    const R = role => cards ? role : null;
+    const labels = headers.map(x => typeof x === 'object' ? str(x.t) : str(x));
+    const head = h('tr', {role: R('row')}, headers.map(x => typeof x === 'object'
+      ? h('th', {class: x.num ? 'num' : null, scope: 'col', role: R('columnheader'), text: x.t}, x.sr ? h('span', {class: 'sr-only', text: x.sr}) : null)
+      : h('th', {scope: 'col', role: R('columnheader'), text: x})));
+    const body = h('tbody', {role: R('rowgroup')});
+    if (!rows.length) body.appendChild(h('tr', {role: R('row')}, h('td', {class: 'empty', colspan: headers.length, role: R('cell'), text: empty || 'none'})));
+    rows.forEach(r => {
+      const tr = h('tr', {role: R('row')});
+      r.forEach((c, i) => {
+        const label = labels[i] || null;
+        if (c instanceof Node) { tr.appendChild(h('td', {class: label ? null : 'act', 'data-label': label, role: R('cell')}, c)); return; }
+        const o = c != null && typeof c === 'object' ? c : {t: c};
+        const td = h('td', {class: [o.num ? 'num' : '', o.cls || ''].join(' ').trim() || null, title: o.title, 'data-label': label, role: R('cell')});
+        if (o.node) td.appendChild(o.node); else td.textContent = o.t == null || o.t === '' ? '–' : String(o.t);
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    return h('table', {class: cards ? 'cards' + (cards === 'compact' ? ' compact' : '') : null, role: R('table'), 'aria-label': cards ? caption : null},
+      caption ? h('caption', {class: 'sr-only', text: caption}) : null, h('thead', {role: R('rowgroup')}, head), body);
+  }
+  // Rewrite text only when it differs, so live regions are not re-announced on every poll.
+  const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+  const setClass = (el, c) => { if (el.className !== c) el.className = c; };
+  const memo = new Map();
+  function changed(key, data) {
+    const v = JSON.stringify(data === undefined ? null : data);
+    if (memo.get(key) === v) return false;
+    memo.set(key, v); return true;
+  }
+  function show(el, text, kids) {
+    if (!text && !kids) { el.hidden = true; clear(el); return; }
+    fill(el, text || '', kids || []); el.hidden = false;
+  }
+  let toastTimer = null;
+  function toast(msg, bad) {
+    const t = $('toast'); t.textContent = msg; t.className = 'toast' + (bad ? ' bad' : ''); t.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, bad ? 8000 : 3500);
+  }
+
+  // ---- talking to the program ------------------------------------------
+  function parseJSON(text) {
+    try { return JSON.parse(text); } catch (e) {
+      return JSON.parse(text.replace(/"(?:[^"\\]|\\.)*"|-?\bInfinity\b|\bNaN\b/g, m => m[0] === '"' ? m : 'null'));
+    }
+  }
+  async function getJSON(path) {
+    const r = await fetch(path, {cache: 'no-store'});
+    const d = parseJSON(await r.text());
+    if (!r.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    return d;
+  }
+  async function post(path, body) {
+    try {
+      const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+      const d = parseJSON(await r.text());
+      if (d && typeof d === 'object') { if (!r.ok) d.ok = false; return d; }
+      return {ok: false, error: 'empty reply'};
+    } catch (e) { return {ok: false, error: 'could not reach Paper Trading (is its window still open?)'}; }
+  }
+  async function getQuote(t) {
+    try { return await getJSON('/api/quote?t=' + encodeURIComponent(t)); }
+    catch (e) { return {ok: false, error: 'could not reach Paper Trading (is its window still open?)'}; }
+  }
+
+  // ---- confirmation dialog ----------------------------------------------
+  const dlg = $('confirmDlg');
+  let dlgResolve = null;
+  function confirmBox(title, lines, okLabel, danger, cancelLabel) {
+    fill($('dlgTitle'), title);
+    $('dlgCancel').textContent = cancelLabel || 'Cancel';
+    fill($('dlgBody'), h('ul', null, lines.filter(Boolean).map(l => h('li', null, l))));
+    $('dlgOk').textContent = okLabel || 'OK';
+    $('dlgOk').className = danger ? 'danger' : 'primary';
+    return new Promise(resolve => {
+      dlgResolve = resolve;
+      if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+      $('dlgCancel').focus();
+    });
+  }
+  function closeDlg(result) {
+    if (dlg.open) { if (typeof dlg.close === 'function') dlg.close(); else dlg.removeAttribute('open'); }
+    const r = dlgResolve; dlgResolve = null; if (r) r(result);
+  }
+  $('dlgOk').addEventListener('click', () => closeDlg(true));
+  $('dlgCancel').addEventListener('click', () => closeDlg(false));
+  dlg.addEventListener('cancel', e => { e.preventDefault(); closeDlg(false); });
+
+  // ---- state (declared before the first showTab, which reads snap) -------
+  let snap = null;           // the last good /api/account answer
+  let lastGood = null;       // Date of that answer
+  let connected = null;      // null until the first answer, then true / false
+  const quotes = {};         // ticker -> quote fetched with "Get quote", kept fresh by polling
+  const settings = () => (snap && snap.settings) || {};
+
+  // ---- tabs ------------------------------------------------------------
+  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+  function showTab(name, focus) {
+    if (!tabs.some(t => t.dataset.tab === name)) name = 'trade';
+    tabs.forEach(t => {
+      const on = t.dataset.tab === name;
+      t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1;
+      $(t.getAttribute('aria-controls')).hidden = !on;
+      if (on && focus) t.focus();
+    });
+    try { history.replaceState(null, '', '#' + name); } catch (e) { /* sandboxed */ }
+    try { localStorage.setItem('paper-tab', name); } catch (e) { /* storage blocked */ }
+    if (name === 'portfolio' && snap) drawEquity(snap);
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => showTab(t.dataset.tab));
+    t.addEventListener('keydown', e => {
+      let j = null;
+      if (e.key === 'ArrowRight') j = (i + 1) % tabs.length; else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') j = 0; else if (e.key === 'End') j = tabs.length - 1;
+      if (j != null) { e.preventDefault(); showTab(tabs[j].dataset.tab, true); }
+    });
+  });
+  let startTab = (location.hash || '').slice(1);
+  if (!startTab) { try { startTab = localStorage.getItem('paper-tab') || ''; } catch (e) { startTab = ''; } }
+  showTab(startTab || 'trade');
+
+  // ---- header, banner, summary --------------------------------------------
+  function renderHeader(d) {
+    const demo = d.prices === 'demo';
+    $('demoTag').hidden = !demo;
+    $('banner').setAttribute('aria-label', demo ? 'Paper trading only, demo prices' : 'Paper trading only');
+    const m = d.market || {};
+    const b = $('mktBadge');
+    if (demo) { setText(b, 'Demo: always open'); setClass(b, 'badge run'); }
+    else if (m.open) { setText(b, 'Open'); setClass(b, 'badge good'); }
+    else { setText(b, 'Closed — next session ' + day(m.next_session)); setClass(b, 'badge warn'); }
+    $('practiceBadge').hidden = !(d.settings && d.settings.practice_fills === true);
+    setText($('homePath'), str(d.home) || '–');
+    $('homePath').title = str(d.home);
+    setText($('foot'), 'Practice only, not financial advice. ' + (demo
+      ? 'This account uses demo prices: made up by this program, not real market prices.'
+      : 'Live prices come from Yahoo Finance, delayed up to about 15 minutes, for your personal use on this computer.'));
+    const notes = (Array.isArray(d.notes) ? d.notes : []).map(str).filter(Boolean);
+    // Watchlist rows show their own errors; here only what you hold or have orders for
+    // (the program keeps an error for every symbol ever looked up, typos included).
+    const tracked = new Set([].concat((d.positions || []).map(p => p && p.ticker), (d.open_orders || []).map(o => o && o.ticker)).map(str));
+    const qe = d.quote_errors && typeof d.quote_errors === 'object' ? Object.entries(d.quote_errors).filter(([t]) => tracked.has(t)) : [];
+    const items = notes.map(n => h('li', {text: n}));
+    qe.forEach(([t, e]) => items.push(h('li', {text: 'No price for ' + t + ': ' + str(e)})));
+    if (changed('notes', [notes, qe])) {
+      if (items.length) show($('notes'), '', [h('b', {text: 'Please note'}), h('ul', null, items)]);
+      else show($('notes'), '');
+    }
+  }
+  function tile(label, value, sub, cls, extra) {
+    return h('div', {class: 'tile' + (extra ? ' ' + extra : '')}, h('div', {class: 'label', text: label}),
+      h('div', {class: 'value ' + (cls || ''), style: '--n:' + Math.max(8, String(value).length), title: value, text: value}),
+      sub ? h('div', {class: 'sub', text: sub}) : null);
+  }
+  function renderSummary(d) {
+    const unknown = d.equity_unknown === true;
+    const missing = (d.positions || []).filter(p => p && !fin(p.price)).map(p => str(p.ticker));
+    const eqSub = unknown ? 'approx. — no price yet for ' + (missing.join(', ') || 'a holding') + ' (counted at cost)'
+      : 'started with ' + money(d.starting_cash);
+    const data = [d.equity, d.cash, d.buying_power, d.total_pl, d.total_pl_pct, d.realized, d.fees, d.starting_cash, unknown, missing];
+    if (!changed('summary', data)) return;
+    fill($('summary'),
+      tile('Equity' + (unknown ? ' (approx.)' : ''), (unknown && fin(d.equity) ? '≈ ' : '') + money(d.equity), eqSub, '', unknown ? 'approx' : ''),
+      tile('Cash', money(d.cash), 'not invested'),
+      tile('Buying power', money(d.buying_power), 'cash minus open buy orders'),
+      tile('Total P/L', smoney(d.total_pl), spct(d.total_pl_pct) + (unknown ? ' · approx.' : ''), signCls(d.total_pl)),
+      tile('Realized P/L', smoney(d.realized), 'from shares sold', signCls(d.realized)),
+      tile('Fees paid', money(d.fees), 'commissions'));
+  }
+
+  // ---- order ticket ---------------------------------------------------------
+  const ticker = () => $('sym').value.trim().toUpperCase();
+  const side = () => (document.querySelector('input[name=side]:checked') || {}).value || 'buy';
+  function knownPrice(t) {
+    if (!t) return null;
+    const q = quotes[t];
+    if (q && fin(q.price)) return q.price;
+    if (snap) {
+      const w = (snap.watchlist || []).find(x => x && x.ticker === t);
+      if (w && fin(w.price)) return w.price;
+      const p = (snap.positions || []).find(x => x && x.ticker === t);
+      if (p && fin(p.price)) return p.price;
+    }
+    return null;
+  }
+  // Polling: a watchlist row newer than the cached quote replaces its price.
+  function syncQuotes(d) {
+    (d.watchlist || []).forEach(w => {
+      const q = w && quotes[w.ticker];
+      if (!q || !fin(w.price)) return;
+      const tw = isoT(w.time), tq = isoT(q.time);
+      if (!isNaN(tw) && (isNaN(tq) || tw > tq)) Object.assign(q, {price: w.price, prev_close: fin(w.prev_close) ? w.prev_close : q.prev_close, time: w.time});
+    });
+  }
+  // ... and the symbol on the ticket is re-quoted (the program caches quotes for 20 seconds).
+  let requoting = false;
+  async function requote() {
+    const t = ticker();
+    if (!t || !quotes[t] || requoting) return;
+    requoting = true;
+    try {
+      const d = await getQuote(t);
+      if (d && d.ok && d.quote && quotes[t]) { quotes[t] = d.quote; if (ticker() === t) { renderQuote(t); renderEstimate(); } }
+    } finally { requoting = false; }
+  }
+  function ticketPrice() {
+    const type = $('otype').value;
+    if (type === 'limit') { const v = parseFloat($('limitPx').value); return fin(v) && v > 0 ? v : null; }
+    if (type === 'stop') { const v = parseFloat($('stopPx').value); return fin(v) && v > 0 ? v : null; }
+    return knownPrice(ticker());
+  }
+  function estimate() {
+    const q = parseFloat($('qty').value), px = ticketPrice(), st = settings();
+    const fee = fin(st.commission) ? st.commission : 0, slip = fin(st.slippage_bps) ? st.slippage_bps / 10000 : 0;
+    if (!fin(q) || q <= 0 || px == null) return null;
+    const gross = q * px, slipAmt = gross * slip;
+    const buy = side() === 'buy';
+    return {q, px, gross, fee, slipAmt, buy, total: buy ? gross + slipAmt + fee : gross - slipAmt - fee};
+  }
+  function renderEstimate() {
+    const box = $('estimate'), e = estimate(), type = $('otype').value;
+    let parts;
+    if (!ticker()) parts = ['Enter a symbol and press Get quote to see the price and an estimate.'];
+    else if (!e) parts = [type === 'market' ? 'Press Get quote to see an estimate.' : 'Enter the ' + type + ' price and a quantity to see an estimate.'];
+    else {
+      const at = type === 'market' ? 'the last price' : type + ' price';
+      parts = [(e.buy ? 'Estimated cost: ' : 'Estimated proceeds: '), money(e.total),
+        qtyS(e.q) + ' × ' + pxf(e.px) + ' (' + at + ') = ' + money(e.gross) +
+        (e.buy ? ' + ' : ' − ') + 'slippage ≈ ' + money(e.slipAmt) + (e.buy ? ' + ' : ' − ') + 'commission ' + money(e.fee)];
+    }
+    if (!changed('estimate', parts) && box.firstChild) return;  // aria-live: only real changes are announced
+    if (parts.length === 1) fill(box, parts[0]);
+    else fill(box, parts[0], h('b', {text: parts[1]}), h('br'), h('span', {class: 'muted', text: parts[2]}));
+  }
+  function renderTicketContext(d) {
+    const st = d.settings || {}, m = d.market || {};
+    const frac = st.fractional === true;
+    if ($('qty').step !== (frac ? 'any' : '1')) $('qty').step = frac ? 'any' : '1';
+    if ($('qty').getAttribute('inputmode') !== (frac ? 'decimal' : 'numeric')) $('qty').setAttribute('inputmode', frac ? 'decimal' : 'numeric');
+    setText($('qtyHint'), frac ? 'Fractional shares allowed' : 'Whole shares (fractional shares can be turned on in Settings)');
+    const note = $('closedNote');
+    const key = [d.prices, m.open, m.can_fill, m.next_session, st.practice_fills];
+    if (changed('closed', key)) {
+      if (d.prices !== 'demo' && m.can_fill === false) {
+        show(note, '', [h('b', {text: 'The market is closed. '}),
+          'Market orders wait for the next session (' + day(m.next_session) + ') and fill at the price then; limit and stop orders are checked once it opens. ' +
+          'To try the program now, turn on practice fills in Settings or start a demo account.']);
+        note.className = 'callout';
+      } else if (d.prices !== 'demo' && !m.open && st.practice_fills === true) {
+        show(note, '', [h('b', {text: 'Market closed — practice fills are ON. '}),
+          'Orders fill at the last price, which is not realistic. Turn it off in Settings for real market hours.']);
+        note.className = 'callout';
+      } else show(note, '');
+    }
+    renderEstimate();
+  }
+  function renderQuote(t) {
+    const box = $('quoteBox'), q = quotes[t];
+    if (!changed('quoteBox', q ? [t, q] : null) && (q ? !box.hidden : box.hidden)) return;
+    if (!q) { box.hidden = true; clear(box); return; }
+    const tk = str(q.ticker), nm = str(q.name);
+    // Demo quotes are named "AAPL (demo)": the symbol and "demo price" already say that.
+    const name = nm && nm.replace(/\s*\(demo\)\s*$/i, '').trim() !== tk ? nm : '';
+    const ch = fin(q.price) && fin(q.prev_close) && q.prev_close > 0 ? q.price - q.prev_close : null;
+    const chPct = ch != null ? ch / q.prev_close : null;
+    fill(box,
+      h('div', {class: 'qn'}, h('b', {text: tk}), name ? ' · ' + name : '', q.source === 'demo' ? ' · demo price' : ''),
+      h('div', {class: 'qp', text: pxf(q.price)}),
+      h('div', {class: signCls(ch)}, ch == null ? 'change today: –' : 'Today ' + smoney(ch) + ' (' + spct(chPct) + ') vs previous close ' + pxf(q.prev_close)),
+      h('div', {class: 'note', text: 'Price time: ' + when(q.time) + (q.source === 'yahoo' ? ' · Yahoo, may be delayed ~15 min' : '')}));
+    box.hidden = false;
+  }
+  async function fetchQuote(t) {
+    t = (t || ticker()).toUpperCase();
+    show($('ticketErr'), '');
+    if (!t) { show($('ticketErr'), 'Enter a stock symbol such as AAPL.'); return; }
+    $('btnQuote').disabled = true;
+    const d = await getQuote(t);
+    $('btnQuote').disabled = false;
+    if (d && d.ok && d.quote) {
+      quotes[t] = d.quote; if (ticker() === t) renderQuote(t);
+    } else {
+      delete quotes[t]; renderQuote(t);
+      show($('ticketErr'), str((d && d.error) || 'No quote'));
+    }
+    renderEstimate();
+  }
+  function updateTypeFields() {
+    const type = $('otype').value;
+    $('limitRow').hidden = type !== 'limit';
+    $('stopRow').hidden = type !== 'stop';
+    const buy = side() === 'buy';
+    $('limitHint').textContent = buy ? 'Buys only at this price or lower.' : 'Sells only at this price or higher.';
+    $('stopHint').textContent = buy ? 'Buys at market once the price rises to this.' : 'Sells at market once the price falls to this.';
+    $('typeHint').textContent = type === 'limit' ? 'Only at your price or better.' : type === 'stop' ? 'Waits until the price reaches your stop.' : 'At the current price.';
+    $('tifHint').textContent = $('tif').value === 'gtc' ? 'Stays open until it fills or you cancel it.' : 'Cancelled at the close if not filled.';
+    renderEstimate();
+  }
+  let prefillSym = null;  // the symbol a Sell button put on the ticket
+  function resetSideType() {
+    $('sideBuy').checked = true; $('otype').value = 'market';
+  }
+  function setTicket(t, sd, q) {
+    $('sym').value = t;
+    if (sd) (sd === 'sell' ? $('sideSell') : $('sideBuy')).checked = true;
+    else resetSideType();
+    prefillSym = sd === 'sell' ? t : null;
+    if (q != null) $('qty').value = String(q);
+    show($('ticketErr'), ''); show($('ticketMsg'), '');
+    renderQuote(t); updateTypeFields();
+    showTab('trade');
+    $('sym').focus();
+    fetchQuote(t);
+  }
+  $('btnQuote').addEventListener('click', () => fetchQuote());
+  $('sym').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fetchQuote(); } });
+  $('sym').addEventListener('input', () => {
+    if (prefillSym && ticker() !== prefillSym) { prefillSym = null; resetSideType(); updateTypeFields(); }
+    renderQuote(ticker()); renderEstimate();
+  });
+  $('otype').addEventListener('change', updateTypeFields);
+  $('tif').addEventListener('change', updateTypeFields);
+  document.querySelectorAll('input[name=side]').forEach(r => r.addEventListener('change', updateTypeFields));
+  ['qty', 'limitPx', 'stopPx'].forEach(id => $(id).addEventListener('input', renderEstimate));
+  $('btnClearTicket').addEventListener('click', () => {
+    $('sym').value = ''; $('qty').value = '1'; $('limitPx').value = ''; $('stopPx').value = '';
+    $('otype').value = 'market'; $('tif').value = 'day'; $('sideBuy').checked = true; prefillSym = null;
+    show($('ticketErr'), ''); show($('ticketMsg'), ''); renderQuote(''); updateTypeFields();
+  });
+
+  const MAX_QTY = 10000000, MAX_PX = 1000000;
+  function describeType(type, lim, stop, t, buy) {
+    if (type === 'limit') return 'Limit at ' + pxf(lim) + ': fills only at ' + pxf(lim) + ' or ' + (buy ? 'lower' : 'higher');
+    if (type === 'stop') return 'Stop at ' + pxf(stop) + ': becomes a market order once ' + t + (buy ? ' rises' : ' falls') + ' to ' + pxf(stop);
+    return 'Market: fills at the next available price';
+  }
+  $('ticket').addEventListener('submit', async e => {
+    e.preventDefault();
+    show($('ticketErr'), ''); show($('ticketMsg'), '');
+    const t = ticker(), sd = side(), type = $('otype').value, tif = $('tif').value;
+    const qty = parseFloat($('qty').value), lim = parseFloat($('limitPx').value), stop = parseFloat($('stopPx').value);
+    const st = settings(), m = (snap && snap.market) || {};
+    let err = null;
+    if (!/^[A-Z0-9][A-Z0-9.\-]{0,9}$/.test(t)) err = 'Enter a stock symbol such as AAPL (letters, digits, "." or "-", up to 10).';
+    else if (!fin(qty) || qty <= 0) err = 'Enter how many shares (more than 0).';
+    else if (st.fractional !== true && qty !== Math.floor(qty)) err = 'Whole shares only (turn on fractional shares in Settings).';
+    else if (qty > MAX_QTY) err = 'That is too many shares: at most 10,000,000 per order.';
+    else if (type === 'limit' && !(fin(lim) && lim > 0)) err = 'Enter the limit price.';
+    else if (type === 'limit' && lim > MAX_PX) err = 'The limit price can be at most $1,000,000.';
+    else if (type === 'stop' && !(fin(stop) && stop > 0)) err = 'Enter the stop price.';
+    else if (type === 'stop' && stop > MAX_PX) err = 'The stop price can be at most $1,000,000.';
+    if (err) { show($('ticketErr'), err); return; }
+    const buy = sd === 'buy', est = estimate();
+    const reviewed = type === 'market' ? knownPrice(t) : null;
+    const waits = snap && snap.prices !== 'demo' && m.can_fill === false;
+    const ok = await confirmBox('Place this ' + (buy ? 'buy' : 'sell') + ' order?', [
+      h('b', {text: (buy ? 'Buy ' : 'Sell ') + qtyS(qty) + ' ' + t}),
+      describeType(type, lim, stop, t, buy),
+      'Time in force: ' + (tif === 'gtc' ? 'GTC (stays open until it fills or you cancel it)' : 'Day (cancelled at the close if it has not filled)'),
+      est ? (buy ? 'Estimated cost: about ' : 'Estimated proceeds: about ') + money(est.total) + ' including slippage and ' + money(est.fee) + ' commission'
+          : 'No price yet: the estimate is not available.',
+      waits ? 'The market is closed: ' + (type === 'market' ? 'this order waits for the ' + day(m.next_session) + ' session.' : 'this order is checked once the market opens.') : null,
+      'Pretend money: nothing is sent to any broker.',
+    ], 'Place ' + (buy ? 'buy' : 'sell') + ' order');
+    if (!ok) { $('btnReview').focus(); return; }
+    $('btnReview').disabled = true;
+    if (reviewed != null) {
+      // A market order fills at the price then: if it moved more than 2% since the review, ask again.
+      const d = await getQuote(t);
+      const now = d && d.ok && d.quote && fin(d.quote.price) ? d.quote.price : null;
+      if (now != null) { quotes[t] = d.quote; if (ticker() === t) { renderQuote(t); renderEstimate(); } }
+      if (now != null && Math.abs(now / reviewed - 1) > 0.02) {
+        const e2 = estimate();
+        const again = await confirmBox('The price moved. Place the order anyway?', [
+          h('b', {text: t + ' was ' + pxf(reviewed) + ' when you reviewed the order; it is now ' + pxf(now) + ' (' + spct(now / reviewed - 1) + ').'}),
+          (buy ? 'Buy ' : 'Sell ') + qtyS(qty) + ' ' + t + ' at market',
+          e2 ? (buy ? 'Estimated cost now: about ' : 'Estimated proceeds now: about ') + money(e2.total) : null,
+        ], 'Place ' + (buy ? 'buy' : 'sell') + ' order');
+        if (!again) { $('btnReview').disabled = false; $('btnReview').focus(); return; }
+      }
+    }
+    const body = {ticker: t, side: sd, type, tif, qty};
+    if (type === 'limit') body.limit_price = lim;
+    if (type === 'stop') body.stop_price = stop;
+    const r = await post('/api/order', body);
+    $('btnReview').disabled = false;
+    if (!r || !r.ok) { show($('ticketErr'), 'Order not placed: ' + str((r && r.error) || 'unknown error')); load(); return; }
+    const o = r.order || {};
+    const what = (o.side === 'sell' ? 'sold ' : 'bought ') + qtyS(o.qty) + ' ' + str(o.ticker);
+    if (o.status === 'filled') {
+      show($('ticketMsg'), 'Filled: ' + what + ' at ' + pxf(o.fill_price) + ' (commission ' + money(o.fee) + '). Order #' + str(o.id) + '.' + (o.note ? ' ' + str(o.note) + '.' : ''));
+    } else if (o.status === 'open') {
+      const why = o.note ? str(o.note) : o.type === 'limit' ? 'fills when ' + str(o.ticker) + ' trades at ' + pxf(o.limit_price) + ' or better'
+        : o.type === 'stop' ? 'fills once ' + str(o.ticker) + ' reaches ' + pxf(o.stop_price) : 'waiting for a price';
+      show($('ticketMsg'), 'Order #' + str(o.id) + ' placed and waiting: ' + why + '. See the Orders tab.');
+    } else {
+      show($('ticketErr'), 'Order #' + str(o.id) + ' was ' + str(o.status) + (o.note ? ': ' + str(o.note) : '.'));
+    }
+    load();
+  });
+
+  // ---- watchlist -------------------------------------------------------------
+  function renderWatch(d) {
+    const rows = (d.watchlist || []).filter(w => w && typeof w === 'object');
+    if (!changed('watch', rows)) return;
+    fill($('watchTable'), table(['Symbol', {t: 'Price', num: true}, {t: 'Today', num: true}, 'Name', {t: '', sr: 'Remove'}],
+      rows.map(w => {
+        const t = str(w.ticker);
+        const ch = fin(w.price) && fin(w.prev_close) && w.prev_close > 0 ? (w.price - w.prev_close) / w.prev_close : null;
+        return [
+          h('button', {type: 'button', class: 'link', 'aria-label': 'Trade ' + t, onclick: () => setTicket(t), text: t}),
+          {t: pxf(w.price), num: true},
+          {t: spct(ch), num: true, cls: signCls(ch, 4)},
+          w.error ? {t: 'no price: ' + str(w.error), cls: 'wrap neg'} : {t: str(w.name) || (fin(w.price) ? '' : 'waiting for a price'), cls: 'wrap muted'},
+          h('button', {type: 'button', class: 'small', 'aria-label': 'Remove ' + t + ' from the watchlist', onclick: () => watch(t, false), text: 'Remove'}),
+        ];
+      }), 'Nothing on the watchlist yet. Add a symbol above.', 'Watchlist', 'compact'));
+  }
+  async function watch(t, add) {
+    show($('watchErr'), '');
+    const r = await post('/api/watch', {ticker: t, add});
+    if (!r || !r.ok) { show($('watchErr'), str((r && r.error) || 'could not change the watchlist')); if (!add) $('watchErr').focus(); return; }
+    if (add) { $('watchSym').value = ''; await getQuote(t.toUpperCase()); }
+    await load();
+    // The Remove button that had focus is gone with its row: keep focus in the watchlist.
+    if (!add && (document.activeElement === document.body || !document.activeElement || !document.activeElement.isConnected)) $('watchHead').focus();
+  }
+  $('watchForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const t = $('watchSym').value.trim().toUpperCase();
+    if (!t) { show($('watchErr'), 'Enter a symbol to add.'); return; }
+    watch(t, true);
+  });
+
+  // ---- portfolio ---------------------------------------------------------
+  function renderPositions(d) {
+    const rows = (d.positions || []).filter(p => p && typeof p === 'object');
+    if (!changed('positions', rows)) return;
+    fill($('posTable'), table(['Symbol', {t: 'Shares', num: true}, {t: 'Avg cost', num: true}, {t: 'Price', num: true},
+      {t: 'Market value', num: true}, {t: 'Unrealized', num: true}, {t: 'Unrealized %', num: true}, {t: "Today's change", num: true}, {t: '', sr: 'Sell'}],
+      rows.map(p => {
+        const t = str(p.ticker);
+        return [{t}, {t: qtyS(p.shares), num: true}, {t: pxf(p.avg_cost), num: true},
+          fin(p.price) ? {t: pxf(p.price), num: true} : {t: 'no price', num: true, cls: 'muted'},
+          {t: money(p.market_value), num: true},
+          {t: smoney(p.unrealized), num: true, cls: signCls(p.unrealized)},
+          {t: spct(p.unrealized_pct), num: true, cls: signCls(p.unrealized_pct, 4)},
+          {t: smoney(p.day_change), num: true, cls: signCls(p.day_change)},
+          h('button', {type: 'button', class: 'small', 'aria-label': 'Sell ' + t, onclick: () => setTicket(t, 'sell', p.shares), text: 'Sell'})];
+      }), 'You have no positions yet. Buy something on the Trade tab.', 'Positions', true));
+  }
+  function drawEquity(d) {
+    const box = $('eqChart');
+    if ($('panel-portfolio').hidden) return;
+    // Hand-edited files can hold absurd values (1e308) or junk times: such points are skipped.
+    const pts = (Array.isArray(d.equity_curve) ? d.equity_curve : []).filter(p => p && fin(p.equity) && Math.abs(p.equity) < 1e13);
+    // The saved curve gets a point every few minutes; end it at the value shown above.
+    if (pts.length && d.equity_unknown !== true && fin(d.equity) && typeof d.now === 'string') pts.push({t: d.now, equity: d.equity});
+    const start = fin(d.starting_cash) ? d.starting_cash : null;
+    const W = Math.max(280, Math.round(box.clientWidth || 600)), H = W < 500 ? 200 : 240;
+    if (!changed('equity', [pts, start, W])) return;
+    clear(box);
+    if (!pts.length) {
+      box.appendChild(h('p', {class: 'muted', text: 'No history yet. The line starts with your first order and adds a point about every 5 minutes while prices update.'}));
+      $('eqNote').textContent = '';
+      return;
+    }
+    const padR = 12, padT = 12, padB = 24;
+    const vals = pts.map(p => p.equity);
+    const all = start != null ? vals.concat([start]) : vals.slice();
+    let lo = Math.min(...all), hi = Math.max(...all);
+    if (hi === lo) { const pad = Math.abs(hi) * 0.01 || 1; hi += pad; lo -= pad; }
+    const span = hi - lo; hi += span * 0.08; lo -= span * 0.08;
+    const ts = pts.map(p => isoT(p.t));
+    const useTime = ts.every(t => !isNaN(t)) && ts[ts.length - 1] > ts[0];
+    const n = pts.length;
+    // y labels: compact ($110.8M, $100.2K) for big accounts, with enough decimals to tell the lines apart;
+    // the left margin is sized to the longest one.
+    const mag = Math.max(Math.abs(hi), Math.abs(lo)), step = (hi - lo) / 4;
+    const unit = mag >= 1e9 ? [1e9, 'B'] : mag >= 1e6 ? [1e6, 'M'] : mag >= 1e5 ? [1e3, 'K'] : null;
+    const dec = unit ? Math.min(3, Math.max(1, Math.ceil(-Math.log10(step / unit[0])))) : 0;
+    const fmtAxis = v => !unit ? ((hi - lo) < 20 ? usd.format(v) : usd0.format(v))
+      : (v < 0 ? MINUS : '') + '$' + (Math.abs(v) / unit[0]).toFixed(dec) + unit[1];
+    const ticks = [0, 1, 2, 3, 4].map(k => lo + (hi - lo) * k / 4);
+    const padL = Math.max(W < 500 ? 48 : 56, 12 + Math.max(...ticks.map(v => fmtAxis(v).length)) * 7);
+    const X = i => padL + (useTime ? (ts[i] - ts[0]) / (ts[n - 1] - ts[0]) : (n > 1 ? i / (n - 1) : 0.5)) * (W - padL - padR);
+    const Y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+    const first = pts[0], last = pts[n - 1];
+    if (![0, n - 1].every(i => Number.isFinite(X(i)) && Number.isFinite(Y(pts[i].equity)))) return;  // nothing drawable
+    const label = 'Account value over time: ' + money(first.equity) + ' on ' + when(first.t) + ', ' + money(last.equity) + ' on ' + when(last.t) +
+      (start != null ? '; starting balance ' + money(start) : '') + '.';
+    const svg = s('svg', {viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', 'aria-label': label});
+    svg.appendChild(s('title', null, label));
+    for (const v of ticks) {
+      const y = Math.round(Y(v)) + 0.5;
+      svg.appendChild(s('line', {x1: padL, x2: W - padR, y1: y, y2: y, stroke: 'var(--grid)', 'stroke-width': 1}));
+      svg.appendChild(s('text', {x: padL - 6, y: y + 4, 'text-anchor': 'end'}, fmtAxis(v)));
+    }
+    if (n > 1) {
+      let dPath = '';
+      pts.forEach((p, i) => { dPath += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.equity).toFixed(1); });
+      const area = dPath + 'L' + X(n - 1).toFixed(1) + ' ' + (H - padB) + 'L' + X(0).toFixed(1) + ' ' + (H - padB) + 'Z';
+      svg.appendChild(s('path', {d: area, fill: 'var(--series-1)', 'fill-opacity': 0.12, stroke: 'none'}));
+      svg.appendChild(s('path', {d: dPath, fill: 'none', stroke: 'var(--series-1)', 'stroke-width': 2, 'stroke-linejoin': 'round'}));
+    }
+    svg.appendChild(s('circle', {cx: X(n - 1), cy: Y(last.equity), r: 3.5, fill: 'var(--series-1)'}));
+    if (start != null) {
+      const y = Math.round(Y(start)) + 0.5;
+      svg.appendChild(s('line', {x1: padL, x2: W - padR, y1: y, y2: y, stroke: 'var(--text-muted)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4'}));
+      svg.appendChild(s('text', {x: W - padR, y: y - 5, 'text-anchor': 'end'}, 'start ' + money(start)));
+    }
+    const lab = t => { const v = isoT(t); return isNaN(v) ? '' : shortDay.format(v); };
+    svg.appendChild(s('text', {x: padL, y: H - 6, 'text-anchor': 'start'}, lab(first.t)));
+    if (n > 1) svg.appendChild(s('text', {x: W - padR, y: H - 6, 'text-anchor': 'end'}, lab(last.t)));
+    box.appendChild(svg);
+    $('eqNote').textContent = 'Latest ' + money(last.equity) + ' at ' + when(last.t) + '. A point is saved after each order and about every 5 minutes.';
+  }
+  window.addEventListener('resize', () => { clearTimeout(drawEquity.t); drawEquity.t = setTimeout(() => snap && drawEquity(snap), 150); });
+
+  // ---- orders and fills -------------------------------------------------------
+  const STATUS = {filled: 'good', open: 'run', cancelled: '', rejected: 'bad', expired: 'warn'};
+  const statusBadge = st => h('span', {class: 'badge ' + (STATUS[st] || ''), text: str(st) || '–'});
+  const typeText = o => o.type === 'limit' ? 'limit ' + pxf(o.limit_price) : o.type === 'stop' ? 'stop ' + pxf(o.stop_price) : str(o.type) || '–';
+  const sideCell = sd => ({t: sd === 'buy' ? 'Buy' : sd === 'sell' ? 'Sell' : str(sd), cls: sd === 'buy' ? 'pos' : sd === 'sell' ? 'neg' : ''});
+  function renderOrders(d) {
+    const open = (d.open_orders || []).filter(o => o && typeof o === 'object');
+    if (changed('open', open)) {
+      fill($('openTable'), table([{t: '#', num: true}, 'Placed (ET)', 'Symbol', 'Side', {t: 'Qty', num: true}, 'Type', 'TIF', 'Session', 'Note', {t: '', sr: 'Cancel'}],
+        open.map(o => [{t: str(o.id), num: true}, {t: whenShort(o.created), cls: 'time'}, {t: str(o.ticker)}, sideCell(o.side), {t: qtyS(o.qty), num: true},
+          {t: typeText(o)}, {t: str(o.tif).toUpperCase()}, {t: day(o.session)}, {t: str(o.note), cls: 'wrap muted'},
+          h('button', {type: 'button', class: 'small danger', 'aria-label': 'Cancel order ' + str(o.id), onclick: () => cancelOrder(o), text: 'Cancel'})]),
+        'No open orders.', 'Open orders', true));
+    }
+    const all = (d.orders || []).filter(o => o && typeof o === 'object');
+    if (changed('hist', all)) {
+      fill($('histTable'), table([{t: '#', num: true}, 'Placed (ET)', 'Symbol', 'Side', {t: 'Qty', num: true}, 'Type', 'TIF', 'Status',
+        {t: 'Fill price', num: true}, {t: 'Fee', num: true}, 'Note'],
+        all.map(o => [{t: str(o.id), num: true}, {t: whenShort(o.created), cls: 'time'}, {t: str(o.ticker)}, sideCell(o.side), {t: qtyS(o.qty), num: true},
+          {t: typeText(o)}, {t: str(o.tif).toUpperCase()}, statusBadge(o.status), {t: pxf(o.fill_price), num: true},
+          {t: fin(o.fee) ? money(o.fee) : '–', num: true}, {t: str(o.note), cls: 'wrap muted'}]),
+        'No orders yet.', 'Order history'));
+    }
+    moreNote($('histMore'), all.length, d.orders_total, 'orders');
+  }
+  // The program sends at most the latest 300 orders and fills.
+  function moreNote(el, shown, total, what) {
+    let t = '';
+    if (fin(total) && total > shown) t = 'Showing the latest ' + qtyS(shown) + ' of ' + qtyS(total) + ' ' + what + '.';
+    else if (!fin(total) && shown >= 300) t = 'Showing the latest ' + qtyS(shown) + ' ' + what + '.';
+    setText(el, t); el.hidden = !t;
+  }
+  async function cancelOrder(o) {
+    show($('ordErr'), ''); show($('ordMsg'), '');
+    const ok = await confirmBox('Cancel order #' + str(o.id) + '?', [
+      h('b', {text: (o.side === 'sell' ? 'Sell ' : 'Buy ') + qtyS(o.qty) + ' ' + str(o.ticker) + ', ' + typeText(o)}),
+      'It will not fill after this. You can place a new order any time.'], 'Cancel order', true, 'Keep order');
+    if (!ok) return;
+    const r = await post('/api/cancel', {id: o.id});
+    const box = r && r.ok ? $('ordMsg') : $('ordErr');
+    if (r && r.ok) show(box, 'Order #' + str(o.id) + ' cancelled.');
+    else show(box, str((r && r.error) || 'could not cancel'));
+    await load();
+    box.focus();  // its row (and the button that had focus) is gone
+  }
+  function renderFills(d) {
+    const fills = (d.fills || []).filter(f => f && typeof f === 'object');
+    moreNote($('fillMore'), fills.length, d.fills_total, 'fills');
+    if (!changed('fills', fills)) return;
+    fill($('fillTable'), table(['Time (ET)', 'Symbol', 'Side', {t: 'Qty', num: true}, {t: 'Price', num: true}, {t: 'Value', num: true},
+      {t: 'Fee', num: true}, {t: 'Realized P/L', num: true}, {t: 'Order', num: true}, 'Prices'],
+      fills.map(f => [{t: whenShort(f.time), cls: 'time'}, {t: str(f.ticker)}, sideCell(f.side), {t: qtyS(f.qty), num: true}, {t: pxf(f.price), num: true},
+        {t: fin(f.qty) && fin(f.price) ? money(f.qty * f.price) : '–', num: true}, {t: money(f.fee), num: true},
+        {t: fin(f.realized) ? smoney(f.realized) : '–', num: true, cls: signCls(f.realized)}, {t: '#' + str(f.order_id), num: true},
+        {t: f.source === 'demo' ? 'demo' : f.source === 'yahoo' ? 'Yahoo' : str(f.source)}]),
+      'No fills yet.', 'Fills'));
+  }
+
+  // ---- settings and new account ---------------------------------------------
+  let setDirty = false, resetTouched = false;
+  ['setCommission', 'setSlip', 'setFractional', 'setPractice'].forEach(id => $(id).addEventListener('input', () => { setDirty = true; }));
+  ['setFractional', 'setPractice'].forEach(id => $(id).addEventListener('change', () => { setDirty = true; }));
+  document.querySelectorAll('input[name=prices]').forEach(r => r.addEventListener('change', () => { resetTouched = true; pricesHint(); }));
+  function pricesHint() {
+    const demo = $('pricesDemo').checked;
+    $('pricesHint').textContent = demo ? 'Demo: made-up prices that move like a stock; works offline and at any time.'
+      : 'Live: real Yahoo prices (delayed); orders fill during market hours.';
+  }
+  function renderSettings(d) {
+    const st = d.settings || {};
+    if (!setDirty && changed('settings', st)) {
+      $('setCommission').value = fin(st.commission) ? String(st.commission) : '0';
+      $('setSlip').value = fin(st.slippage_bps) ? String(st.slippage_bps) : '0';
+      $('setFractional').checked = st.fractional === true;
+      $('setPractice').checked = st.practice_fills === true;
+    }
+    if (!resetTouched) { (d.prices === 'demo' ? $('pricesDemo') : $('pricesLive')).checked = true; pricesHint(); }
+    if (changed('acctInfo', [d.created, d.starting_cash, d.prices])) {
+      fill($('acctInfo'), 'This account: started ' + when(d.created) + ' with ' + money(d.starting_cash) + ', ' + (d.prices === 'demo' ? 'demo prices.' : 'live prices.'));
+    }
+  }
+  $('setForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    show($('setErr'), ''); show($('setMsg'), '');
+    const c = parseFloat($('setCommission').value), sl = parseFloat($('setSlip').value);
+    if (!fin(c) || c < 0 || c > 100) { show($('setErr'), 'Commission must be between $0 and $100.'); return; }
+    if (!fin(sl) || sl < 0 || sl > 500) { show($('setErr'), 'Slippage must be between 0 and 500 basis points.'); return; }
+    const r = await post('/api/settings', {commission: c, slippage_bps: sl, fractional: $('setFractional').checked, practice_fills: $('setPractice').checked});
+    if (r && r.ok) { setDirty = false; memo.delete('settings'); show($('setMsg'), 'Settings saved.'); }
+    else show($('setErr'), 'Not saved: ' + str((r && r.error) || 'unknown error'));
+    load();
+  });
+  $('resetForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    show($('resetErr'), ''); show($('resetMsg'), '');
+    const cash = parseFloat($('newCash').value), demo = $('pricesDemo').checked;
+    if (!fin(cash) || cash < 1 || cash > 100000000) { show($('resetErr'), 'Starting balance must be between $1 and $100,000,000.'); return; }
+    const ok = await confirmBox('Start a new account?', [
+      h('b', {text: 'New balance ' + money(cash) + ' with ' + (demo ? 'demo (made-up) prices' : 'live Yahoo prices')}),
+      'Your current account is kept as a backup file in the account folder; it is not deleted.',
+      'Open orders, positions and history start empty. Your watchlist and settings carry over.'], 'Start new account', true);
+    if (!ok) return;
+    const r = await post('/api/reset', {starting_cash: cash, prices: demo ? 'demo' : 'live'});
+    if (r && r.ok) {
+      resetTouched = false;
+      for (const k of Object.keys(quotes)) delete quotes[k];
+      renderQuote(ticker());
+      show($('resetMsg'), 'New account started. The old one was kept as ' + str(r.kept) + ' in the account folder.');
+      post('/api/refresh', {}).then(load);
+    } else show($('resetErr'), 'Not started: ' + str((r && r.error) || 'unknown error'));
+    load();
+  });
+
+  // ---- header buttons ----------------------------------------------------------
+  $('btnRefresh').addEventListener('click', async () => {
+    $('btnRefresh').disabled = true;
+    const r = await post('/api/refresh', {});
+    $('btnRefresh').disabled = false;
+    if (r && r.ok) toast('Prices checked (' + (fin(r.quotes) ? r.quotes : 0) + ' symbols)' + (fin(r.changed) && r.changed ? '; ' + r.changed + ' order(s) changed.' : '.'));
+    else toast(str((r && r.error) || 'refresh failed'), true);
+    load();
+  });
+  $('btnFolder').addEventListener('click', async () => {
+    const r = await post('/api/open-folder', {});
+    if (r && r.ok !== false && !r.error) toast('Opened the account folder.');
+    else toast(r && r.error ? str(r.error) : 'Could not open the folder. It is: ' + str(snap && snap.home), true);
+  });
+
+  // ---- polling -------------------------------------------------------------------
+  function setConn(ok) {
+    const c = $('conn');
+    if (connected === ok) return;  // role=status / role=alert: announce transitions only
+    connected = ok;
+    if (ok) {
+      setText(c, 'connected'); setClass(c, 'badge good');
+      show($('loadErr'), '');
+    } else {
+      setText(c, 'disconnected'); setClass(c, 'badge bad');
+      show($('loadErr'), '', [h('b', {text: 'Cannot reach Paper Trading. '}),
+        'Its window may have been closed. ' + (lastGood ? 'The figures below are from the last good update at ' + tf.format(lastGood) + ' ET. ' : '') +
+        'Start Paper Trading again; this page reconnects by itself.']);
+    }
+  }
+  function render(d) {
+    syncQuotes(d);
+    renderHeader(d);
+    renderSummary(d);
+    if (ticker()) renderQuote(ticker());
+    renderTicketContext(d);
+    renderWatch(d);
+    renderPositions(d);
+    drawEquity(d);
+    renderOrders(d);
+    renderFills(d);
+    renderSettings(d);
+  }
+  let loading = null;
+  function load() {
+    if (loading) return loading;
+    loading = (async () => {
+      try {
+        const d = await getJSON('/api/account');
+        if (!d || typeof d !== 'object' || d.ok === false) throw new Error((d && d.error) || 'bad answer');
+        snap = d; lastGood = new Date();
+        setConn(true);
+        render(d);
+      } catch (e) {
+        setConn(false);
+      } finally { loading = null; }
+    })();
+    return loading;
+  }
+  function poll() { load().finally(() => { requote(); setTimeout(poll, 5000); }); }
+  updateTypeFields();
+  post('/api/refresh', {}).then(() => load());
+  poll();
+})();
+</script>
+</body>
+</html>
