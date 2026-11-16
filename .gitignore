@@ -6,6 +6,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Market data CSVs written by examples/openbb_quickstart.py
+examples/market_data/
+
 # Scratch clones from research (reference only, never vendored)
 /quest/
 /QOKit/
