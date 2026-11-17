@@ -5,15 +5,20 @@ name: live bot
 # QT_BROKER=alpaca and the secrets ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY
 # (see live/README.md). Real money also needs the variables ALPACA_BASE_URL
 # and QT_ALLOW_REAL_MONEY=yes; either alone is refused.
-# 17:07 New York time, all year: 67 minutes after the 16:00 close, off the
-# top of the hour (GitHub delays or drops runs at busy times, worst on the
-# hour). Pinned to New York time so daylight saving does not move it; the
-# old UTC schedule ran only 30 minutes after the close in winter.
-# Scheduled runs happen only on the default branch.
+# Three start times a day, in plain UTC, all after 16:30 New York in both
+# winter and summer (the fetch drops today's bar before then):
+#   21:37 UTC = 16:37 EST / 17:37 EDT
+#   22:47 UTC = 17:47 EST / 18:47 EDT
+#   01:17 UTC = 20:17 EST / 21:17 EDT (Tuesday to Saturday in UTC)
+# GitHub starts scheduled runs late or drops them: the single 17:07
+# America/New_York slot used before fired 4 hours late on its first day and
+# not at all on its second. A later run on a day already stored changes
+# nothing in the books. Scheduled runs happen only on the default branch.
 on:
   schedule:
-    - cron: "7 17 * * 1-5"
-      timezone: "America/New_York"
+    - cron: "37 21 * * 1-5"
+    - cron: "47 22 * * 1-5"
+    - cron: "17 1 * * 2-6"
   workflow_dispatch:
   push:
     paths:
