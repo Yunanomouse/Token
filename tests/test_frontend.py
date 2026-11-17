@@ -387,7 +387,8 @@ class TestStationPage(_StationCase):
             self.assertEqual(by[t][2], f"${snap['pnl']['positions'][t]['price']:,.2f}", t)  # price
         fills = _rows(page, 'section.bot[aria-label="main"] > .card:last-child')
         self.assertEqual(len(fills), len(snap["fills"]))
-        self.assertEqual({r[1] for r in fills}, {f["ticker"] for f in snap["fills"]})
+        # A bookkeeping row shows "XOM · adjustment x1.006312": the ticker is the first part.
+        self.assertEqual({r[1].split(" · ")[0] for r in fills}, {f["ticker"] for f in snap["fills"]})
         # The $40 bot's hand-placed order list, labelled information only.
         small = page.locator('section.bot[aria-label="small"]')
         orders = small.locator(".card", has_text="Today's orders to place by hand")
