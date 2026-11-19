@@ -873,6 +873,22 @@ class Engine:
             st.log = st.log[-500:]
             st.cash = self.broker.cash()
             st.positions = self.broker.positions()
+            # Value the newest stored day again at the prices and shares the
+            # book now holds.  When the feed re-bases before the ex-day bar
+            # arrives this changes nothing (price / f times shares x f).  When
+            # the ex-day bar was stored first, at the dropped price and the
+            # old share count, the stored equity was short by the dividend:
+            # the scaled shares put it back, and the curve must say so.
+            if st.equity_curve:
+                last = st.prices[-1]
+                eq = float(st.cash + sum(q * last[st.tickers.index(t)] for t, q in st.positions.items()))
+                if abs(eq - st.equity_curve[-1]) > 1e-9:
+                    line = (f"{st.dates[-1]} equity re-valued after the re-base:"
+                            f" {st.equity_curve[-1]:,.2f} -> {eq:,.2f}")
+                    st.log.append(line)
+                    self._log(line)
+                    st.equity_curve[-1] = eq
+                    st.peak_equity = max(st.peak_equity, eq)
         return changes
 
     # -- loop --------------------------------------------------------------

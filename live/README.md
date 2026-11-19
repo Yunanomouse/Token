@@ -109,8 +109,10 @@ Even a genuinely good strategy needs years to be told apart from luck (see
 
 ## When it runs, and when it stops
 
-It runs at 17:07 New York time on weekdays (15:07 in Calgary). GitHub can
-start it late, and switches scheduled runs off in a public repository after
+It is started three times each weekday after the close (14:37, 15:47 and
+18:17 in Calgary in winter; an hour later in summer), because GitHub can
+start a run late or skip it; a second run on the same day changes nothing.
+GitHub also and switches scheduled runs off in a public repository after
 60 days without activity, without sending an email. The web page warns when
 the bot's report is more than four days old. To get an email when a run
 fails: your GitHub profile **Settings > Notifications > Actions > Email**,

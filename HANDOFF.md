@@ -58,8 +58,8 @@ the art) as of 2026-09-30 are in `docs/research_2026-09.md`; read its
 
 ## How the live bot works
 
-1. After each US close (17:07 New York time, weekdays; the schedule carries
-   `timezone: America/New_York`) the `live bot` workflow fetches real
+1. After each US close (three start times in plain UTC on weekdays, all
+   after 16:30 New York; GitHub drops or delays single slots) the `live bot` workflow fetches real
    adjusted closes (FMP, Twelve Data, Yahoo, Stooq; keyed ones only if their
    secret is set; one source per run, never mixed; today's bar dropped until
    16:30 New York), re-bases its stored history if the feed re-adjusted for

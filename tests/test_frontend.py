@@ -46,6 +46,7 @@ XSS_IMG = '<img src=x onerror="window.__xss=1">'
 XSS_SCRIPT = '</script><script>window.__xss=1</script>'
 DESKTOP, PHONE = 1300, 390
 WAIT = 10_000  # ms, for anything that waits on a poll
+REPLAY_WAIT = 60_000  # ms, for an 80-bar replay to finish on a slow CI runner
 
 _pw = None
 _browser = None
@@ -386,7 +387,8 @@ class TestStationPage(_StationCase):
             self.assertEqual(by[t][2], f"${snap['pnl']['positions'][t]['price']:,.2f}", t)  # price
         fills = _rows(page, 'section.bot[aria-label="main"] > .card:last-child')
         self.assertEqual(len(fills), len(snap["fills"]))
-        self.assertEqual({r[1] for r in fills}, {f["ticker"] for f in snap["fills"]})
+        # A bookkeeping row shows "XOM · adjustment x1.006312": the ticker is the first part.
+        self.assertEqual({r[1].split(" · ")[0] for r in fills}, {f["ticker"] for f in snap["fills"]})
         # The $40 bot's hand-placed order list, labelled information only.
         small = page.locator('section.bot[aria-label="small"]')
         orders = small.locator(".card", has_text="Today's orders to place by hand")
@@ -880,7 +882,7 @@ class TestDesktopPage(_DesktopCase):
         page.set_checked("#fresh", False)
         page.fill("#speed", "0")
         page.click("#btnStart")
-        expect(page.locator("#tBars")).to_have_text("80")
+        expect(page.locator("#tBars")).to_have_text("80", timeout=REPLAY_WAIT)
         expect(page.locator("#tBarsSub")).to_have_text("2020-01-01 → 2020-03-24")
         st = self.ctl.snapshot()
         expect(page.locator("#tEquity")).to_have_text(f"{st['equity']:,.2f}")
@@ -909,7 +911,7 @@ class TestDesktopPage(_DesktopCase):
         page = self.load()
         self.fill_form(page)
         page.click("#btnStart")
-        expect(page.locator("#tBars")).to_have_text("80")
+        expect(page.locator("#tBars")).to_have_text("80", timeout=REPLAY_WAIT)
         self.wait_idle()
         state = self.work / "live_state.json"
         self.assertTrue(state.exists())
@@ -930,7 +932,7 @@ class TestDesktopPage(_DesktopCase):
         page = self.load(clock=True)
         self.fill_form(page)
         page.click("#btnStart")
-        expect(page.locator("#tBars")).to_have_text("80")
+        expect(page.locator("#tBars")).to_have_text("80", timeout=REPLAY_WAIT)
         equity = page.inner_text("#tEquity")
         self.wait_idle()
         self.stop_server()

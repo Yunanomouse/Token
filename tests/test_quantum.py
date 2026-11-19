@@ -2476,6 +2476,55 @@ class TestLiveEngine(unittest.TestCase):
             e.on_bar(Bar(d, {"A": 10.0 + i, "B": 5.0}))
         self.assertEqual(snapshot(e)[0]["mode"], "live")
 
+    def test_reconcile_credits_a_dividend_when_the_ex_day_bar_came_first(self):
+        """Yahoo publishes the ex-day close before it re-adjusts its history.  The
+        ex-day bar is then stored at the dropped price with the old share count,
+        short by the dividend; when the history is re-based later the same day,
+        the stored equity for that day must rise by the dividend, to what a book
+        run on the adjusted series from the start would show."""
+        import csv
+        import tempfile
+        from pathlib import Path
+        from quantum.live import Engine, EngineConfig, FileFeed, RiskLimits
+
+        def write(path, rows):
+            with open(path, "w", newline="") as fh:
+                w = csv.writer(fh)
+                w.writerow(["date", "AAA", "BBB"])
+                w.writerows(rows)
+
+        def run(rows, d, name):
+            feed = d / f"{name}.csv"
+            write(feed, rows)
+            cfg = EngineConfig(["AAA", "BBB"], strategy="equal_weight", window=3, rebalance_every=100,
+                               initial_cash=1000.0, fee_rate=0.0,
+                               limits=RiskLimits(min_history=3, max_drawdown=0.5, max_turnover=1.0, max_weight=0.6),
+                               state_path=str(d / f"{name}.json"))
+            engine = Engine(cfg)
+            engine.run(FileFeed(feed, cfg.tickers, poll_seconds=0.0, max_polls=1))
+            return engine, feed, cfg
+
+        f = 1.02  # BBB pays 2%: its past is divided by 1.02 once the vendor catches up
+        before = [("2024-01-02", 100.0, 51.0), ("2024-01-03", 102.0, 51.0), ("2024-01-04", 104.0, 51.0)]
+        ex_day = ("2024-01-05", 104.0, 50.0)  # BBB opens ex-dividend: 51 -> 50, nothing else moved
+        adjusted = [(dt, a, b / f) for dt, a, b in before] + [ex_day]
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            late, feed, cfg = run(before + [ex_day], d, "late")       # ex-day bar on the unadjusted history
+            short = late.state.equity_curve[-1]
+            held = late.state.positions["BBB"]
+            self.assertAlmostEqual(late.state.equity_curve[-2] - short, held * 1.0, places=9)  # the drop, booked as a loss
+            write(feed, adjusted)                                      # the vendor re-bases, same day
+            changes = late.reconcile(FileFeed(feed, cfg.tickers, poll_seconds=0.0, max_polls=1).history())
+            self.assertEqual([(c["ticker"], c["kind"]) for c in changes], [("BBB", "dividend")])
+            clean, _, _ = run(adjusted, d, "clean")                    # the same book on the adjusted series throughout
+            self.assertAlmostEqual(late.state.positions["BBB"], held * f)
+            self.assertAlmostEqual(late.state.equity_curve[-1], short + held * (f - 1) * 50.0, places=9)
+            self.assertAlmostEqual(late.state.equity_curve[-1] / late.state.equity_curve[-2],
+                                   clean.state.equity_curve[-1] / clean.state.equity_curve[-2], places=9)
+            self.assertGreaterEqual(late.state.peak_equity, late.state.equity_curve[-1])
+            self.assertTrue(any("re-valued" in line for line in late.state.log))
+
     def test_reconcile_rebases_history_on_a_split_and_a_dividend(self):
         """The feed rewrites its past when a stock splits or goes ex-dividend; the
         book must follow instead of reading it as a crash (kill switch) or a loss."""
