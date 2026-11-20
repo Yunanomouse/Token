@@ -551,7 +551,8 @@
   "2026-11-16",
   "2026-11-17",
   "2026-11-18",
-  "2026-11-19"
+  "2026-11-19",
+  "2026-11-20"
  ],
  "prices": [
   [
@@ -5973,13 +5974,20 @@
    13.94,
    14.71,
    20.030001
+  ],
+  [
+   11.17,
+   6.88,
+   9.49,
+   6.52,
+   4.55,
+   13.78,
+   14.28,
+   19.450001
   ]
  ],
- "cash": 13.944037999999995,
- "positions": {
-  "VALE": 1.0,
-  "ITUB": 1.0
- },
+ "cash": 29.954037999999994,
+ "positions": {},
  "equity_curve": [
   40.0,
   40.0,
@@ -6522,19 +6530,15 @@
   31.534037999999995,
   31.394037999999995,
   30.814037999999996,
-  30.464038
+  30.464038,
+  29.954037999999994
  ],
  "peak_equity": 40.599999999999994,
  "last_rebalance_index": 522,
- "target_weights": {
-  "NOK": 0.1071609410580103,
-  "VALE": 0.16590907118118345,
-  "ITUB": 0.25,
-  "KEY": 0.25
- },
- "halted": false,
- "halt_reason": "",
- "halt_index": -1,
+ "target_weights": {},
+ "halted": true,
+ "halt_reason": "drawdown 26.2% >= limit 25.0% on 2026-11-20",
+ "halt_index": 543,
  "fills": [
   {
    "ticker": "NOK",
@@ -6563,10 +6567,25 @@
    "price": 9.485962,
    "fee": 0.0,
    "date": "2026-10-22"
+  },
+  {
+   "ticker": "VALE",
+   "quantity": -1.0,
+   "price": 9.49,
+   "fee": 0.0,
+   "date": "2026-11-20",
+   "note": ""
+  },
+  {
+   "ticker": "ITUB",
+   "quantity": -1.0,
+   "price": 6.52,
+   "fee": 0.0,
+   "date": "2026-11-20",
+   "note": ""
   }
  ],
  "log": [
-  "2024-11-27 equity=40.00 dd=0.0% warmup",
   "2024-11-29 equity=40.00 dd=0.0% warmup",
   "2024-12-02 equity=40.00 dd=0.0% warmup",
   "2024-12-03 equity=40.00 dd=0.0% warmup",
@@ -7065,6 +7084,7 @@
   "2026-11-17 re-based VALE: the feed's history moved by different amounts or upward (median x0.949737); prices re-based, shares unchanged",
   "2026-11-18 equity=30.81 dd=24.1% hold",
   "2026-11-18 re-based VALE: the feed's history moved by different amounts or upward (median x1.052923); prices re-based, shares unchanged",
-  "2026-11-19 equity=30.46 dd=25.0% hold"
+  "2026-11-19 equity=30.46 dd=25.0% hold",
+  "2026-11-20 equity=29.95 dd=26.2% kill_switch fills=2"
  ]
 }
