@@ -1,26 +1,11 @@
 {
  "schema": 1,
  "mode": "paper",
- "date": "2026-11-20",
- "generated_at": "2026-11-21T03:04:25+00:00",
+ "date": "2026-11-23",
+ "generated_at": "2026-11-24T05:52:01+00:00",
  "budget": 40.0,
  "whole_shares": true,
- "orders": [
-  {
-   "ticker": "VALE",
-   "side": "sell",
-   "shares": 1.0,
-   "close": 9.49,
-   "limit": 9.4
-  },
-  {
-   "ticker": "ITUB",
-   "side": "sell",
-   "shares": 1.0,
-   "close": 6.52,
-   "limit": 6.45
-  }
- ],
+ "orders": [],
  "holdings_after": {},
  "cash_after": 29.954037999999994
 }
